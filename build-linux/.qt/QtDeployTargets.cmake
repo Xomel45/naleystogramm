@@ -1,0 +1,2 @@
+set(__QT_DEPLOY_TARGET_naleystogramm_FILE /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm)
+set(__QT_DEPLOY_TARGET_naleystogramm_TYPE EXECUTABLE)
