@@ -47,7 +47,8 @@ template <> constexpr inline auto SettingsPanel::qt_create_metaobjectdata<qt_met
         "port",
         "backRequested",
         "onSave",
-        "onReset"
+        "onReset",
+        "onAvatarClicked"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -65,6 +66,8 @@ template <> constexpr inline auto SettingsPanel::qt_create_metaobjectdata<qt_met
         QtMocHelpers::SlotData<void()>(8, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'onReset'
         QtMocHelpers::SlotData<void()>(9, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'onAvatarClicked'
+        QtMocHelpers::SlotData<void()>(10, 2, QMC::AccessPrivate, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -93,6 +96,7 @@ void SettingsPanel::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _i
         case 2: _t->backRequested(); break;
         case 3: _t->onSave(); break;
         case 4: _t->onReset(); break;
+        case 5: _t->onAvatarClicked(); break;
         default: ;
         }
     }
@@ -125,14 +129,14 @@ int SettingsPanel::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 5)
+        if (_id < 6)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 5;
+        _id -= 6;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 5)
+        if (_id < 6)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 5;
+        _id -= 6;
     }
     return _id;
 }

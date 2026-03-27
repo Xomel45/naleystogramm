@@ -117,6 +117,19 @@ depend:
 .PHONY : depend
 
 #=============================================================================
+# Target rules for targets named translations
+
+# Build rule for target.
+translations: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 translations
+.PHONY : translations
+
+# fast build rule for target.
+translations/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/translations.dir/build.make CMakeFiles/translations.dir/build
+.PHONY : translations/fast
+
+#=============================================================================
 # Target rules for targets named naleystogramm
 
 # Build rule for target.
@@ -128,6 +141,71 @@ naleystogramm: cmake_check_build_system
 naleystogramm/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/build
 .PHONY : naleystogramm/fast
+
+#=============================================================================
+# Target rules for targets named appimage
+
+# Build rule for target.
+appimage: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 appimage
+.PHONY : appimage
+
+# fast build rule for target.
+appimage/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/appimage.dir/build.make CMakeFiles/appimage.dir/build
+.PHONY : appimage/fast
+
+#=============================================================================
+# Target rules for targets named appimage-verbose
+
+# Build rule for target.
+appimage-verbose: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 appimage-verbose
+.PHONY : appimage-verbose
+
+# fast build rule for target.
+appimage-verbose/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/appimage-verbose.dir/build.make CMakeFiles/appimage-verbose.dir/build
+.PHONY : appimage-verbose/fast
+
+#=============================================================================
+# Target rules for targets named appdir
+
+# Build rule for target.
+appdir: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 appdir
+.PHONY : appdir
+
+# fast build rule for target.
+appdir/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/appdir.dir/build.make CMakeFiles/appdir.dir/build
+.PHONY : appdir/fast
+
+#=============================================================================
+# Target rules for targets named beta
+
+# Build rule for target.
+beta: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 beta
+.PHONY : beta
+
+# fast build rule for target.
+beta/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/beta.dir/build.make CMakeFiles/beta.dir/build
+.PHONY : beta/fast
+
+#=============================================================================
+# Target rules for targets named release-linux
+
+# Build rule for target.
+release-linux: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 release-linux
+.PHONY : release-linux
+
+# fast build rule for target.
+release-linux/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/release-linux.dir/build.make CMakeFiles/release-linux.dir/build
+.PHONY : release-linux/fast
 
 #=============================================================================
 # Target rules for targets named naleystogramm_autogen_timestamp_deps
@@ -178,6 +256,54 @@ naleystogramm_autogen/mocs_compilation.s: naleystogramm_autogen/mocs_compilation
 naleystogramm_autogen/mocs_compilation.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.s
 .PHONY : naleystogramm_autogen/mocs_compilation.cpp.s
+
+src/core/audiorecorder.o: src/core/audiorecorder.cpp.o
+.PHONY : src/core/audiorecorder.o
+
+# target to build an object file
+src/core/audiorecorder.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o
+.PHONY : src/core/audiorecorder.cpp.o
+
+src/core/audiorecorder.i: src/core/audiorecorder.cpp.i
+.PHONY : src/core/audiorecorder.i
+
+# target to preprocess a source file
+src/core/audiorecorder.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.i
+.PHONY : src/core/audiorecorder.cpp.i
+
+src/core/audiorecorder.s: src/core/audiorecorder.cpp.s
+.PHONY : src/core/audiorecorder.s
+
+# target to generate assembly for a file
+src/core/audiorecorder.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.s
+.PHONY : src/core/audiorecorder.cpp.s
+
+src/core/callmanager.o: src/core/callmanager.cpp.o
+.PHONY : src/core/callmanager.o
+
+# target to build an object file
+src/core/callmanager.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o
+.PHONY : src/core/callmanager.cpp.o
+
+src/core/callmanager.i: src/core/callmanager.cpp.i
+.PHONY : src/core/callmanager.i
+
+# target to preprocess a source file
+src/core/callmanager.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.i
+.PHONY : src/core/callmanager.cpp.i
+
+src/core/callmanager.s: src/core/callmanager.cpp.s
+.PHONY : src/core/callmanager.s
+
+# target to generate assembly for a file
+src/core/callmanager.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.s
+.PHONY : src/core/callmanager.cpp.s
 
 src/core/demomode.o: src/core/demomode.cpp.o
 .PHONY : src/core/demomode.o
@@ -251,6 +377,30 @@ src/core/identity.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/identity.cpp.s
 .PHONY : src/core/identity.cpp.s
 
+src/core/logger.o: src/core/logger.cpp.o
+.PHONY : src/core/logger.o
+
+# target to build an object file
+src/core/logger.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o
+.PHONY : src/core/logger.cpp.o
+
+src/core/logger.i: src/core/logger.cpp.i
+.PHONY : src/core/logger.i
+
+# target to preprocess a source file
+src/core/logger.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/logger.cpp.i
+.PHONY : src/core/logger.cpp.i
+
+src/core/logger.s: src/core/logger.cpp.s
+.PHONY : src/core/logger.s
+
+# target to generate assembly for a file
+src/core/logger.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/logger.cpp.s
+.PHONY : src/core/logger.cpp.s
+
 src/core/network.o: src/core/network.cpp.o
 .PHONY : src/core/network.o
 
@@ -274,6 +424,30 @@ src/core/network.s: src/core/network.cpp.s
 src/core/network.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/network.cpp.s
 .PHONY : src/core/network.cpp.s
+
+src/core/remoteshellmanager.o: src/core/remoteshellmanager.cpp.o
+.PHONY : src/core/remoteshellmanager.o
+
+# target to build an object file
+src/core/remoteshellmanager.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o
+.PHONY : src/core/remoteshellmanager.cpp.o
+
+src/core/remoteshellmanager.i: src/core/remoteshellmanager.cpp.i
+.PHONY : src/core/remoteshellmanager.i
+
+# target to preprocess a source file
+src/core/remoteshellmanager.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.i
+.PHONY : src/core/remoteshellmanager.cpp.i
+
+src/core/remoteshellmanager.s: src/core/remoteshellmanager.cpp.s
+.PHONY : src/core/remoteshellmanager.s
+
+# target to generate assembly for a file
+src/core/remoteshellmanager.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.s
+.PHONY : src/core/remoteshellmanager.cpp.s
 
 src/core/sessionmanager.o: src/core/sessionmanager.cpp.o
 .PHONY : src/core/sessionmanager.o
@@ -322,6 +496,30 @@ src/core/storage.s: src/core/storage.cpp.s
 src/core/storage.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/storage.cpp.s
 .PHONY : src/core/storage.cpp.s
+
+src/core/systeminfo.o: src/core/systeminfo.cpp.o
+.PHONY : src/core/systeminfo.o
+
+# target to build an object file
+src/core/systeminfo.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o
+.PHONY : src/core/systeminfo.cpp.o
+
+src/core/systeminfo.i: src/core/systeminfo.cpp.i
+.PHONY : src/core/systeminfo.i
+
+# target to preprocess a source file
+src/core/systeminfo.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.i
+.PHONY : src/core/systeminfo.cpp.i
+
+src/core/systeminfo.s: src/core/systeminfo.cpp.s
+.PHONY : src/core/systeminfo.s
+
+# target to generate assembly for a file
+src/core/systeminfo.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.s
+.PHONY : src/core/systeminfo.cpp.s
 
 src/core/updatechecker.o: src/core/updatechecker.cpp.o
 .PHONY : src/core/updatechecker.o
@@ -395,6 +593,30 @@ src/crypto/e2e.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.s
 .PHONY : src/crypto/e2e.cpp.s
 
+src/crypto/keyprotector.o: src/crypto/keyprotector.cpp.o
+.PHONY : src/crypto/keyprotector.o
+
+# target to build an object file
+src/crypto/keyprotector.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o
+.PHONY : src/crypto/keyprotector.cpp.o
+
+src/crypto/keyprotector.i: src/crypto/keyprotector.cpp.i
+.PHONY : src/crypto/keyprotector.i
+
+# target to preprocess a source file
+src/crypto/keyprotector.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.i
+.PHONY : src/crypto/keyprotector.cpp.i
+
+src/crypto/keyprotector.s: src/crypto/keyprotector.cpp.s
+.PHONY : src/crypto/keyprotector.s
+
+# target to generate assembly for a file
+src/crypto/keyprotector.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.s
+.PHONY : src/crypto/keyprotector.cpp.s
+
 src/crypto/ratchet.o: src/crypto/ratchet.cpp.o
 .PHONY : src/crypto/ratchet.o
 
@@ -466,6 +688,54 @@ src/main.s: src/main.cpp.s
 src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
+
+src/media/mediaengine.o: src/media/mediaengine.cpp.o
+.PHONY : src/media/mediaengine.o
+
+# target to build an object file
+src/media/mediaengine.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o
+.PHONY : src/media/mediaengine.cpp.o
+
+src/media/mediaengine.i: src/media/mediaengine.cpp.i
+.PHONY : src/media/mediaengine.i
+
+# target to preprocess a source file
+src/media/mediaengine.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.i
+.PHONY : src/media/mediaengine.cpp.i
+
+src/media/mediaengine.s: src/media/mediaengine.cpp.s
+.PHONY : src/media/mediaengine.s
+
+# target to generate assembly for a file
+src/media/mediaengine.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.s
+.PHONY : src/media/mediaengine.cpp.s
+
+src/ui/callwindow.o: src/ui/callwindow.cpp.o
+.PHONY : src/ui/callwindow.o
+
+# target to build an object file
+src/ui/callwindow.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o
+.PHONY : src/ui/callwindow.cpp.o
+
+src/ui/callwindow.i: src/ui/callwindow.cpp.i
+.PHONY : src/ui/callwindow.i
+
+# target to preprocess a source file
+src/ui/callwindow.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.i
+.PHONY : src/ui/callwindow.cpp.i
+
+src/ui/callwindow.s: src/ui/callwindow.cpp.s
+.PHONY : src/ui/callwindow.s
+
+# target to generate assembly for a file
+src/ui/callwindow.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.s
+.PHONY : src/ui/callwindow.cpp.s
 
 src/ui/chatwidget.o: src/ui/chatwidget.cpp.o
 .PHONY : src/ui/chatwidget.o
@@ -539,6 +809,54 @@ src/ui/dialogs/addcontactdialog.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.s
 .PHONY : src/ui/dialogs/addcontactdialog.cpp.s
 
+src/ui/dialogs/contactprofiledialog.o: src/ui/dialogs/contactprofiledialog.cpp.o
+.PHONY : src/ui/dialogs/contactprofiledialog.o
+
+# target to build an object file
+src/ui/dialogs/contactprofiledialog.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o
+.PHONY : src/ui/dialogs/contactprofiledialog.cpp.o
+
+src/ui/dialogs/contactprofiledialog.i: src/ui/dialogs/contactprofiledialog.cpp.i
+.PHONY : src/ui/dialogs/contactprofiledialog.i
+
+# target to preprocess a source file
+src/ui/dialogs/contactprofiledialog.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.i
+.PHONY : src/ui/dialogs/contactprofiledialog.cpp.i
+
+src/ui/dialogs/contactprofiledialog.s: src/ui/dialogs/contactprofiledialog.cpp.s
+.PHONY : src/ui/dialogs/contactprofiledialog.s
+
+# target to generate assembly for a file
+src/ui/dialogs/contactprofiledialog.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.s
+.PHONY : src/ui/dialogs/contactprofiledialog.cpp.s
+
+src/ui/dialogs/fileacceptdialog.o: src/ui/dialogs/fileacceptdialog.cpp.o
+.PHONY : src/ui/dialogs/fileacceptdialog.o
+
+# target to build an object file
+src/ui/dialogs/fileacceptdialog.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o
+.PHONY : src/ui/dialogs/fileacceptdialog.cpp.o
+
+src/ui/dialogs/fileacceptdialog.i: src/ui/dialogs/fileacceptdialog.cpp.i
+.PHONY : src/ui/dialogs/fileacceptdialog.i
+
+# target to preprocess a source file
+src/ui/dialogs/fileacceptdialog.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.i
+.PHONY : src/ui/dialogs/fileacceptdialog.cpp.i
+
+src/ui/dialogs/fileacceptdialog.s: src/ui/dialogs/fileacceptdialog.cpp.s
+.PHONY : src/ui/dialogs/fileacceptdialog.s
+
+# target to generate assembly for a file
+src/ui/dialogs/fileacceptdialog.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.s
+.PHONY : src/ui/dialogs/fileacceptdialog.cpp.s
+
 src/ui/dialogs/incomingdialog.o: src/ui/dialogs/incomingdialog.cpp.o
 .PHONY : src/ui/dialogs/incomingdialog.o
 
@@ -562,6 +880,54 @@ src/ui/dialogs/incomingdialog.s: src/ui/dialogs/incomingdialog.cpp.s
 src/ui/dialogs/incomingdialog.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.s
 .PHONY : src/ui/dialogs/incomingdialog.cpp.s
+
+src/ui/filetransferwidget.o: src/ui/filetransferwidget.cpp.o
+.PHONY : src/ui/filetransferwidget.o
+
+# target to build an object file
+src/ui/filetransferwidget.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o
+.PHONY : src/ui/filetransferwidget.cpp.o
+
+src/ui/filetransferwidget.i: src/ui/filetransferwidget.cpp.i
+.PHONY : src/ui/filetransferwidget.i
+
+# target to preprocess a source file
+src/ui/filetransferwidget.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.i
+.PHONY : src/ui/filetransferwidget.cpp.i
+
+src/ui/filetransferwidget.s: src/ui/filetransferwidget.cpp.s
+.PHONY : src/ui/filetransferwidget.s
+
+# target to generate assembly for a file
+src/ui/filetransferwidget.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.s
+.PHONY : src/ui/filetransferwidget.cpp.s
+
+src/ui/logpanel.o: src/ui/logpanel.cpp.o
+.PHONY : src/ui/logpanel.o
+
+# target to build an object file
+src/ui/logpanel.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o
+.PHONY : src/ui/logpanel.cpp.o
+
+src/ui/logpanel.i: src/ui/logpanel.cpp.i
+.PHONY : src/ui/logpanel.i
+
+# target to preprocess a source file
+src/ui/logpanel.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.i
+.PHONY : src/ui/logpanel.cpp.i
+
+src/ui/logpanel.s: src/ui/logpanel.cpp.s
+.PHONY : src/ui/logpanel.s
+
+# target to generate assembly for a file
+src/ui/logpanel.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.s
+.PHONY : src/ui/logpanel.cpp.s
 
 src/ui/mainwindow.o: src/ui/mainwindow.cpp.o
 .PHONY : src/ui/mainwindow.o
@@ -610,6 +976,78 @@ src/ui/settingspanel.s: src/ui/settingspanel.cpp.s
 src/ui/settingspanel.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.s
 .PHONY : src/ui/settingspanel.cpp.s
+
+src/ui/shellmonitor.o: src/ui/shellmonitor.cpp.o
+.PHONY : src/ui/shellmonitor.o
+
+# target to build an object file
+src/ui/shellmonitor.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o
+.PHONY : src/ui/shellmonitor.cpp.o
+
+src/ui/shellmonitor.i: src/ui/shellmonitor.cpp.i
+.PHONY : src/ui/shellmonitor.i
+
+# target to preprocess a source file
+src/ui/shellmonitor.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.i
+.PHONY : src/ui/shellmonitor.cpp.i
+
+src/ui/shellmonitor.s: src/ui/shellmonitor.cpp.s
+.PHONY : src/ui/shellmonitor.s
+
+# target to generate assembly for a file
+src/ui/shellmonitor.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.s
+.PHONY : src/ui/shellmonitor.cpp.s
+
+src/ui/shellwindow.o: src/ui/shellwindow.cpp.o
+.PHONY : src/ui/shellwindow.o
+
+# target to build an object file
+src/ui/shellwindow.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o
+.PHONY : src/ui/shellwindow.cpp.o
+
+src/ui/shellwindow.i: src/ui/shellwindow.cpp.i
+.PHONY : src/ui/shellwindow.i
+
+# target to preprocess a source file
+src/ui/shellwindow.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.i
+.PHONY : src/ui/shellwindow.cpp.i
+
+src/ui/shellwindow.s: src/ui/shellwindow.cpp.s
+.PHONY : src/ui/shellwindow.s
+
+# target to generate assembly for a file
+src/ui/shellwindow.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.s
+.PHONY : src/ui/shellwindow.cpp.s
+
+src/ui/splashscreen.o: src/ui/splashscreen.cpp.o
+.PHONY : src/ui/splashscreen.o
+
+# target to build an object file
+src/ui/splashscreen.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o
+.PHONY : src/ui/splashscreen.cpp.o
+
+src/ui/splashscreen.i: src/ui/splashscreen.cpp.i
+.PHONY : src/ui/splashscreen.i
+
+# target to preprocess a source file
+src/ui/splashscreen.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.i
+.PHONY : src/ui/splashscreen.cpp.i
+
+src/ui/splashscreen.s: src/ui/splashscreen.cpp.s
+.PHONY : src/ui/splashscreen.s
+
+# target to generate assembly for a file
+src/ui/splashscreen.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/naleystogramm.dir/build.make CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.s
+.PHONY : src/ui/splashscreen.cpp.s
 
 src/ui/thememanager.o: src/ui/thememanager.cpp.o
 .PHONY : src/ui/thememanager.o
@@ -667,12 +1105,24 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... appdir"
+	@echo "... appimage"
+	@echo "... appimage-verbose"
+	@echo "... beta"
 	@echo "... naleystogramm_autogen"
 	@echo "... naleystogramm_autogen_timestamp_deps"
+	@echo "... release-linux"
+	@echo "... translations"
 	@echo "... naleystogramm"
 	@echo "... naleystogramm_autogen/mocs_compilation.o"
 	@echo "... naleystogramm_autogen/mocs_compilation.i"
 	@echo "... naleystogramm_autogen/mocs_compilation.s"
+	@echo "... src/core/audiorecorder.o"
+	@echo "... src/core/audiorecorder.i"
+	@echo "... src/core/audiorecorder.s"
+	@echo "... src/core/callmanager.o"
+	@echo "... src/core/callmanager.i"
+	@echo "... src/core/callmanager.s"
 	@echo "... src/core/demomode.o"
 	@echo "... src/core/demomode.i"
 	@echo "... src/core/demomode.s"
@@ -682,15 +1132,24 @@ help:
 	@echo "... src/core/identity.o"
 	@echo "... src/core/identity.i"
 	@echo "... src/core/identity.s"
+	@echo "... src/core/logger.o"
+	@echo "... src/core/logger.i"
+	@echo "... src/core/logger.s"
 	@echo "... src/core/network.o"
 	@echo "... src/core/network.i"
 	@echo "... src/core/network.s"
+	@echo "... src/core/remoteshellmanager.o"
+	@echo "... src/core/remoteshellmanager.i"
+	@echo "... src/core/remoteshellmanager.s"
 	@echo "... src/core/sessionmanager.o"
 	@echo "... src/core/sessionmanager.i"
 	@echo "... src/core/sessionmanager.s"
 	@echo "... src/core/storage.o"
 	@echo "... src/core/storage.i"
 	@echo "... src/core/storage.s"
+	@echo "... src/core/systeminfo.o"
+	@echo "... src/core/systeminfo.i"
+	@echo "... src/core/systeminfo.s"
 	@echo "... src/core/updatechecker.o"
 	@echo "... src/core/updatechecker.i"
 	@echo "... src/core/updatechecker.s"
@@ -700,6 +1159,9 @@ help:
 	@echo "... src/crypto/e2e.o"
 	@echo "... src/crypto/e2e.i"
 	@echo "... src/crypto/e2e.s"
+	@echo "... src/crypto/keyprotector.o"
+	@echo "... src/crypto/keyprotector.i"
+	@echo "... src/crypto/keyprotector.s"
 	@echo "... src/crypto/ratchet.o"
 	@echo "... src/crypto/ratchet.i"
 	@echo "... src/crypto/ratchet.s"
@@ -709,6 +1171,12 @@ help:
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/media/mediaengine.o"
+	@echo "... src/media/mediaengine.i"
+	@echo "... src/media/mediaengine.s"
+	@echo "... src/ui/callwindow.o"
+	@echo "... src/ui/callwindow.i"
+	@echo "... src/ui/callwindow.s"
 	@echo "... src/ui/chatwidget.o"
 	@echo "... src/ui/chatwidget.i"
 	@echo "... src/ui/chatwidget.s"
@@ -718,15 +1186,36 @@ help:
 	@echo "... src/ui/dialogs/addcontactdialog.o"
 	@echo "... src/ui/dialogs/addcontactdialog.i"
 	@echo "... src/ui/dialogs/addcontactdialog.s"
+	@echo "... src/ui/dialogs/contactprofiledialog.o"
+	@echo "... src/ui/dialogs/contactprofiledialog.i"
+	@echo "... src/ui/dialogs/contactprofiledialog.s"
+	@echo "... src/ui/dialogs/fileacceptdialog.o"
+	@echo "... src/ui/dialogs/fileacceptdialog.i"
+	@echo "... src/ui/dialogs/fileacceptdialog.s"
 	@echo "... src/ui/dialogs/incomingdialog.o"
 	@echo "... src/ui/dialogs/incomingdialog.i"
 	@echo "... src/ui/dialogs/incomingdialog.s"
+	@echo "... src/ui/filetransferwidget.o"
+	@echo "... src/ui/filetransferwidget.i"
+	@echo "... src/ui/filetransferwidget.s"
+	@echo "... src/ui/logpanel.o"
+	@echo "... src/ui/logpanel.i"
+	@echo "... src/ui/logpanel.s"
 	@echo "... src/ui/mainwindow.o"
 	@echo "... src/ui/mainwindow.i"
 	@echo "... src/ui/mainwindow.s"
 	@echo "... src/ui/settingspanel.o"
 	@echo "... src/ui/settingspanel.i"
 	@echo "... src/ui/settingspanel.s"
+	@echo "... src/ui/shellmonitor.o"
+	@echo "... src/ui/shellmonitor.i"
+	@echo "... src/ui/shellmonitor.s"
+	@echo "... src/ui/shellwindow.o"
+	@echo "... src/ui/shellwindow.i"
+	@echo "... src/ui/shellwindow.s"
+	@echo "... src/ui/splashscreen.o"
+	@echo "... src/ui/splashscreen.i"
+	@echo "... src/ui/splashscreen.s"
 	@echo "... src/ui/thememanager.o"
 	@echo "... src/ui/thememanager.i"
 	@echo "... src/ui/thememanager.s"

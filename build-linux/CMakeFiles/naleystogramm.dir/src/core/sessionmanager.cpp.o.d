@@ -376,6 +376,7 @@ CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o: \
  /usr/include/qt6/QtCore/qurl.h /usr/include/qt6/QtCore/quuid.h \
  /usr/include/qt6/QtCore/qjsondocument.h \
  /usr/include/qt6/QtCore/qjsonparseerror.h \
+ /usr/include/qt6/QtCore/QByteArray /usr/include/qt6/QtCore/qbytearray.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/../ui/thememanager.h \
  /usr/include/qt6/QtCore/QStandardPaths \
  /usr/include/qt6/QtCore/qstandardpaths.h /usr/include/qt6/QtCore/QDir \
@@ -393,4 +394,6 @@ CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o: \
  /usr/include/qt6/QtCore/QJsonDocument \
  /usr/include/qt6/QtCore/qjsondocument.h \
  /usr/include/qt6/QtCore/QDateTime /usr/include/qt6/QtCore/qdatetime.h \
+ /usr/include/qt6/QtCore/QCryptographicHash \
+ /usr/include/qt6/QtCore/qcryptographichash.h \
  /usr/include/qt6/QtCore/QDebug /usr/include/qt6/QtCore/qdebug.h

@@ -1,5 +1,6 @@
 /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/include/chatwidget.moc: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/chatwidget.cpp \
   /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/moc_predefs.h \
+  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/audiorecorder.h \
   /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/storage.h \
   /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/chatwidget.h \
   /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/thememanager.h \
@@ -318,6 +319,9 @@
   /usr/include/locale.h \
   /usr/include/pthread.h \
   /usr/include/qt6/QtCore/QDateTime \
+  /usr/include/qt6/QtCore/QElapsedTimer \
+  /usr/include/qt6/QtCore/QEvent \
+  /usr/include/qt6/QtCore/QJsonObject \
   /usr/include/qt6/QtCore/QList \
   /usr/include/qt6/QtCore/QObject \
   /usr/include/qt6/QtCore/QRect \
@@ -325,6 +329,7 @@
   /usr/include/qt6/QtCore/QSizeF \
   /usr/include/qt6/QtCore/QString \
   /usr/include/qt6/QtCore/QTimer \
+  /usr/include/qt6/QtCore/QUrl \
   /usr/include/qt6/QtCore/QUuid \
   /usr/include/qt6/QtCore/q17memory.h \
   /usr/include/qt6/QtCore/q20functional.h \
@@ -352,6 +357,8 @@
   /usr/include/qt6/QtCore/qbytearraylist.h \
   /usr/include/qt6/QtCore/qbytearrayview.h \
   /usr/include/qt6/QtCore/qcalendar.h \
+  /usr/include/qt6/QtCore/qcborcommon.h \
+  /usr/include/qt6/QtCore/qcborvalue.h \
   /usr/include/qt6/QtCore/qchar.h \
   /usr/include/qt6/QtCore/qcheckedint_impl.h \
   /usr/include/qt6/QtCore/qcompare.h \
@@ -372,6 +379,7 @@
   /usr/include/qt6/QtCore/qdatetime.h \
   /usr/include/qt6/QtCore/qdeadlinetimer.h \
   /usr/include/qt6/QtCore/qdebug.h \
+  /usr/include/qt6/QtCore/qelapsedtimer.h \
   /usr/include/qt6/QtCore/qendian.h \
   /usr/include/qt6/QtCore/qeventloop.h \
   /usr/include/qt6/QtCore/qexceptionhandling.h \
@@ -389,6 +397,10 @@
   /usr/include/qt6/QtCore/qiodevicebase.h \
   /usr/include/qt6/QtCore/qiterable.h \
   /usr/include/qt6/QtCore/qiterator.h \
+  /usr/include/qt6/QtCore/qjsondocument.h \
+  /usr/include/qt6/QtCore/qjsonobject.h \
+  /usr/include/qt6/QtCore/qjsonparseerror.h \
+  /usr/include/qt6/QtCore/qjsonvalue.h \
   /usr/include/qt6/QtCore/qlatin1stringview.h \
   /usr/include/qt6/QtCore/qline.h \
   /usr/include/qt6/QtCore/qlist.h \
@@ -415,6 +427,7 @@
   /usr/include/qt6/QtCore/qprocessordetection.h \
   /usr/include/qt6/QtCore/qrect.h \
   /usr/include/qt6/QtCore/qrefcount.h \
+  /usr/include/qt6/QtCore/qregularexpression.h \
   /usr/include/qt6/QtCore/qscopedpointer.h \
   /usr/include/qt6/QtCore/qscopeguard.h \
   /usr/include/qt6/QtCore/qset.h \
@@ -470,6 +483,9 @@
   /usr/include/qt6/QtCore/qxptype_traits.h \
   /usr/include/qt6/QtCore/qyieldcpu.h \
   /usr/include/qt6/QtGui/QKeyEvent \
+  /usr/include/qt6/QtGui/QPainter \
+  /usr/include/qt6/QtGui/QPainterPath \
+  /usr/include/qt6/QtGui/QPixmap \
   /usr/include/qt6/QtGui/QTransform \
   /usr/include/qt6/QtGui/qaction.h \
   /usr/include/qt6/QtGui/qbitmap.h \
@@ -490,6 +506,8 @@
   /usr/include/qt6/QtGui/qinputmethod.h \
   /usr/include/qt6/QtGui/qkeysequence.h \
   /usr/include/qt6/QtGui/qpaintdevice.h \
+  /usr/include/qt6/QtGui/qpainter.h \
+  /usr/include/qt6/QtGui/qpainterpath.h \
   /usr/include/qt6/QtGui/qpalette.h \
   /usr/include/qt6/QtGui/qpen.h \
   /usr/include/qt6/QtGui/qpicture.h \
@@ -513,6 +531,17 @@
   /usr/include/qt6/QtGui/qvector2d.h \
   /usr/include/qt6/QtGui/qvectornd.h \
   /usr/include/qt6/QtGui/qwindowdefs.h \
+  /usr/include/qt6/QtMultimedia/QAudioFormat \
+  /usr/include/qt6/QtMultimedia/QAudioOutput \
+  /usr/include/qt6/QtMultimedia/QMediaPlayer \
+  /usr/include/qt6/QtMultimedia/qaudio.h \
+  /usr/include/qt6/QtMultimedia/qaudioformat.h \
+  /usr/include/qt6/QtMultimedia/qaudiooutput.h \
+  /usr/include/qt6/QtMultimedia/qmediaplayer.h \
+  /usr/include/qt6/QtMultimedia/qtaudio.h \
+  /usr/include/qt6/QtMultimedia/qtmultimedia-config.h \
+  /usr/include/qt6/QtMultimedia/qtmultimediaexports.h \
+  /usr/include/qt6/QtMultimedia/qtmultimediaglobal.h \
   /usr/include/qt6/QtSql/QSqlDatabase \
   /usr/include/qt6/QtSql/qsqldatabase.h \
   /usr/include/qt6/QtSql/qtsql-config.h \

@@ -169,6 +169,7 @@
 #define QT_WIDGETS_LIB 1
 #define __SEG_GS 1
 #define __BFLT16_EPSILON__ 7.81250000000000000000000000000000000e-3BF16
+#define TRANSLATIONS_DIR "/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/translations"
 #define __cplusplus 202002L
 #define __cpp_ref_qualifiers 200710L
 #define __DEC32_MIN__ 1E-95DF
@@ -280,6 +281,7 @@
 #define __UINTMAX_C(c) c ## UL
 #define __FLT16_DIG__ 3
 #define __k8 1
+#define QT_MULTIMEDIA_LIB 1
 #define __FLT32X_MIN__ 2.22507385850720138309023271733240406e-308F32x
 #define __SIG_ATOMIC_MAX__ 0x7fffffff
 #define __cpp_constexpr 202002L
@@ -390,6 +392,7 @@
 #define __LDBL_MIN_EXP__ (-16381)
 #define __FLT64_MAX__ 1.79769313486231570814527423731704357e+308F64
 #define __DEC64X_MIN_EXP__ (-6142)
+#define HAVE_OPUS 1
 #define __amd64__ 1
 #define __WINT_WIDTH__ 32
 #define __INT_LEAST64_WIDTH__ 64
@@ -445,6 +448,7 @@
 #define __PIC__ 2
 #define __INT32_MAX__ 0x7fffffff
 #define __UINT_FAST32_TYPE__ long unsigned int
+#define HAVE_QT_MULTIMEDIA 1
 #define __FLT16_MANT_DIG__ 11
 #define __FLT32X_NORM_MAX__ 1.79769313486231570814527423731704357e+308F32x
 #define __CHAR32_TYPE__ unsigned int

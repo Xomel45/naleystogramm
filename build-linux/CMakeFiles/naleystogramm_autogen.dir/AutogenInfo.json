@@ -7,64 +7,9 @@
 	"CMAKE_LIST_FILES" : 
 	[
 		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/CMakeLists.txt",
-		"/usr/share/cmake/Modules/CMakeDetermineSystem.cmake",
-		"/usr/share/cmake/Modules/CMakeSystem.cmake.in",
 		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles/4.2.3/CMakeSystem.cmake",
-		"/usr/share/cmake/Modules/CMakeUnixFindMake.cmake",
 		"/usr/share/cmake/Modules/CMakeSystemSpecificInitialize.cmake",
 		"/usr/share/cmake/Modules/Platform/Linux-Initialize.cmake",
-		"/usr/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake",
-		"/usr/share/cmake/Modules/CMakeDetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Platform/Linux-Determine-CXX.cmake",
-		"/usr/share/cmake/Modules/CMakeDetermineCompilerId.cmake",
-		"/usr/share/cmake/Modules/CMakeCompilerIdDetection.cmake",
-		"/usr/share/cmake/Modules/Compiler/ADSP-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/ARMCC-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/ARMClang-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/AppleClang-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake",
-		"/usr/share/cmake/Modules/Compiler/Borland-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Clang-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Clang-DetermineCompilerInternal.cmake",
-		"/usr/share/cmake/Modules/Compiler/Compaq-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Cray-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/CrayClang-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Diab-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Embarcadero-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Fujitsu-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/FujitsuClang-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/GHS-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/GNU-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/HP-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/IAR-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/IBMClang-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Intel-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/IntelLLVM-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/LCC-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/MSVC-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/NVHPC-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/NVIDIA-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/OpenWatcom-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/OrangeC-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/PGI-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/PathScale-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Renesas-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/SCO-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/SunPro-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/TI-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/TIClang-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/Tasking-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/VisualAge-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake",
-		"/usr/share/cmake/Modules/Compiler/Watcom-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/XL-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake",
-		"/usr/share/cmake/Modules/Compiler/XLClang-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake",
-		"/usr/share/cmake/Modules/Compiler/IBMCPP-CXX-DetermineVersionInternal.cmake",
-		"/usr/share/cmake/Modules/CMakeFindBinUtils.cmake",
-		"/usr/share/cmake/Modules/Compiler/GNU-FindBinUtils.cmake",
-		"/usr/share/cmake/Modules/CMakeCXXCompiler.cmake.in",
 		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles/4.2.3/CMakeCXXCompiler.cmake",
 		"/usr/share/cmake/Modules/CMakeSystemSpecificInformation.cmake",
 		"/usr/share/cmake/Modules/CMakeGenericSystem.cmake",
@@ -79,19 +24,6 @@
 		"/usr/share/cmake/Modules/Platform/Linux-GNU-CXX.cmake",
 		"/usr/share/cmake/Modules/Platform/Linux-GNU.cmake",
 		"/usr/share/cmake/Modules/CMakeCommonLanguageInclude.cmake",
-		"/usr/share/cmake/Modules/CMakeTestCXXCompiler.cmake",
-		"/usr/share/cmake/Modules/CMakeTestCompilerCommon.cmake",
-		"/usr/share/cmake/Modules/CMakeDetermineCompilerABI.cmake",
-		"/usr/share/cmake/Modules/Internal/CMakeDetermineLinkerId.cmake",
-		"/usr/share/cmake/Modules/CMakeParseImplicitIncludeInfo.cmake",
-		"/usr/share/cmake/Modules/CMakeParseImplicitLinkInfo.cmake",
-		"/usr/share/cmake/Modules/CMakeParseLibraryArchitecture.cmake",
-		"/usr/share/cmake/Modules/CMakeTestCompilerCommon.cmake",
-		"/usr/share/cmake/Modules/CMakeCXXCompilerABI.cpp",
-		"/usr/share/cmake/Modules/CMakeDetermineCompilerSupport.cmake",
-		"/usr/share/cmake/Modules/Internal/FeatureTesting.cmake",
-		"/usr/share/cmake/Modules/CMakeCXXCompiler.cmake.in",
-		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles/4.2.3/CMakeCXXCompiler.cmake",
 		"/usr/share/cmake/Modules/Internal/CMakeCXXLinkerInformation.cmake",
 		"/usr/share/cmake/Modules/Internal/CMakeCommonLinkerInformation.cmake",
 		"/usr/share/cmake/Modules/Linker/GNU-CXX.cmake",
@@ -99,8 +31,6 @@
 		"/usr/share/cmake/Modules/Platform/Linker/Linux-GNU-CXX.cmake",
 		"/usr/share/cmake/Modules/Platform/Linker/Linux-GNU.cmake",
 		"/usr/share/cmake/Modules/Platform/Linker/GNU.cmake",
-		"/usr/share/cmake/Modules/Internal/CMakeInspectCXXLinker.cmake",
-		"/usr/share/cmake/Modules/CMakeCXXCompiler.cmake.in",
 		"/usr/lib/cmake/Qt6/Qt6ConfigVersion.cmake",
 		"/usr/lib/cmake/Qt6/Qt6ConfigVersionImpl.cmake",
 		"/usr/lib/cmake/Qt6/Qt6Config.cmake",
@@ -570,10 +500,40 @@
 		"/usr/lib/cmake/Qt6Concurrent/Qt6ConcurrentTargets-relwithdebinfo.cmake",
 		"/usr/lib/cmake/Qt6Concurrent/Qt6ConcurrentAdditionalTargetInfo.cmake",
 		"/usr/lib/cmake/Qt6Concurrent/Qt6ConcurrentVersionlessAliasTargets.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsConfigVersion.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsConfigVersionImpl.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsConfig.cmake",
+		"/usr/share/cmake/Modules/CMakeFindDependencyMacro.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsDependencies.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsTargets.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsTargets-relwithdebinfo.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsAdditionalTargetInfo.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsVersionlessTargets.cmake",
+		"/usr/lib/cmake/Qt6LinguistTools/Qt6LinguistToolsMacros.cmake",
+		"/usr/share/cmake/Modules/CMakeParseArguments.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaConfigVersion.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaConfigVersionImpl.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaConfig.cmake",
+		"/usr/share/cmake/Modules/CMakeFindDependencyMacro.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaDependencies.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaTargets.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaTargets-relwithdebinfo.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaAdditionalTargetInfo.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaMacros.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaPlugins.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginConfig.cmake",
+		"/usr/share/cmake/Modules/CMakeFindDependencyMacro.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginTargets.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginTargets-relwithdebinfo.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6QFFmpegMediaPluginAdditionalTargetInfo.cmake",
+		"/usr/lib/cmake/Qt6Multimedia/Qt6MultimediaVersionlessAliasTargets.cmake",
 		"/usr/share/cmake/Modules/FindOpenSSL.cmake",
 		"/usr/share/cmake/Modules/FindPkgConfig.cmake",
 		"/usr/share/cmake/Modules/FindPackageHandleStandardArgs.cmake",
 		"/usr/share/cmake/Modules/FindPackageMessage.cmake",
+		"/usr/share/cmake/Modules/FindPackageHandleStandardArgs.cmake",
+		"/usr/share/cmake/Modules/FindPackageMessage.cmake",
+		"/usr/share/cmake/Modules/FindPkgConfig.cmake",
 		"/usr/share/cmake/Modules/FindPackageHandleStandardArgs.cmake",
 		"/usr/share/cmake/Modules/FindPackageMessage.cmake"
 	],
@@ -583,6 +543,18 @@
 	"DEP_FILE_RULE_NAME" : "naleystogramm_autogen/timestamp",
 	"HEADERS" : 
 	[
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/audiorecorder.h",
+			"MU",
+			"PRMOGMWJPH/moc_audiorecorder.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/callmanager.h",
+			"MU",
+			"PRMOGMWJPH/moc_callmanager.cpp",
+			null
+		],
 		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/demomode.h",
 			"MU",
@@ -602,9 +574,21 @@
 			null
 		],
 		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/logger.h",
+			"MU",
+			"PRMOGMWJPH/moc_logger.cpp",
+			null
+		],
+		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/network.h",
 			"MU",
 			"PRMOGMWJPH/moc_network.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/remoteshellmanager.h",
+			"MU",
+			"PRMOGMWJPH/moc_remoteshellmanager.cpp",
 			null
 		],
 		[
@@ -617,6 +601,12 @@
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/storage.h",
 			"MU",
 			"PRMOGMWJPH/moc_storage.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/systeminfo.h",
+			"MU",
+			"PRMOGMWJPH/moc_systeminfo.cpp",
 			null
 		],
 		[
@@ -638,15 +628,45 @@
 			null
 		],
 		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/keyprotector.h",
+			"MU",
+			"MZW7AAAGJO/moc_keyprotector.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/openssl_raii.h",
+			"MU",
+			"MZW7AAAGJO/moc_openssl_raii.cpp",
+			null
+		],
+		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/ratchet.h",
 			"MU",
 			"MZW7AAAGJO/moc_ratchet.cpp",
 			null
 		],
 		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/securedata.h",
+			"MU",
+			"MZW7AAAGJO/moc_securedata.cpp",
+			null
+		],
+		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/x3dh.h",
 			"MU",
 			"MZW7AAAGJO/moc_x3dh.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/media/mediaengine.h",
+			"MU",
+			"SVT5AJZPWX/moc_mediaengine.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/callwindow.h",
+			"MU",
+			"YPKJ5OE7LN/moc_callwindow.cpp",
 			null
 		],
 		[
@@ -668,9 +688,33 @@
 			null
 		],
 		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/contactprofiledialog.h",
+			"MU",
+			"IYECXEJARV/moc_contactprofiledialog.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/fileacceptdialog.h",
+			"MU",
+			"IYECXEJARV/moc_fileacceptdialog.cpp",
+			null
+		],
+		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/incomingdialog.h",
 			"MU",
 			"IYECXEJARV/moc_incomingdialog.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/filetransferwidget.h",
+			"MU",
+			"YPKJ5OE7LN/moc_filetransferwidget.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/logpanel.h",
+			"MU",
+			"YPKJ5OE7LN/moc_logpanel.cpp",
 			null
 		],
 		[
@@ -683,6 +727,24 @@
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/settingspanel.h",
 			"MU",
 			"YPKJ5OE7LN/moc_settingspanel.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellmonitor.h",
+			"MU",
+			"YPKJ5OE7LN/moc_shellmonitor.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellwindow.h",
+			"MU",
+			"YPKJ5OE7LN/moc_shellwindow.cpp",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/splashscreen.h",
+			"MU",
+			"YPKJ5OE7LN/moc_splashscreen.cpp",
 			null
 		],
 		[
@@ -703,13 +765,17 @@
 	"MOC_COMPILATION_FILE" : "/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/mocs_compilation.cpp",
 	"MOC_DEFINITIONS" : 
 	[
+		"HAVE_OPUS",
+		"HAVE_QT_MULTIMEDIA",
 		"QT_CONCURRENT_LIB",
 		"QT_CORE_LIB",
 		"QT_GUI_LIB",
+		"QT_MULTIMEDIA_LIB",
 		"QT_NETWORK_LIB",
 		"QT_NO_DEBUG",
 		"QT_SQL_LIB",
-		"QT_WIDGETS_LIB"
+		"QT_WIDGETS_LIB",
+		"TRANSLATIONS_DIR=\"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/translations\""
 	],
 	"MOC_DEPEND_FILTERS" : 
 	[
@@ -724,6 +790,8 @@
 		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core",
 		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto",
 		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui",
+		"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/media",
+		"/usr/include/opus",
 		"/usr/include/qt6/QtCore",
 		"/usr/include/qt6",
 		"/usr/lib/qt6/mkspecs/linux-g++",
@@ -732,6 +800,7 @@
 		"/usr/include/qt6/QtNetwork",
 		"/usr/include/qt6/QtSql",
 		"/usr/include/qt6/QtConcurrent",
+		"/usr/include/qt6/QtMultimedia",
 		"/usr/include",
 		"/usr/include/c++/15.2.1",
 		"/usr/include/c++/15.2.1/x86_64-pc-linux-gnu",
@@ -764,7 +833,7 @@
 	"MOC_RELAXED_MODE" : false,
 	"MOC_SKIP" : [],
 	"MULTI_CONFIG" : false,
-	"PARALLEL" : 6,
+	"PARALLEL" : 8,
 	"PARSE_CACHE_FILE" : "/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles/naleystogramm_autogen.dir/ParseCache.txt",
 	"QT_MOC_EXECUTABLE" : "/usr/lib/qt6/moc",
 	"QT_UIC_EXECUTABLE" : "/usr/lib/qt6/uic",
@@ -773,6 +842,16 @@
 	"SETTINGS_FILE" : "/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles/naleystogramm_autogen.dir/AutogenUsed.txt",
 	"SOURCES" : 
 	[
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/audiorecorder.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/callmanager.cpp",
+			"MU",
+			null
+		],
 		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/demomode.cpp",
 			"MU",
@@ -789,7 +868,17 @@
 			null
 		],
 		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/logger.cpp",
+			"MU",
+			null
+		],
+		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/network.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/remoteshellmanager.cpp",
 			"MU",
 			null
 		],
@@ -800,6 +889,11 @@
 		],
 		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/storage.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/systeminfo.cpp",
 			"MU",
 			null
 		],
@@ -819,6 +913,11 @@
 			null
 		],
 		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/keyprotector.cpp",
+			"MU",
+			null
+		],
+		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/ratchet.cpp",
 			"MU",
 			null
@@ -830,6 +929,16 @@
 		],
 		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/main.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/media/mediaengine.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/callwindow.cpp",
 			"MU",
 			null
 		],
@@ -849,7 +958,27 @@
 			null
 		],
 		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/contactprofiledialog.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/fileacceptdialog.cpp",
+			"MU",
+			null
+		],
+		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/incomingdialog.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/filetransferwidget.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/logpanel.cpp",
 			"MU",
 			null
 		],
@@ -860,6 +989,21 @@
 		],
 		[
 			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/settingspanel.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellmonitor.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellwindow.cpp",
+			"MU",
+			null
+		],
+		[
+			"/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/splashscreen.cpp",
 			"MU",
 			null
 		],

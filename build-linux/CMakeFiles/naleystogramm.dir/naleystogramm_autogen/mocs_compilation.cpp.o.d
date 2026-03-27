@@ -1,10 +1,11 @@
 CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/mocs_compilation.cpp \
  /usr/include/stdc-predef.h \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_demomode.cpp \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/demomode.h \
- /usr/include/qt6/QtCore/QString /usr/include/qt6/QtCore/qstring.h \
- /usr/include/qt6/QtCore/qchar.h /usr/include/qt6/QtCore/qglobal.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_audiorecorder.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/audiorecorder.h \
+ /usr/include/qt6/QtCore/QObject /usr/include/qt6/QtCore/qobject.h \
+ /usr/include/qt6/QtCore/qobjectdefs.h \
+ /usr/include/qt6/QtCore/qnamespace.h /usr/include/qt6/QtCore/qglobal.h \
  /usr/include/c++/15.2.1/type_traits \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/c++config.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/os_defines.h \
@@ -217,18 +218,14 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/c++/15.2.1/bits/stl_vector.h \
  /usr/include/c++/15.2.1/bits/stl_bvector.h \
  /usr/include/c++/15.2.1/bits/vector.tcc /usr/include/c++/15.2.1/array \
- /usr/include/qt6/QtCore/qstringview.h \
- /usr/include/qt6/QtCore/qbytearray.h /usr/include/qt6/QtCore/qrefcount.h \
- /usr/include/qt6/QtCore/qnamespace.h \
  /usr/include/qt6/QtCore/qtmetamacros.h \
- /usr/include/qt6/QtCore/qarraydata.h /usr/include/qt6/QtCore/qpair.h \
- /usr/include/string.h /usr/include/strings.h \
- /usr/include/qt6/QtCore/qarraydatapointer.h \
- /usr/include/qt6/QtCore/qarraydataops.h \
- /usr/include/qt6/QtCore/qcontainertools_impl.h \
- /usr/include/qt6/QtCore/qxptype_traits.h /usr/include/c++/15.2.1/cstring \
- /usr/include/c++/15.2.1/iterator \
- /usr/include/c++/15.2.1/bits/stream_iterator.h \
+ /usr/include/qt6/QtCore/qobjectdefs_impl.h \
+ /usr/include/qt6/QtCore/qfunctionaltools_impl.h \
+ /usr/include/c++/15.2.1/memory \
+ /usr/include/c++/15.2.1/bits/stl_raw_storage_iter.h \
+ /usr/include/c++/15.2.1/bits/align.h \
+ /usr/include/c++/15.2.1/bits/unique_ptr.h \
+ /usr/include/c++/15.2.1/bits/ostream.h /usr/include/c++/15.2.1/ios \
  /usr/include/c++/15.2.1/iosfwd /usr/include/c++/15.2.1/bits/stringfwd.h \
  /usr/include/c++/15.2.1/bits/postypes.h /usr/include/c++/15.2.1/cwchar \
  /usr/include/wchar.h \
@@ -236,8 +233,7 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/bits/types/wint_t.h /usr/include/bits/types/mbstate_t.h \
  /usr/include/bits/types/__mbstate_t.h /usr/include/bits/types/__FILE.h \
  /usr/include/bits/types/FILE.h \
- /usr/include/c++/15.2.1/bits/streambuf_iterator.h \
- /usr/include/c++/15.2.1/streambuf \
+ /usr/include/c++/15.2.1/bits/char_traits.h \
  /usr/include/c++/15.2.1/bits/localefwd.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/c++locale.h \
  /usr/include/c++/15.2.1/clocale /usr/include/locale.h \
@@ -248,7 +244,6 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/sys/single_threaded.h \
  /usr/include/c++/15.2.1/bits/locale_classes.h \
  /usr/include/c++/15.2.1/string \
- /usr/include/c++/15.2.1/bits/char_traits.h \
  /usr/include/c++/15.2.1/bits/ostream_insert.h \
  /usr/include/c++/15.2.1/bits/cxxabi_forced.h \
  /usr/include/c++/15.2.1/bits/basic_string.h \
@@ -265,18 +260,14 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/c++/15.2.1/bits/locale_classes.tcc \
  /usr/include/c++/15.2.1/system_error \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/error_constants.h \
- /usr/include/c++/15.2.1/stdexcept \
+ /usr/include/c++/15.2.1/stdexcept /usr/include/c++/15.2.1/streambuf \
  /usr/include/c++/15.2.1/bits/streambuf.tcc \
- /usr/include/c++/15.2.1/memory \
- /usr/include/c++/15.2.1/bits/stl_raw_storage_iter.h \
- /usr/include/c++/15.2.1/bits/align.h \
- /usr/include/c++/15.2.1/bits/unique_ptr.h \
- /usr/include/c++/15.2.1/bits/ostream.h /usr/include/c++/15.2.1/ios \
  /usr/include/c++/15.2.1/bits/basic_ios.h \
  /usr/include/c++/15.2.1/bits/locale_facets.h \
  /usr/include/c++/15.2.1/cwctype /usr/include/wctype.h \
  /usr/include/bits/wctype-wchar.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/ctype_base.h \
+ /usr/include/c++/15.2.1/bits/streambuf_iterator.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/ctype_inline.h \
  /usr/include/c++/15.2.1/bits/locale_facets.tcc \
  /usr/include/c++/15.2.1/bits/basic_ios.tcc \
@@ -288,6 +279,17 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/c++/15.2.1/backward/auto_ptr.h \
  /usr/include/c++/15.2.1/bits/ranges_uninitialized.h \
  /usr/include/c++/15.2.1/pstl/glue_memory_defs.h \
+ /usr/include/qt6/QtCore/qstring.h /usr/include/qt6/QtCore/qchar.h \
+ /usr/include/qt6/QtCore/qstringview.h \
+ /usr/include/qt6/QtCore/qbytearray.h /usr/include/qt6/QtCore/qrefcount.h \
+ /usr/include/qt6/QtCore/qarraydata.h /usr/include/qt6/QtCore/qpair.h \
+ /usr/include/string.h /usr/include/strings.h \
+ /usr/include/qt6/QtCore/qarraydatapointer.h \
+ /usr/include/qt6/QtCore/qarraydataops.h \
+ /usr/include/qt6/QtCore/qcontainertools_impl.h \
+ /usr/include/qt6/QtCore/qxptype_traits.h /usr/include/c++/15.2.1/cstring \
+ /usr/include/c++/15.2.1/iterator \
+ /usr/include/c++/15.2.1/bits/stream_iterator.h \
  /usr/include/qt6/QtCore/q20functional.h \
  /usr/include/qt6/QtCore/q20memory.h /usr/include/qt6/QtCore/q17memory.h \
  /usr/include/qt6/QtCore/qbytearrayalgorithms.h \
@@ -300,13 +302,8 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/qt6/QtCore/qstringtokenizer.h \
  /usr/include/qt6/QtCore/q23type_traits.h \
  /usr/include/qt6/QtCore/qstringbuilder.h \
- /usr/include/qt6/QtCore/qstring.h \
  /usr/include/qt6/QtCore/qstringconverter.h \
  /usr/include/qt6/QtCore/qstringconverter_base.h \
- /usr/include/qt6/QtCore/QObject /usr/include/qt6/QtCore/qobject.h \
- /usr/include/qt6/QtCore/qobjectdefs.h \
- /usr/include/qt6/QtCore/qobjectdefs_impl.h \
- /usr/include/qt6/QtCore/qfunctionaltools_impl.h \
  /usr/include/qt6/QtCore/qlist.h /usr/include/qt6/QtCore/qhashfunctions.h \
  /usr/include/c++/15.2.1/numeric \
  /usr/include/c++/15.2.1/bits/stl_numeric.h \
@@ -352,18 +349,43 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/c++/15.2.1/bits/sstream.tcc \
  /usr/include/c++/15.2.1/bits/chrono_io.h /usr/include/c++/15.2.1/iomanip \
  /usr/include/c++/15.2.1/bits/quoted_string.h \
+ /usr/include/qt6/QtCore/QElapsedTimer \
+ /usr/include/qt6/QtCore/qelapsedtimer.h \
+ /usr/include/qt6/QtMultimedia/QAudioFormat \
+ /usr/include/qt6/QtMultimedia/qaudioformat.h \
+ /usr/include/qt6/QtCore/qobject.h /usr/include/qt6/QtCore/qshareddata.h \
+ /usr/include/qt6/QtMultimedia/qtmultimediaglobal.h \
+ /usr/include/qt6/QtGui/qtguiglobal.h \
+ /usr/include/qt6/QtGui/qtgui-config.h \
+ /usr/include/qt6/QtGui/qtguiexports.h \
+ /usr/include/qt6/QtMultimedia/qtmultimedia-config.h \
+ /usr/include/qt6/QtMultimedia/qtmultimediaexports.h \
  /usr/include/qt6/QtCore/qtmochelpers.h \
  /usr/include/qt6/QtCore/qtmocconstants.h \
  /usr/include/qt6/QtCore/q20algorithm.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_callmanager.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/callmanager.h \
+ /usr/include/qt6/QtCore/QUuid /usr/include/qt6/QtCore/quuid.h \
+ /usr/include/qt6/QtCore/qendian.h \
+ /usr/include/qt6/QtNetwork/QHostAddress \
+ /usr/include/qt6/QtNetwork/qhostaddress.h \
+ /usr/include/qt6/QtNetwork/qtnetworkglobal.h \
+ /usr/include/qt6/QtNetwork/qtnetwork-config.h \
+ /usr/include/qt6/QtNetwork/qtnetworkexports.h \
+ /usr/include/qt6/QtNetwork/qabstractsocket.h \
+ /usr/include/qt6/QtCore/qiodevice.h /usr/include/qt6/QtCore/qspan.h \
+ /usr/include/c++/15.2.1/cassert /usr/include/qt6/QtCore/q20iterator.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/../media/mediaengine.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_demomode.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/demomode.h \
+ /usr/include/qt6/QtCore/QString /usr/include/qt6/QtCore/qstring.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_filetransfer.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/filetransfer.h \
- /usr/include/qt6/QtCore/QUuid /usr/include/qt6/QtCore/quuid.h \
- /usr/include/qt6/QtCore/qendian.h /usr/include/qt6/QtCore/QJsonObject \
+ /usr/include/qt6/QtCore/QJsonObject \
  /usr/include/qt6/QtCore/qjsonobject.h \
  /usr/include/qt6/QtCore/qjsonvalue.h \
  /usr/include/qt6/QtCore/qcborvalue.h \
  /usr/include/qt6/QtCore/qcborcommon.h \
- /usr/include/qt6/QtCore/qshareddata.h \
  /usr/include/qt6/QtCore/qdatetime.h /usr/include/qt6/QtCore/qcalendar.h \
  /usr/include/qt6/QtCore/qlocale.h /usr/include/qt6/QtCore/qvariant.h \
  /usr/include/qt6/QtCore/qdebug.h /usr/include/qt6/QtCore/qtextstream.h \
@@ -379,28 +401,67 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/qt6/QtCore/qset.h /usr/include/qt6/QtCore/qhash.h \
  /usr/include/qt6/QtCore/qvarlengtharray.h \
  /usr/include/qt6/QtCore/qalloc.h /usr/include/qt6/QtCore/q23utility.h \
- /usr/include/qt6/QtCore/q20utility.h /usr/include/qt6/QtCore/qobject.h \
+ /usr/include/qt6/QtCore/q20utility.h \
  /usr/include/qt6/QtCore/qregularexpression.h \
  /usr/include/qt6/QtCore/qurl.h /usr/include/qt6/QtCore/quuid.h \
  /usr/include/qt6/QtCore/qjsondocument.h \
- /usr/include/qt6/QtCore/qjsonparseerror.h \
+ /usr/include/qt6/QtCore/qjsonparseerror.h /usr/include/qt6/QtCore/QFile \
+ /usr/include/qt6/QtCore/qfile.h /usr/include/qt6/QtCore/qfiledevice.h \
+ /usr/include/c++/15.2.1/filesystem /usr/include/c++/15.2.1/bits/fs_fwd.h \
+ /usr/include/c++/15.2.1/bits/fs_path.h /usr/include/c++/15.2.1/codecvt \
+ /usr/include/c++/15.2.1/bits/fs_dir.h \
+ /usr/include/c++/15.2.1/bits/fs_ops.h \
+ /usr/include/qt6/QtCore/QCryptographicHash \
+ /usr/include/qt6/QtCore/qcryptographichash.h \
+ /usr/include/qt6/QtCore/QTimer /usr/include/qt6/QtCore/qtimer.h \
+ /usr/include/qt6/QtCore/qbasictimer.h \
+ /usr/include/qt6/QtCore/qabstracteventdispatcher.h \
+ /usr/include/qt6/QtCore/qeventloop.h \
+ /usr/include/qt6/QtCore/qdeadlinetimer.h \
+ /usr/include/qt6/QtCore/QFutureWatcher \
+ /usr/include/qt6/QtCore/qfuturewatcher.h \
+ /usr/include/qt6/QtCore/qfuture.h \
+ /usr/include/qt6/QtCore/qfutureinterface.h \
+ /usr/include/qt6/QtCore/qmutex.h /usr/include/qt6/QtCore/qtsan_impl.h \
+ /usr/include/qt6/QtCore/qresultstore.h \
+ /usr/include/qt6/QtCore/qfuture_impl.h \
+ /usr/include/qt6/QtCore/qthreadpool.h /usr/include/qt6/QtCore/qthread.h \
+ /usr/include/c++/15.2.1/future /usr/include/c++/15.2.1/mutex \
+ /usr/include/c++/15.2.1/bits/unique_lock.h \
+ /usr/include/c++/15.2.1/condition_variable \
+ /usr/include/c++/15.2.1/stop_token \
+ /usr/include/c++/15.2.1/bits/std_thread.h \
+ /usr/include/c++/15.2.1/semaphore \
+ /usr/include/c++/15.2.1/bits/semaphore_base.h \
+ /usr/include/c++/15.2.1/bits/atomic_timed_wait.h \
+ /usr/include/c++/15.2.1/bits/this_thread_sleep.h /usr/include/sys/time.h \
+ /usr/include/semaphore.h /usr/include/bits/semaphore.h \
+ /usr/include/c++/15.2.1/bits/atomic_futex.h \
+ /usr/include/qt6/QtCore/qrunnable.h /usr/include/qt6/QtCore/qexception.h \
+ /usr/include/qt6/QtCore/qpromise.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/network.h \
  /usr/include/qt6/QtNetwork/QTcpServer \
  /usr/include/qt6/QtNetwork/qtcpserver.h \
- /usr/include/qt6/QtNetwork/qtnetworkglobal.h \
- /usr/include/qt6/QtNetwork/qtnetwork-config.h \
- /usr/include/qt6/QtNetwork/qtnetworkexports.h \
- /usr/include/qt6/QtNetwork/qabstractsocket.h \
- /usr/include/qt6/QtCore/qiodevice.h /usr/include/qt6/QtCore/qspan.h \
- /usr/include/c++/15.2.1/cassert /usr/include/qt6/QtCore/q20iterator.h \
  /usr/include/qt6/QtNetwork/qhostaddress.h \
  /usr/include/qt6/QtNetwork/QTcpSocket \
  /usr/include/qt6/QtNetwork/qtcpsocket.h /usr/include/qt6/QtCore/QMap \
- /usr/include/qt6/QtCore/qmap.h \
+ /usr/include/qt6/QtCore/qmap.h /usr/include/qt6/QtCore/QQueue \
+ /usr/include/qt6/QtCore/qqueue.h /usr/include/qt6/QtCore/QSet \
+ /usr/include/qt6/QtCore/qset.h /usr/include/qt6/QtCore/QDateTime \
+ /usr/include/qt6/QtCore/qdatetime.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/identity.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_logger.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/logger.h \
+ /usr/include/qt6/QtCore/QMutex /usr/include/qt6/QtCore/qmutex.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_network.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_remoteshellmanager.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/remoteshellmanager.h \
+ /usr/include/qt6/QtCore/QHash /usr/include/qt6/QtCore/qhash.h \
+ /usr/include/qt6/QtCore/QRegularExpression \
+ /usr/include/qt6/QtCore/qregularexpression.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_sessionmanager.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/sessionmanager.h \
+ /usr/include/qt6/QtCore/QByteArray /usr/include/qt6/QtCore/qbytearray.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_storage.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/storage.h \
  /usr/include/qt6/QtSql/QSqlDatabase \
@@ -408,9 +469,10 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/qt6/QtSql/qtsqlglobal.h \
  /usr/include/qt6/QtSql/qtsql-config.h \
  /usr/include/qt6/QtSql/qtsqlexports.h \
- /usr/include/qt6/QtCore/qmetaobject.h /usr/include/qt6/QtCore/QDateTime \
- /usr/include/qt6/QtCore/qdatetime.h /usr/include/qt6/QtCore/QList \
+ /usr/include/qt6/QtCore/qmetaobject.h /usr/include/qt6/QtCore/QList \
  /usr/include/qt6/QtCore/qlist.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_systeminfo.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/systeminfo.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_updatechecker.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/../../../src/core/updatechecker.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/PRMOGMWJPH/moc_upnp.cpp \
@@ -418,17 +480,16 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/MZW7AAAGJO/moc_e2e.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/MZW7AAAGJO/../../../src/crypto/e2e.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/MZW7AAAGJO/../../../src/crypto/x3dh.h \
- /usr/include/qt6/QtCore/QByteArray /usr/include/qt6/QtCore/qbytearray.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/MZW7AAAGJO/../../../src/crypto/ratchet.h \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_chatwidget.cpp \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/chatwidget.h \
- /usr/include/qt6/QtWidgets/QWidget /usr/include/qt6/QtWidgets/qwidget.h \
+ /usr/include/qt6/QtCore/QPair /usr/include/qt6/QtCore/qpair.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/SVT5AJZPWX/moc_mediaengine.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_callwindow.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/callwindow.h \
+ /usr/include/qt6/QtWidgets/QDialog /usr/include/qt6/QtWidgets/qdialog.h \
  /usr/include/qt6/QtWidgets/qtwidgetsglobal.h \
- /usr/include/qt6/QtGui/qtguiglobal.h \
- /usr/include/qt6/QtGui/qtgui-config.h \
- /usr/include/qt6/QtGui/qtguiexports.h \
  /usr/include/qt6/QtWidgets/qtwidgets-config.h \
  /usr/include/qt6/QtWidgets/qtwidgetsexports.h \
+ /usr/include/qt6/QtWidgets/qwidget.h \
  /usr/include/qt6/QtGui/qwindowdefs.h /usr/include/qt6/QtCore/qmargins.h \
  /usr/include/qt6/QtCore/qcheckedint_impl.h \
  /usr/include/qt6/QtGui/qaction.h /usr/include/qt6/QtGui/qkeysequence.h \
@@ -446,14 +507,24 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/qt6/QtGui/qfontvariableaxis.h \
  /usr/include/qt6/QtWidgets/qsizepolicy.h \
  /usr/include/qt6/QtGui/qcursor.h /usr/include/qt6/QtGui/qbitmap.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_chatwidget.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/chatwidget.h \
+ /usr/include/qt6/QtWidgets/QWidget /usr/include/qt6/QtWidgets/qwidget.h \
+ /usr/include/qt6/QtGui/QPixmap /usr/include/qt6/QtGui/qpixmap.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_contactswidget.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/contactswidget.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/moc_addcontactdialog.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/../../../src/ui/dialogs/addcontactdialog.h \
- /usr/include/qt6/QtWidgets/QDialog /usr/include/qt6/QtWidgets/qdialog.h \
- /usr/include/qt6/QtWidgets/qwidget.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/moc_contactprofiledialog.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/../../../src/ui/dialogs/contactprofiledialog.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/moc_fileacceptdialog.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/../../../src/ui/dialogs/fileacceptdialog.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/moc_incomingdialog.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/IYECXEJARV/../../../src/ui/dialogs/incomingdialog.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_filetransferwidget.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/filetransferwidget.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_logpanel.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/logpanel.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_mainwindow.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/mainwindow.h \
  /usr/include/qt6/QtWidgets/QMainWindow \
@@ -473,6 +544,12 @@ CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o: \
  /usr/include/qt6/QtGui/qtextoption.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_settingspanel.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/settingspanel.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_shellmonitor.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/shellmonitor.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_shellwindow.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/shellwindow.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_splashscreen.cpp \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/splashscreen.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_thememanager.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/moc_updatebanner.cpp \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/naleystogramm_autogen/YPKJ5OE7LN/../../../src/ui/updatebanner.h

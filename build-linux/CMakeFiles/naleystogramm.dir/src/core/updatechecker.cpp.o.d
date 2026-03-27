@@ -417,5 +417,6 @@ CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o: \
  /usr/include/qt6/QtCore/qjsondocument.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/sessionmanager.h \
  /usr/include/qt6/QtCore/QUuid /usr/include/qt6/QtCore/quuid.h \
+ /usr/include/qt6/QtCore/QByteArray /usr/include/qt6/QtCore/qbytearray.h \
  /usr/include/qt6/QtCore/QDateTime /usr/include/qt6/QtCore/qdatetime.h \
  /usr/include/qt6/QtCore/QUrl

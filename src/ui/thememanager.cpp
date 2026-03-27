@@ -13,9 +13,13 @@ ThemeManager& ThemeManager::instance() {
 ThemeManager::ThemeManager() {
     // Читаем тему из session.json
     const QString saved = SessionManager::instance().theme();
-    if      (saved == "light") m_theme = Theme::Light;
-    else if (saved == "bw")    m_theme = Theme::BW;
-    else                       m_theme = Theme::Dark;
+    if      (saved == "light")     m_theme = Theme::Light;
+    else if (saved == "bw")        m_theme = Theme::BW;
+    else if (saved == "forest")    m_theme = Theme::Forest;
+    else if (saved == "cyberpunk") m_theme = Theme::Cyberpunk;
+    else if (saved == "nordic")    m_theme = Theme::Nordic;
+    else if (saved == "sunset")    m_theme = Theme::Sunset;
+    else                           m_theme = Theme::Dark;
     applyPalette();
 }
 
@@ -25,9 +29,13 @@ void ThemeManager::setTheme(Theme t) {
     // Сохраняем в session.json
     QString name;
     switch (t) {
-        case Theme::Dark:  name = "dark";  break;
-        case Theme::Light: name = "light"; break;
-        case Theme::BW:    name = "bw";    break;
+        case Theme::Dark:      name = "dark";      break;
+        case Theme::Light:     name = "light";     break;
+        case Theme::BW:        name = "bw";        break;
+        case Theme::Forest:    name = "forest";    break;
+        case Theme::Cyberpunk: name = "cyberpunk"; break;
+        case Theme::Nordic:    name = "nordic";    break;
+        case Theme::Sunset:    name = "sunset";    break;
     }
     SessionManager::instance().setTheme(name);
     applyPalette();
@@ -39,9 +47,13 @@ QString ThemeManager::currentThemeName() const {
     // C++20: using enum — не нужно писать Theme:: каждый раз
     using enum Theme;
     switch (m_theme) {
-        case Dark:  return "Тёмная";
-        case Light: return "Светлая";
-        case BW:    return "Ч/Б";
+        case Dark:      return "Тёмная";
+        case Light:     return "Светлая";
+        case BW:        return "Ч/Б";
+        case Forest:    return "Лес";
+        case Cyberpunk: return "Киберпанк";
+        case Nordic:    return "Нордик";
+        case Sunset:    return "Закат";
     }
     return {};
 }
@@ -49,9 +61,13 @@ QString ThemeManager::currentThemeName() const {
 void ThemeManager::applyPalette() {
     using enum Theme;
     switch (m_theme) {
-        case Dark:  m_palette = darkPalette();  break;
-        case Light: m_palette = lightPalette(); break;
-        case BW:    m_palette = bwPalette();    break;
+        case Dark:      m_palette = darkPalette();      break;
+        case Light:     m_palette = lightPalette();     break;
+        case BW:        m_palette = bwPalette();        break;
+        case Forest:    m_palette = forestPalette();    break;
+        case Cyberpunk: m_palette = cyberpunkPalette(); break;
+        case Nordic:    m_palette = nordicPalette();    break;
+        case Sunset:    m_palette = sunsetPalette();    break;
     }
 }
 
@@ -160,6 +176,150 @@ ThemePalette ThemeManager::bwPalette() {
     p.bannerBorder   = "#888888";
     p.bannerText     = "#f0f0f0";
     p.bannerBtnHover = "#aaaaaa";
+    return p;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ЛЕСНАЯ ТЕМА — тёмно-зелёные тона, природные акценты
+// ═════════════════════════════════════════════════════════════════════════
+
+ThemePalette ThemeManager::forestPalette() {
+    ThemePalette p;
+    p.bg           = "#0a1a0f";
+    p.bgSurface    = "#0f2015";
+    p.bgElevated   = "#152a1a";
+    p.bgInput      = "#1a3020";
+    p.bgBubbleOut  = "#1e4a28";
+    p.bgBubbleIn   = "#0f2015";
+
+    p.border       = "#1e3825";
+    p.borderFocus  = "#4caf50";
+
+    p.textPrimary   = "#d4f0d4";
+    p.textSecondary = "#8fbc8f";
+    p.textMuted     = "#4a7a4a";
+    p.textOnAccent  = "#ffffff";
+
+    p.accent        = "#4caf50";
+    p.accentHover   = "#66bb6a";
+    p.accentPressed = "#388e3c";
+
+    p.online  = "#69f0ae";
+    p.offline = "#2a4a2e";
+    p.danger  = "#ef5350";
+    p.success = "#69f0ae";
+    p.bannerBg       = "#0f2a14";
+    p.bannerBorder   = "#4caf50";
+    p.bannerText     = "#c8e6c9";
+    p.bannerBtnHover = "#66bb6a";
+    return p;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// КИБЕРПАНК — неоновый фиолетовый/пурпурный, тёмный фон
+// ═════════════════════════════════════════════════════════════════════════
+
+ThemePalette ThemeManager::cyberpunkPalette() {
+    ThemePalette p;
+    p.bg           = "#0d0015";
+    p.bgSurface    = "#130020";
+    p.bgElevated   = "#1a002b";
+    p.bgInput      = "#200035";
+    p.bgBubbleOut  = "#30005a";
+    p.bgBubbleIn   = "#130020";
+
+    p.border       = "#2a004a";
+    p.borderFocus  = "#e040fb";
+
+    p.textPrimary   = "#f8e0ff";
+    p.textSecondary = "#ce93d8";
+    p.textMuted     = "#6a3a8a";
+    p.textOnAccent  = "#ffffff";
+
+    p.accent        = "#e040fb";
+    p.accentHover   = "#ea80fc";
+    p.accentPressed = "#ab47bc";
+
+    p.online  = "#00e5ff";
+    p.offline = "#3a0060";
+    p.danger  = "#ff1744";
+    p.success = "#00e5ff";
+    p.bannerBg       = "#1a0030";
+    p.bannerBorder   = "#e040fb";
+    p.bannerText     = "#f3e5f5";
+    p.bannerBtnHover = "#ea80fc";
+    return p;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// НОРДИК — холодный синий/серый, скандинавский минимализм
+// ═════════════════════════════════════════════════════════════════════════
+
+ThemePalette ThemeManager::nordicPalette() {
+    ThemePalette p;
+    p.bg           = "#1a1f2e";
+    p.bgSurface    = "#212737";
+    p.bgElevated   = "#273040";
+    p.bgInput      = "#2d3748";
+    p.bgBubbleOut  = "#3a4a6a";
+    p.bgBubbleIn   = "#212737";
+
+    p.border       = "#2d3a52";
+    p.borderFocus  = "#5b9bd5";
+
+    p.textPrimary   = "#e8edf5";
+    p.textSecondary = "#a8b8d0";
+    p.textMuted     = "#5a6a85";
+    p.textOnAccent  = "#ffffff";
+
+    p.accent        = "#5b9bd5";
+    p.accentHover   = "#74b3e8";
+    p.accentPressed = "#3d7ab0";
+
+    p.online  = "#56c8a4";
+    p.offline = "#3a4560";
+    p.danger  = "#e06c75";
+    p.success = "#56c8a4";
+    p.bannerBg       = "#1e2a3a";
+    p.bannerBorder   = "#5b9bd5";
+    p.bannerText     = "#d0e4f5";
+    p.bannerBtnHover = "#74b3e8";
+    return p;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ЗАКАТ — тёплый розово-оранжевый, уютная вечерняя атмосфера
+// ═════════════════════════════════════════════════════════════════════════
+
+ThemePalette ThemeManager::sunsetPalette() {
+    ThemePalette p;
+    p.bg           = "#1a0f15";
+    p.bgSurface    = "#241520";
+    p.bgElevated   = "#2e1a28";
+    p.bgInput      = "#381f30";
+    p.bgBubbleOut  = "#5a2040";
+    p.bgBubbleIn   = "#241520";
+
+    p.border       = "#3a1a2e";
+    p.borderFocus  = "#ff6b9d";
+
+    p.textPrimary   = "#fce4f0";
+    p.textSecondary = "#e8a0c0";
+    p.textMuted     = "#7a3a58";
+    p.textOnAccent  = "#ffffff";
+
+    p.accent        = "#ff6b9d";
+    p.accentHover   = "#ff8fb3";
+    p.accentPressed = "#cc4477";
+
+    p.online  = "#ff9a5c";
+    p.offline = "#4a1f38";
+    p.danger  = "#ff4d6d";
+    p.success = "#ff9a5c";
+    p.bannerBg       = "#2a1020";
+    p.bannerBorder   = "#ff6b9d";
+    p.bannerText     = "#fce4f0";
+    p.bannerBtnHover = "#ff8fb3";
     return p;
 }
 
@@ -872,6 +1032,8 @@ QToolTip {
     font-size: 12px;
 }
 
+/* расширенная палитра: бубл-исх.=%7 бубл-вх.=%8 онлайн=%9 оффлайн=%10 резерв=%14 */
+
     )")
     /* Фоны */
     .arg(p.bg)           // %1
@@ -880,16 +1042,16 @@ QToolTip {
     .arg(p.bgInput)      // %4
     .arg(p.border)       // %5
     .arg(p.borderFocus)  // %6
-    /* пустышки %7 %8 %9 %10 — для резерва */
-    .arg("")             // %7
-    .arg("")             // %8
-    .arg("")             // %9
-    .arg("")             // %10
+    /* расширенные цвета */
+    .arg(p.bgBubbleOut)    // %7  — фон исходящего пузыря
+    .arg(p.bgBubbleIn)     // %8  — фон входящего пузыря
+    .arg(p.online)         // %9  — онлайн-индикатор
+    .arg(p.offline)        // %10 — оффлайн-индикатор
     /* Текст */
     .arg(p.textPrimary)    // %11
     .arg(p.textSecondary)  // %12
     .arg(p.textMuted)      // %13
-    .arg("")               // %14
+    .arg(p.offline)        // %14 — резерв (оффлайн)
     /* Акцент */
     .arg(p.accent)         // %15
     .arg(p.textOnAccent)   // %16

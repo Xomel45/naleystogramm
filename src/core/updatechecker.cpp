@@ -10,11 +10,17 @@
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-// Парсим semver "v1.2.3" или "1.2.3" → {1, 2, 3}
+// Парсим semver "v1.2.3", "1.2.3-beta", "1.2.3-rc1" → {1, 2, 3}.
+// Суффиксы (-beta, -rc1 и т.п.) отбрасываются перед разбором чисел.
 static std::tuple<int,int,int> parseSemver(const QString& v) {
     QString s = v;
+    // Убираем ведущий 'v' или 'V'
     if (s.startsWith('v') || s.startsWith('V'))
         s = s.mid(1);
+    // Отбрасываем всё после первого дефиса (-beta, -rc1, -stable и т.п.)
+    const int dashPos = s.indexOf('-');
+    if (dashPos != -1)
+        s = s.left(dashPos);
     const auto parts = s.split('.');
     const int major = parts.value(0).toInt();
     const int minor = parts.value(1).toInt();

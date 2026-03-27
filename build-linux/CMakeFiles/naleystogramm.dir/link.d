@@ -8,7 +8,10 @@ naleystogramm: \
   CMakeFiles/naleystogramm.dir/src/core/network.cpp.o \
   CMakeFiles/naleystogramm.dir/src/core/storage.cpp.o \
   CMakeFiles/naleystogramm.dir/src/core/filetransfer.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o \
   CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o \
   CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o \
   CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o \
   CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o \
@@ -19,16 +22,30 @@ naleystogramm: \
   CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o \
   CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o \
   CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o \
   CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o \
   CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o \
   CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o \
   CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o \
+  CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o \
   /usr/lib/libQt6Widgets.so.6.10.2 \
-  /usr/lib/libQt6Network.so.6.10.2 \
   /usr/lib/libQt6Sql.so.6.10.2 \
-  /usr/lib/libQt6Concurrent.so.6.10.2 \
   /usr/lib/libssl.so \
   /usr/lib/libcrypto.so \
+  /usr/lib/libQt6Multimedia.so.6.10.2 \
+  /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/libopus.so \
+  /usr/lib/libQt6Network.so.6.10.2 \
+  /usr/lib/libQt6Concurrent.so.6.10.2 \
   /usr/lib/libQt6Gui.so.6.10.2 \
   /usr/lib/libGLX.so \
   /usr/lib/libOpenGL.so \
@@ -59,6 +76,9 @@ naleystogramm: \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/libgcc.a \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/crtendS.o \
   /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/crtn.o \
+  /usr/lib/libQt6DBus.so.6 \
+  /usr/lib/libpulse.so.0 \
+  /usr/lib/ld-linux-x86-64.so.2 \
   /usr/lib/libgssapi_krb5.so.2 \
   /usr/lib/libbrotlidec.so.1 \
   /usr/lib/libzstd.so.1 \
@@ -70,7 +90,6 @@ naleystogramm: \
   /usr/lib/libfontconfig.so.1 \
   /usr/lib/libX11.so.6 \
   /usr/lib/libglib-2.0.so.0 \
-  /usr/lib/libQt6DBus.so.6 \
   /usr/lib/libxkbcommon.so.0 \
   /usr/lib/libpng16.so.16 \
   /usr/lib/libharfbuzz.so.0 \
@@ -84,7 +103,8 @@ naleystogramm: \
   /usr/lib/libdouble-conversion.so.3 \
   /usr/lib/libb2.so.1 \
   /usr/lib/libpcre2-16.so.0 \
-  /usr/lib/ld-linux-x86-64.so.2 \
+  /usr/lib/libdbus-1.so.3 \
+  /usr/lib/pulseaudio/libpulsecommon-17.0.so \
   /usr/lib32/libkrb5.so.3 \
   /usr/lib/libkrb5.so.3 \
   /usr/lib32/libk5crypto.so.3 \
@@ -108,7 +128,6 @@ naleystogramm: \
   /usr/lib/libxcb.so.1 \
   /usr/lib32/libpcre2-8.so.0 \
   /usr/lib/libpcre2-8.so.0 \
-  /usr/lib/libdbus-1.so.3 \
   /usr/lib/libgraphite2.so.3 \
   /usr/lib32/libbz2.so.1.0 \
   /usr/lib/libbz2.so.1.0 \
@@ -116,6 +135,8 @@ naleystogramm: \
   /usr/lib/libicudata.so.78 \
   /usr/lib32/libgomp.so.1 \
   /usr/lib/libgomp.so.1 \
+  /usr/lib/libsndfile.so.1 \
+  /usr/lib/libasyncns.so.0 \
   /usr/lib32/libcurl.so.4 \
   /usr/lib/libcurl.so.4 \
   /usr/lib32/libgio-2.0.so.0 \
@@ -127,6 +148,12 @@ naleystogramm: \
   /usr/lib/libXau.so.6 \
   /usr/lib32/libXdmcp.so.6 \
   /usr/lib/libXdmcp.so.6 \
+  /usr/lib/libogg.so.0 \
+  /usr/lib/libvorbisenc.so.2 \
+  /usr/lib/libFLAC.so.14 \
+  /usr/lib/libmpg123.so.0 \
+  /usr/lib/libmp3lame.so.0 \
+  /usr/lib/libvorbis.so.0 \
   /usr/lib32/libnghttp3.so.9 \
   /usr/lib/libnghttp3.so.9 \
   /usr/lib32/libngtcp2_crypto_ossl.so.0 \
@@ -168,7 +195,13 @@ CMakeFiles/naleystogramm.dir/src/core/storage.cpp.o:
 
 CMakeFiles/naleystogramm.dir/src/core/filetransfer.cpp.o:
 
+CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o:
+
 CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o:
 
 CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o:
 
@@ -190,25 +223,53 @@ CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o:
 
 CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o:
 
+CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o:
+
 CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o:
 
 CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o:
 
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o:
 
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o:
 
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o:
+
+CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o:
+
 /usr/lib/libQt6Widgets.so.6.10.2:
 
-/usr/lib/libQt6Network.so.6.10.2:
-
 /usr/lib/libQt6Sql.so.6.10.2:
-
-/usr/lib/libQt6Concurrent.so.6.10.2:
 
 /usr/lib/libssl.so:
 
 /usr/lib/libcrypto.so:
+
+/usr/lib/libQt6Multimedia.so.6.10.2:
+
+/usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/libopus.so:
+
+/usr/lib/libQt6Network.so.6.10.2:
+
+/usr/lib/libQt6Concurrent.so.6.10.2:
 
 /usr/lib/libQt6Gui.so.6.10.2:
 
@@ -270,6 +331,12 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o:
 
 /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../lib/crtn.o:
 
+/usr/lib/libQt6DBus.so.6:
+
+/usr/lib/libpulse.so.0:
+
+/usr/lib/ld-linux-x86-64.so.2:
+
 /usr/lib/libgssapi_krb5.so.2:
 
 /usr/lib/libbrotlidec.so.1:
@@ -291,8 +358,6 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o:
 /usr/lib/libX11.so.6:
 
 /usr/lib/libglib-2.0.so.0:
-
-/usr/lib/libQt6DBus.so.6:
 
 /usr/lib/libxkbcommon.so.0:
 
@@ -320,7 +385,9 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o:
 
 /usr/lib/libpcre2-16.so.0:
 
-/usr/lib/ld-linux-x86-64.so.2:
+/usr/lib/libdbus-1.so.3:
+
+/usr/lib/pulseaudio/libpulsecommon-17.0.so:
 
 /usr/lib32/libkrb5.so.3:
 
@@ -368,8 +435,6 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o:
 
 /usr/lib/libpcre2-8.so.0:
 
-/usr/lib/libdbus-1.so.3:
-
 /usr/lib/libgraphite2.so.3:
 
 /usr/lib32/libbz2.so.1.0:
@@ -383,6 +448,10 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o:
 /usr/lib32/libgomp.so.1:
 
 /usr/lib/libgomp.so.1:
+
+/usr/lib/libsndfile.so.1:
+
+/usr/lib/libasyncns.so.0:
 
 /usr/lib32/libcurl.so.4:
 
@@ -405,6 +474,18 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o:
 /usr/lib32/libXdmcp.so.6:
 
 /usr/lib/libXdmcp.so.6:
+
+/usr/lib/libogg.so.0:
+
+/usr/lib/libvorbisenc.so.2:
+
+/usr/lib/libFLAC.so.14:
+
+/usr/lib/libmpg123.so.0:
+
+/usr/lib/libmp3lame.so.0:
+
+/usr/lib/libvorbis.so.0:
 
 /usr/lib32/libnghttp3.so.9:
 

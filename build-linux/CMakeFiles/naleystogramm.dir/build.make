@@ -156,10 +156,24 @@ CMakeFiles/naleystogramm.dir/src/core/filetransfer.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/filetransfer.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/filetransfer.cpp -o CMakeFiles/naleystogramm.dir/src/core/filetransfer.cpp.s
 
+CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/audiorecorder.cpp
+CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/audiorecorder.cpp
+
+CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/audiorecorder.cpp > CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/audiorecorder.cpp -o CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.s
+
 CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/upnp.cpp
 CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/upnp.cpp
 
 CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.i: cmake_force
@@ -170,10 +184,38 @@ CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/upnp.cpp -o CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.s
 
+CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/systeminfo.cpp
+CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/systeminfo.cpp
+
+CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/systeminfo.cpp > CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/systeminfo.cpp -o CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/keyprotector.cpp
+CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o -MF CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/keyprotector.cpp
+
+CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/keyprotector.cpp > CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/keyprotector.cpp -o CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.s
+
 CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/e2e.cpp
 CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o -MF CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/e2e.cpp
 
 CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.i: cmake_force
@@ -187,7 +229,7 @@ CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/x3dh.cpp
 CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building CXX object CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o -MF CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/x3dh.cpp
 
 CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.i: cmake_force
@@ -201,7 +243,7 @@ CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/ratchet.cpp
 CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building CXX object CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o -MF CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/crypto/ratchet.cpp
 
 CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.i: cmake_force
@@ -215,7 +257,7 @@ CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/mainwindow.cpp
 CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/mainwindow.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.i: cmake_force
@@ -229,7 +271,7 @@ CMakeFiles/naleystogramm.dir/src/ui/mainwindow.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/thememanager.cpp
 CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/thememanager.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.i: cmake_force
@@ -243,7 +285,7 @@ CMakeFiles/naleystogramm.dir/src/ui/thememanager.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/chatwidget.cpp
 CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/chatwidget.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.i: cmake_force
@@ -257,7 +299,7 @@ CMakeFiles/naleystogramm.dir/src/ui/chatwidget.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/contactswidget.cpp
 CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/contactswidget.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.i: cmake_force
@@ -271,7 +313,7 @@ CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/updatechecker.cpp
 CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/updatechecker.cpp
 
 CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.i: cmake_force
@@ -285,7 +327,7 @@ CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/demomode.cpp
 CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/demomode.cpp
 
 CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.i: cmake_force
@@ -299,7 +341,7 @@ CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/sessionmanager.cpp
 CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/sessionmanager.cpp
 
 CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.i: cmake_force
@@ -310,10 +352,24 @@ CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/sessionmanager.cpp -o CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.s
 
+CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/logger.cpp
+CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/logger.cpp
+
+CMakeFiles/naleystogramm.dir/src/core/logger.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/core/logger.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/logger.cpp > CMakeFiles/naleystogramm.dir/src/core/logger.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/core/logger.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/logger.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/logger.cpp -o CMakeFiles/naleystogramm.dir/src/core/logger.cpp.s
+
 CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/updatebanner.cpp
 CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_22) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/updatebanner.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.i: cmake_force
@@ -327,7 +383,7 @@ CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/settingspanel.cpp
 CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_23) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/settingspanel.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.i: cmake_force
@@ -338,10 +394,24 @@ CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/settingspanel.cpp -o CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.s
 
+CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/logpanel.cpp
+CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_24) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/logpanel.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/logpanel.cpp > CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/logpanel.cpp -o CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.s
+
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/addcontactdialog.cpp
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_20) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_25) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/addcontactdialog.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.i: cmake_force
@@ -355,7 +425,7 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.s: cmake_force
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/incomingdialog.cpp
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_21) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_26) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/incomingdialog.cpp
 
 CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.i: cmake_force
@@ -366,6 +436,146 @@ CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/incomingdialog.cpp -o CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.s
 
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/fileacceptdialog.cpp
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_27) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/fileacceptdialog.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/fileacceptdialog.cpp > CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/fileacceptdialog.cpp -o CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/contactprofiledialog.cpp
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_28) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/contactprofiledialog.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/contactprofiledialog.cpp > CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/dialogs/contactprofiledialog.cpp -o CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/filetransferwidget.cpp
+CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_29) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/filetransferwidget.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/filetransferwidget.cpp > CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/filetransferwidget.cpp -o CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/splashscreen.cpp
+CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_30) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/splashscreen.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/splashscreen.cpp > CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/splashscreen.cpp -o CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/callmanager.cpp
+CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_31) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/callmanager.cpp
+
+CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/callmanager.cpp > CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/callmanager.cpp -o CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/media/mediaengine.cpp
+CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_32) "Building CXX object CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o -MF CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/media/mediaengine.cpp
+
+CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/media/mediaengine.cpp > CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/media/mediaengine.cpp -o CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/callwindow.cpp
+CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_33) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/callwindow.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/callwindow.cpp > CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/callwindow.cpp -o CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/remoteshellmanager.cpp
+CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_34) "Building CXX object CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o -MF CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/remoteshellmanager.cpp
+
+CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/remoteshellmanager.cpp > CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/remoteshellmanager.cpp -o CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellwindow.cpp
+CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_35) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellwindow.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellwindow.cpp > CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellwindow.cpp -o CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.s
+
+CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o: CMakeFiles/naleystogramm.dir/flags.make
+CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o: /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellmonitor.cpp
+CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o: CMakeFiles/naleystogramm.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_36) "Building CXX object CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o -MF CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o.d -o CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o -c /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellmonitor.cpp
+
+CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellmonitor.cpp > CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.i
+
+CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/shellmonitor.cpp -o CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.s
+
 # Object files for target naleystogramm
 naleystogramm_OBJECTS = \
 "CMakeFiles/naleystogramm.dir/naleystogramm_autogen/mocs_compilation.cpp.o" \
@@ -374,7 +584,10 @@ naleystogramm_OBJECTS = \
 "CMakeFiles/naleystogramm.dir/src/core/network.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/core/storage.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/core/filetransfer.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o" \
@@ -385,10 +598,22 @@ naleystogramm_OBJECTS = \
 "CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o" \
 "CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o" \
-"CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o"
+"CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o" \
+"CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o"
 
 # External object files for target naleystogramm
 naleystogramm_EXTERNAL_OBJECTS =
@@ -399,7 +624,10 @@ naleystogramm: CMakeFiles/naleystogramm.dir/src/core/identity.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/core/network.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/core/storage.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/core/filetransfer.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/core/audiorecorder.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/core/systeminfo.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/crypto/keyprotector.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/crypto/e2e.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/crypto/x3dh.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/crypto/ratchet.cpp.o
@@ -410,24 +638,37 @@ naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/contactswidget.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/core/updatechecker.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/core/demomode.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/core/sessionmanager.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/core/logger.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/updatebanner.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/settingspanel.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/logpanel.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/dialogs/addcontactdialog.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/dialogs/incomingdialog.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/dialogs/fileacceptdialog.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/dialogs/contactprofiledialog.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/filetransferwidget.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/splashscreen.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/core/callmanager.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/media/mediaengine.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/callwindow.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/core/remoteshellmanager.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/shellwindow.cpp.o
+naleystogramm: CMakeFiles/naleystogramm.dir/src/ui/shellmonitor.cpp.o
 naleystogramm: CMakeFiles/naleystogramm.dir/build.make
 naleystogramm: CMakeFiles/naleystogramm.dir/compiler_depend.ts
 naleystogramm: /usr/lib/libQt6Widgets.so.6.10.2
-naleystogramm: /usr/lib/libQt6Network.so.6.10.2
 naleystogramm: /usr/lib/libQt6Sql.so.6.10.2
-naleystogramm: /usr/lib/libQt6Concurrent.so.6.10.2
 naleystogramm: /usr/lib/libssl.so
 naleystogramm: /usr/lib/libcrypto.so
+naleystogramm: /usr/lib/libQt6Multimedia.so.6.10.2
+naleystogramm: /usr/lib/libQt6Network.so.6.10.2
+naleystogramm: /usr/lib/libQt6Concurrent.so.6.10.2
 naleystogramm: /usr/lib/libQt6Gui.so.6.10.2
 naleystogramm: /usr/lib/libGLX.so
 naleystogramm: /usr/lib/libOpenGL.so
 naleystogramm: /usr/lib/libQt6Core.so.6.10.2
 naleystogramm: CMakeFiles/naleystogramm.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_22) "Linking CXX executable naleystogramm"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/build-linux/CMakeFiles --progress-num=$(CMAKE_PROGRESS_37) "Linking CXX executable naleystogramm"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/naleystogramm.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

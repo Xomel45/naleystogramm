@@ -348,6 +348,7 @@ CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o: \
  /usr/include/c++/15.2.1/bits/sstream.tcc \
  /usr/include/c++/15.2.1/bits/chrono_io.h /usr/include/c++/15.2.1/iomanip \
  /usr/include/c++/15.2.1/bits/quoted_string.h \
+ /usr/include/qt6/QtCore/QString /usr/include/qt6/QtCore/qstring.h \
  /usr/include/qt6/QtNetwork/QUdpSocket \
  /usr/include/qt6/QtNetwork/qudpsocket.h \
  /usr/include/qt6/QtNetwork/qtnetworkglobal.h \
@@ -382,11 +383,10 @@ CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o: \
  /usr/include/qt6/QtCore/qmetaobject.h \
  /usr/include/qt6/QtCore/QSharedDataPointer \
  /usr/include/qt6/QtCore/qshareddata.h /usr/include/qt6/QtCore/QString \
- /usr/include/qt6/QtCore/qstring.h /usr/include/qt6/QtCore/QUrl \
- /usr/include/qt6/QtCore/qurl.h /usr/include/qt6/QtCore/QVariant \
- /usr/include/qt6/QtCore/qvariant.h /usr/include/qt6/QtCore/q26numeric.h \
- /usr/include/qt6/QtCore/QList /usr/include/qt6/QtCore/qlist.h \
- /usr/include/qt6/QtCore/QObject \
+ /usr/include/qt6/QtCore/QUrl /usr/include/qt6/QtCore/qurl.h \
+ /usr/include/qt6/QtCore/QVariant /usr/include/qt6/QtCore/qvariant.h \
+ /usr/include/qt6/QtCore/q26numeric.h /usr/include/qt6/QtCore/QList \
+ /usr/include/qt6/QtCore/qlist.h /usr/include/qt6/QtCore/QObject \
  /usr/include/qt6/QtNetwork/QSslConfiguration \
  /usr/include/qt6/QtNetwork/qsslconfiguration.h \
  /usr/include/qt6/QtNetwork/qsslsocket.h \
@@ -413,5 +413,6 @@ CMakeFiles/naleystogramm.dir/src/core/upnp.cpp.o: \
  /usr/include/qt6/QtCore/qabstracteventdispatcher.h \
  /usr/include/qt6/QtCore/qeventloop.h \
  /usr/include/qt6/QtCore/qdeadlinetimer.h /usr/include/qt6/QtCore/QUrl \
+ /usr/include/qt6/QtCore/QDebug /usr/include/qt6/QtCore/qdebug.h \
  /usr/include/qt6/QtCore/QRegularExpression \
  /usr/include/qt6/QtCore/qregularexpression.h

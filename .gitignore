@@ -1,41 +1,82 @@
-# Prerequisites
-*.d
+# ── Директории сборки ─────────────────────────────────────────────────────────
+build-linux/
+build-win/
+build-*/
+*.build/
 
-# Compiled Object files
-*.slo
-*.lo
+# ── Артефакты деплоя ─────────────────────────────────────────────────────────
+# builds/ содержит упакованные релизы и beta-бинарники.
+# Не коммитим — они воспроизводимы из исходников через deploy.sh.
+builds/
+
+# ── AppImage артефакты ────────────────────────────────────────────────────────
+*.AppImage
+*.appimage
+AppDir/
+
+# ── Логи сборки ───────────────────────────────────────────────────────────────
+build.log
+*.log
+
+# ── Скомпилированные объекты и файлы линкера ──────────────────────────────────
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
 *.a
 *.lib
-
-# Executables
+*.so
+*.dll
 *.exe
-*.out
-*.app
+*.pdb
+*.ilk
+*.exp
 
-# debug information files
-*.dwo
+# ── Qt автогенерация (MOC, UIC, RCC) ─────────────────────────────────────────
+*_autogen/
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+
+# ── CMake генерированные файлы ────────────────────────────────────────────────
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# ── Qt переводы (генерируются из .ts) ─────────────────────────────────────────
+# .ts файлы (исходники) — коммитим
+# .qm файлы (бинарные, генерируются) — не коммитим
+*.qm
+
+# ── IDE и редакторы ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.user
+*.suo
+
+# ── Временные файлы ───────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# ── Секреты и конфигурация окружения ──────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# ── linuxdeploy инструменты (загружаются в процессе сборки) ──────────────────
+appimage-tools/
+linuxdeploy*.AppImage
+linuxdeploy-plugin-*.AppImage

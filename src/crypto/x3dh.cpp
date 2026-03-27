@@ -1,4 +1,5 @@
 #include "x3dh.h"
+#include "openssl_raii.h"
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
 #include <openssl/rand.h>
@@ -9,73 +10,52 @@
 // ── X25519 helpers ────────────────────────────────────────────────────────
 
 bool X3DH::generateX25519(QByteArray& priv, QByteArray& pub) {
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr);
+    EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr));
     if (!ctx) return false;
+    if (EVP_PKEY_keygen_init(ctx.get()) <= 0) return false;
 
-    if (EVP_PKEY_keygen_init(ctx) <= 0) {
-        EVP_PKEY_CTX_free(ctx);
-        return false;
-    }
-
-    EVP_PKEY* pkey = nullptr;
-    if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
-        EVP_PKEY_CTX_free(ctx);
-        return false;
-    }
-    EVP_PKEY_CTX_free(ctx);
+    EVP_PKEY* pkeyRaw = nullptr;
+    if (EVP_PKEY_keygen(ctx.get(), &pkeyRaw) <= 0) return false;
+    EvpPkeyPtr pkey(pkeyRaw);
 
     // Extract raw private key (32 bytes)
     size_t privLen = 32;
     priv.resize(32);
-    if (EVP_PKEY_get_raw_private_key(pkey,
-            reinterpret_cast<unsigned char*>(priv.data()), &privLen) <= 0) {
-        EVP_PKEY_free(pkey);
-        return false;
-    }
+    if (EVP_PKEY_get_raw_private_key(pkey.get(),
+            reinterpret_cast<unsigned char*>(priv.data()), &privLen) <= 0) return false;
 
     // Extract raw public key (32 bytes)
     size_t pubLen = 32;
     pub.resize(32);
-    if (EVP_PKEY_get_raw_public_key(pkey,
-            reinterpret_cast<unsigned char*>(pub.data()), &pubLen) <= 0) {
-        EVP_PKEY_free(pkey);
-        return false;
-    }
+    if (EVP_PKEY_get_raw_public_key(pkey.get(),
+            reinterpret_cast<unsigned char*>(pub.data()), &pubLen) <= 0) return false;
 
-    EVP_PKEY_free(pkey);
     return true;
 }
 
 QByteArray X3DH::dh(const QByteArray& privKey, const QByteArray& peerPubKey) {
-    // Load private key
-    EVP_PKEY* priv = EVP_PKEY_new_raw_private_key(
-        EVP_PKEY_X25519, nullptr,
+    // Загружаем приватный ключ
+    EvpPkeyPtr priv(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, nullptr,
         reinterpret_cast<const unsigned char*>(privKey.constData()),
-        static_cast<size_t>(privKey.size()));
+        static_cast<size_t>(privKey.size())));
 
-    // Load peer public key
-    EVP_PKEY* pub = EVP_PKEY_new_raw_public_key(
-        EVP_PKEY_X25519, nullptr,
+    // Загружаем публичный ключ пира
+    EvpPkeyPtr pub(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr,
         reinterpret_cast<const unsigned char*>(peerPubKey.constData()),
-        static_cast<size_t>(peerPubKey.size()));
+        static_cast<size_t>(peerPubKey.size())));
 
-    if (!priv || !pub) {
-        if (priv) EVP_PKEY_free(priv);
-        if (pub)  EVP_PKEY_free(pub);
-        return {};
-    }
+    if (!priv || !pub) return {};
 
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(priv, nullptr);
-    EVP_PKEY_derive_init(ctx);
-    EVP_PKEY_derive_set_peer(ctx, pub);
+    EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new(priv.get(), nullptr));
+    if (!ctx) return {};                          // ← критическая проверка: ранее отсутствовала
+    if (EVP_PKEY_derive_init(ctx.get()) <= 0) return {};
+    if (EVP_PKEY_derive_set_peer(ctx.get(), pub.get()) <= 0) return {};
 
     size_t secretLen = 32;
     QByteArray secret(32, '\0');
-    EVP_PKEY_derive(ctx, reinterpret_cast<unsigned char*>(secret.data()), &secretLen);
-
-    EVP_PKEY_CTX_free(ctx);
-    EVP_PKEY_free(priv);
-    EVP_PKEY_free(pub);
+    if (EVP_PKEY_derive(ctx.get(),
+            reinterpret_cast<unsigned char*>(secret.data()), &secretLen) <= 0)
+        return {};
 
     return secret;
 }
@@ -112,6 +92,73 @@ QByteArray X3DH::kdf(const QByteArray& ikm, const QByteArray& info) {
     return out;
 }
 
+// ── Верификация подписи SPK ────────────────────────────────────────────────
+//
+// Оба алгоритма — X25519 и Ed25519 — используют одну кривую Curve25519,
+// поэтому байты приватного ключа взаимозаменяемы как скаляр.
+// Публичный ключ Ed25519 отличается от X25519 (другая форма представления точки).
+//
+// ikPrivToEdPub: преобразует X25519 приватный ключ → Ed25519 публичный ключ.
+// Используется при генерации бандла для получения ключа верификации.
+
+QByteArray X3DH::ikPrivToEdPub(const QByteArray& ikPriv) {
+    if (ikPriv.size() != 32) return {};
+
+    EvpPkeyPtr edKey(EVP_PKEY_new_raw_private_key(
+        EVP_PKEY_ED25519, nullptr,
+        reinterpret_cast<const unsigned char*>(ikPriv.constData()),
+        static_cast<size_t>(ikPriv.size())));
+    if (!edKey) return {};
+
+    QByteArray pub(32, '\0');
+    size_t pubLen = 32;
+    if (EVP_PKEY_get_raw_public_key(edKey.get(),
+            reinterpret_cast<unsigned char*>(pub.data()), &pubLen) <= 0)
+        return {};
+    return pub;
+}
+
+// Верифицировать Ed25519 подпись SPK с помощью ik_ed публичного ключа.
+// Если подпись неверна — возможна MITM-атака или компрометация ключей.
+
+bool X3DH::verifySpkSig(const QByteArray& ikEdPub,
+                          const QByteArray& spkPub,
+                          const QByteArray& sig) {
+    if (ikEdPub.size() != 32 || spkPub.isEmpty() || sig.isEmpty()) {
+        qWarning("[X3DH] verifySpkSig: некорректные аргументы");
+        return false;
+    }
+
+    EvpPkeyPtr edKey(EVP_PKEY_new_raw_public_key(
+        EVP_PKEY_ED25519, nullptr,
+        reinterpret_cast<const unsigned char*>(ikEdPub.constData()),
+        static_cast<size_t>(ikEdPub.size())));
+    if (!edKey) {
+        qWarning("[X3DH] verifySpkSig: не удалось загрузить Ed25519 публичный ключ");
+        return false;
+    }
+
+    EvpMdCtxPtr mdCtx(EVP_MD_CTX_new());
+    if (!mdCtx) return false;
+
+    if (EVP_DigestVerifyInit(mdCtx.get(), nullptr, nullptr, nullptr, edKey.get()) <= 0) {
+        qWarning("[X3DH] verifySpkSig: DigestVerifyInit провалился");
+        return false;
+    }
+
+    const int ret = EVP_DigestVerify(mdCtx.get(),
+        reinterpret_cast<const unsigned char*>(sig.constData()),
+        static_cast<size_t>(sig.size()),
+        reinterpret_cast<const unsigned char*>(spkPub.constData()),
+        static_cast<size_t>(spkPub.size()));
+
+    if (ret != 1) {
+        qCritical("[X3DH] ⚠️ Подпись SPK недействительна! Возможна MITM-атака.");
+        return false;
+    }
+    return true;
+}
+
 // ── Key bundle generation ─────────────────────────────────────────────────
 
 bool X3DH::generateBundle(
@@ -125,10 +172,10 @@ bool X3DH::generateBundle(
     if (!generateX25519(outOTPKPriv, outOTPKPub)) return false;
 
     // Ed25519: подписываем SPK публичным ключом IK (настоящая подпись, не заглушка)
-    EVP_PKEY* edKey = EVP_PKEY_new_raw_private_key(
+    EvpPkeyPtr edKey(EVP_PKEY_new_raw_private_key(
         EVP_PKEY_ED25519, nullptr,
         reinterpret_cast<const unsigned char*>(outIKPriv.constData()),
-        static_cast<size_t>(outIKPriv.size()));
+        static_cast<size_t>(outIKPriv.size())));
 
     if (!edKey) {
         // Ed25519 требует 32-байтный ключ — IK подходит
@@ -137,12 +184,18 @@ bool X3DH::generateBundle(
         return true;
     }
 
-    EVP_MD_CTX* mdCtx = EVP_MD_CTX_new();
+    EvpMdCtxPtr mdCtx(EVP_MD_CTX_new());
+    if (!mdCtx) {
+        // Сбой аллокации — fallback нулевая подпись
+        outSPKSig = QByteArray(32, '\0');
+        return true;
+    }
+
     outSPKSig.resize(64);
     size_t sigLen = 64;
 
-    if (EVP_DigestSignInit(mdCtx, nullptr, nullptr, nullptr, edKey) <= 0 ||
-        EVP_DigestSign(mdCtx,
+    if (EVP_DigestSignInit(mdCtx.get(), nullptr, nullptr, nullptr, edKey.get()) <= 0 ||
+        EVP_DigestSign(mdCtx.get(),
             reinterpret_cast<unsigned char*>(outSPKSig.data()), &sigLen,
             reinterpret_cast<const unsigned char*>(outSPKPub.constData()),
             static_cast<size_t>(outSPKPub.size())) <= 0)
@@ -153,8 +206,7 @@ bool X3DH::generateBundle(
         outSPKSig.resize(static_cast<qsizetype>(sigLen));
     }
 
-    EVP_MD_CTX_free(mdCtx);
-    EVP_PKEY_free(edKey);
+    // RAII освобождает mdCtx и edKey автоматически
     return true;
 }
 
@@ -167,6 +219,20 @@ std::optional<QByteArray> X3DH::initiatorAgreement(
     QByteArray& outEphemeralPub)
 {
     Q_UNUSED(aliceIKPub)
+
+    // ── Верификация подписи SPK — критична для защиты от MITM ────────────────
+    // Если пир прислал ik_ed (новые клиенты), проверяем подпись SPK.
+    // Если верификация провалилась — ABORT: сессия может быть скомпрометирована.
+    if (!bobBundle.ikEdPub.isEmpty()) {
+        if (!verifySpkSig(bobBundle.ikEdPub, bobBundle.signedPreKey, bobBundle.signedPreKeySig)) {
+            qCritical("[X3DH] ⚠️ Подпись ключа недействительна! Возможна атака посредника (MITM). Сессия отклонена.");
+            return std::nullopt;
+        }
+        qDebug("[X3DH] SPK подпись верифицирована успешно");
+    } else {
+        // Старый клиент без ik_ed — верификация невозможна, логируем предупреждение
+        qWarning("[X3DH] Пир не предоставил ik_ed — верификация SPK пропущена (старый клиент)");
+    }
 
     // Generate ephemeral key pair EK_A
     QByteArray ekPriv, ekPub;

@@ -411,6 +411,37 @@ CMakeFiles/naleystogramm.dir/src/main.cpp.o: \
  /usr/include/qt6/QtCore/qstring.h /usr/include/qt6/QtCore/QUrl \
  /usr/include/qt6/QtCore/qurl.h /usr/include/qt6/QtCore/QVariant \
  /usr/include/qt6/QtCore/qvariant.h /usr/include/qt6/QtCore/q26numeric.h \
+ /usr/include/qt6/QtCore/QTranslator \
+ /usr/include/qt6/QtCore/qtranslator.h \
+ /usr/include/qt6/QtCore/QLibraryInfo \
+ /usr/include/qt6/QtCore/qlibraryinfo.h \
+ /usr/include/qt6/QtCore/qversionnumber.h \
+ /usr/include/qt6/QtCore/qtyperevision.h /usr/include/qt6/QtCore/QDir \
+ /usr/include/qt6/QtCore/qdir.h /usr/include/qt6/QtCore/qdirlisting.h \
+ /usr/include/qt6/QtCore/qfiledevice.h /usr/include/qt6/QtCore/qfile.h \
+ /usr/include/c++/15.2.1/filesystem /usr/include/c++/15.2.1/bits/fs_fwd.h \
+ /usr/include/c++/15.2.1/bits/fs_path.h /usr/include/c++/15.2.1/codecvt \
+ /usr/include/c++/15.2.1/bits/fs_dir.h \
+ /usr/include/c++/15.2.1/bits/fs_ops.h \
+ /usr/include/qt6/QtCore/qfileinfo.h /usr/include/qt6/QtCore/qtimezone.h \
+ /usr/include/qt6/QtCore/QDebug /usr/include/qt6/QtCore/qdebug.h \
+ /usr/include/qt6/QtCore/QTimer /usr/include/qt6/QtCore/qtimer.h \
+ /usr/include/qt6/QtCore/QEventLoop /usr/include/qt6/QtCore/qeventloop.h \
+ /usr/include/qt6/QtCore/QThread /usr/include/qt6/QtCore/qthread.h \
+ /usr/include/c++/15.2.1/future /usr/include/c++/15.2.1/mutex \
+ /usr/include/c++/15.2.1/bits/unique_lock.h \
+ /usr/include/c++/15.2.1/condition_variable \
+ /usr/include/c++/15.2.1/stop_token \
+ /usr/include/c++/15.2.1/bits/std_thread.h \
+ /usr/include/c++/15.2.1/semaphore \
+ /usr/include/c++/15.2.1/bits/semaphore_base.h \
+ /usr/include/c++/15.2.1/bits/atomic_timed_wait.h \
+ /usr/include/c++/15.2.1/bits/this_thread_sleep.h /usr/include/sys/time.h \
+ /usr/include/semaphore.h /usr/include/bits/semaphore.h \
+ /usr/include/c++/15.2.1/bits/atomic_futex.h \
+ /usr/include/qt6/QtCore/QThreadPool \
+ /usr/include/qt6/QtCore/qthreadpool.h /usr/include/qt6/QtCore/qthread.h \
+ /usr/include/qt6/QtCore/qrunnable.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/mainwindow.h \
  /usr/include/qt6/QtWidgets/QMainWindow \
  /usr/include/qt6/QtWidgets/qmainwindow.h \
@@ -429,25 +460,20 @@ CMakeFiles/naleystogramm.dir/src/main.cpp.o: \
  /usr/include/qt6/QtWidgets/qpushbutton.h \
  /usr/include/qt6/QtWidgets/qabstractbutton.h \
  /usr/include/qt6/QtWidgets/QStackedWidget \
- /usr/include/qt6/QtWidgets/qstackedwidget.h \
+ /usr/include/qt6/QtWidgets/qstackedwidget.h /usr/include/qt6/QtCore/QMap \
+ /usr/include/qt6/QtCore/qmap.h /usr/include/qt6/QtCore/QHash \
+ /usr/include/qt6/QtCore/qhash.h /usr/include/qt6/QtCore/QSet \
+ /usr/include/qt6/QtCore/qset.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/network.h \
  /usr/include/qt6/QtCore/QObject /usr/include/qt6/QtCore/qobject.h \
  /usr/include/qt6/QtNetwork/QTcpServer \
  /usr/include/qt6/QtNetwork/qtcpserver.h \
  /usr/include/qt6/QtNetwork/QTcpSocket \
- /usr/include/qt6/QtNetwork/qtcpsocket.h /usr/include/qt6/QtCore/QMap \
- /usr/include/qt6/QtCore/qmap.h \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/identity.h \
- /usr/include/qt6/QtCore/QString \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/storage.h \
- /usr/include/qt6/QtSql/QSqlDatabase \
- /usr/include/qt6/QtSql/qsqldatabase.h \
- /usr/include/qt6/QtSql/qtsqlglobal.h \
- /usr/include/qt6/QtSql/qtsql-config.h \
- /usr/include/qt6/QtSql/qtsqlexports.h /usr/include/qt6/QtCore/QDateTime \
- /usr/include/qt6/QtCore/qdatetime.h /usr/include/qt6/QtCore/QList \
- /usr/include/qt6/QtCore/qlist.h \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/filetransfer.h \
+ /usr/include/qt6/QtNetwork/qtcpsocket.h /usr/include/qt6/QtCore/QQueue \
+ /usr/include/qt6/QtCore/qqueue.h /usr/include/qt6/QtCore/QDateTime \
+ /usr/include/qt6/QtCore/qdatetime.h \
+ /usr/include/qt6/QtCore/QElapsedTimer \
+ /usr/include/qt6/QtCore/qelapsedtimer.h \
  /usr/include/qt6/QtCore/QJsonObject \
  /usr/include/qt6/QtCore/qjsonobject.h \
  /usr/include/qt6/QtCore/qjsonvalue.h \
@@ -456,10 +482,46 @@ CMakeFiles/naleystogramm.dir/src/main.cpp.o: \
  /usr/include/qt6/QtCore/qregularexpression.h \
  /usr/include/qt6/QtCore/quuid.h /usr/include/qt6/QtCore/qjsondocument.h \
  /usr/include/qt6/QtCore/qjsonparseerror.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/identity.h \
+ /usr/include/qt6/QtCore/QString \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/storage.h \
+ /usr/include/qt6/QtSql/QSqlDatabase \
+ /usr/include/qt6/QtSql/qsqldatabase.h \
+ /usr/include/qt6/QtSql/qtsqlglobal.h \
+ /usr/include/qt6/QtSql/qtsql-config.h \
+ /usr/include/qt6/QtSql/qtsqlexports.h /usr/include/qt6/QtCore/QList \
+ /usr/include/qt6/QtCore/qlist.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/filetransfer.h \
+ /usr/include/qt6/QtCore/QFile /usr/include/qt6/QtCore/qfile.h \
+ /usr/include/qt6/QtCore/QCryptographicHash \
+ /usr/include/qt6/QtCore/qcryptographichash.h \
+ /usr/include/qt6/QtCore/QFutureWatcher \
+ /usr/include/qt6/QtCore/qfuturewatcher.h \
+ /usr/include/qt6/QtCore/qfuture.h \
+ /usr/include/qt6/QtCore/qfutureinterface.h \
+ /usr/include/qt6/QtCore/qmutex.h /usr/include/qt6/QtCore/qtsan_impl.h \
+ /usr/include/qt6/QtCore/qresultstore.h \
+ /usr/include/qt6/QtCore/qfuture_impl.h \
+ /usr/include/qt6/QtCore/qthreadpool.h \
+ /usr/include/qt6/QtCore/qexception.h /usr/include/qt6/QtCore/qpromise.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/callmanager.h \
+ /usr/include/qt6/QtNetwork/QHostAddress \
+ /usr/include/qt6/QtNetwork/qhostaddress.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/../media/mediaengine.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/remoteshellmanager.h \
+ /usr/include/qt6/QtCore/QRegularExpression \
+ /usr/include/qt6/QtCore/qregularexpression.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../crypto/e2e.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../crypto/x3dh.h \
  /usr/include/qt6/QtCore/QByteArray /usr/include/qt6/QtCore/qbytearray.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../crypto/ratchet.h \
+ /usr/include/qt6/QtCore/QPair /usr/include/qt6/QtCore/qpair.h \
+ /usr/include/qt6/QtCore/QMutex /usr/include/qt6/QtCore/qmutex.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/thememanager.h \
  /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/../core/updatechecker.h \
- /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/sessionmanager.h
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/callwindow.h \
+ /usr/include/qt6/QtWidgets/QDialog /usr/include/qt6/QtWidgets/qdialog.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/ui/splashscreen.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/sessionmanager.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/systeminfo.h \
+ /home/xomel45/my_prj/projects/cpp_prj/naleystogramm_splitter/naleystogramm/src/core/logger.h

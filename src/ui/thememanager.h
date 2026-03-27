@@ -3,9 +3,13 @@
 #include <QString>
 
 enum class Theme {
-    Dark,   // Тёмная — глубокие тёмные тона, акценты насыщенные
-    Light,  // Светлая — яркие, воздушные, сочные акценты
-    BW      // Ч/Б — только чёрный, белый и серые
+    Dark,      // Тёмная — глубокие тёмные тона, акценты насыщенные
+    Light,     // Светлая — яркие, воздушные, сочные акценты
+    BW,        // Ч/Б — только чёрный, белый и серые
+    Forest,    // Лес — тёмно-зелёные тона, природные акценты
+    Cyberpunk, // Киберпанк — неоновый фиолетовый, тёмный фон
+    Nordic,    // Нордик — холодный синий/серый, скандинавский минимализм
+    Sunset     // Закат — тёплый розово-оранжевый, уютная атмосфера
 };
 
 // ── Палитра одной темы ────────────────────────────────────────────────────
@@ -67,6 +71,10 @@ private:
     static ThemePalette darkPalette();
     static ThemePalette lightPalette();
     static ThemePalette bwPalette();
+    static ThemePalette forestPalette();
+    static ThemePalette cyberpunkPalette();
+    static ThemePalette nordicPalette();
+    static ThemePalette sunsetPalette();
 
     Theme        m_theme{Theme::Dark};
     ThemePalette m_palette;

@@ -1,0 +1,22 @@
+// Windows Resource File для naleystogramm.exe
+// Компилируется windres и линкуется в .exe
+// Содержит: манифест UAC/DPI, иконку приложения
+//
+// Сборка: windres --input app.rc --output app_resources.o --output-format coff
+//         (CMake делает это автоматически через toolchain)
+
+#include <windows.h>
+
+// ── Манифест UAC ──────────────────────────────────────────────────────────────
+// CREATEPROCESS_MANIFEST_RESOURCE_ID = 1 — стандартный ID манифеста приложения.
+// Именно этот ID проверяет Windows при создании процесса для применения UAC.
+// windres встроит бинарное содержимое app.manifest прямо в .exe ресурс.
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "app.manifest"
+
+// ── Иконка приложения ─────────────────────────────────────────────────────────
+// Раскомментировать когда появится app_icon.ico (конвертировать из PNG командой:
+//   convert resources/icons/app_icon.png -resize 256x256 resources/windows/app_icon.ico
+// или через ffmpeg:
+//   ffmpeg -i resources/icons/app_icon.png resources/windows/app_icon.ico
+// )
+// 1 ICON "app_icon.ico"

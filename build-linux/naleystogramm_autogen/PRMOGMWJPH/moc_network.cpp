@@ -46,6 +46,8 @@ template <> constexpr inline auto NetworkManager::qt_create_metaobjectdata<qt_me
         "upnpOk",
         "externalIpDiscovered",
         "ip",
+        "upnpMappingResult",
+        "ok",
         "incomingRequest",
         "QUuid",
         "peerUuid",
@@ -59,6 +61,13 @@ template <> constexpr inline auto NetworkManager::qt_create_metaobjectdata<qt_me
         "uuid",
         "name",
         "peerDisconnected",
+        "contactNameUpdated",
+        "peerInfoUpdated",
+        "connectionStateChanged",
+        "ConnectionState",
+        "state",
+        "connectionLog",
+        "message",
         "error",
         "onNewConnection",
         "onSocketReadyRead",
@@ -74,32 +83,52 @@ template <> constexpr inline auto NetworkManager::qt_create_metaobjectdata<qt_me
         QtMocHelpers::SignalData<void(const QString &)>(6, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QString, 7 },
         }}),
+        // Signal 'upnpMappingResult'
+        QtMocHelpers::SignalData<void(bool)>(8, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::Bool, 9 },
+        }}),
         // Signal 'incomingRequest'
-        QtMocHelpers::SignalData<void(QUuid, QString, QString)>(8, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { 0x80000000 | 9, 10 }, { QMetaType::QString, 11 }, { QMetaType::QString, 12 },
+        QtMocHelpers::SignalData<void(QUuid, QString, QString)>(10, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 11, 12 }, { QMetaType::QString, 13 }, { QMetaType::QString, 14 },
         }}),
         // Signal 'messageReceived'
-        QtMocHelpers::SignalData<void(QUuid, QJsonObject)>(13, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { 0x80000000 | 9, 14 }, { 0x80000000 | 15, 16 },
+        QtMocHelpers::SignalData<void(QUuid, QJsonObject)>(15, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 11, 16 }, { 0x80000000 | 17, 18 },
         }}),
         // Signal 'peerConnected'
-        QtMocHelpers::SignalData<void(QUuid, QString)>(17, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { 0x80000000 | 9, 18 }, { QMetaType::QString, 19 },
+        QtMocHelpers::SignalData<void(QUuid, QString)>(19, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 11, 20 }, { QMetaType::QString, 21 },
         }}),
         // Signal 'peerDisconnected'
-        QtMocHelpers::SignalData<void(QUuid)>(20, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { 0x80000000 | 9, 18 },
+        QtMocHelpers::SignalData<void(QUuid)>(22, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 11, 20 },
+        }}),
+        // Signal 'contactNameUpdated'
+        QtMocHelpers::SignalData<void(QUuid, QString)>(23, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 11, 20 }, { QMetaType::QString, 21 },
+        }}),
+        // Signal 'peerInfoUpdated'
+        QtMocHelpers::SignalData<void(QUuid)>(24, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 11, 20 },
+        }}),
+        // Signal 'connectionStateChanged'
+        QtMocHelpers::SignalData<void(QUuid, ConnectionState)>(25, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 11, 20 }, { 0x80000000 | 26, 27 },
+        }}),
+        // Signal 'connectionLog'
+        QtMocHelpers::SignalData<void(const QString &)>(28, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 29 },
         }}),
         // Signal 'error'
-        QtMocHelpers::SignalData<void(const QString &)>(21, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 16 },
+        QtMocHelpers::SignalData<void(const QString &)>(30, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::QString, 18 },
         }}),
         // Slot 'onNewConnection'
-        QtMocHelpers::SlotData<void()>(22, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(31, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'onSocketReadyRead'
-        QtMocHelpers::SlotData<void()>(23, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(32, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'onSocketDisconnected'
-        QtMocHelpers::SlotData<void()>(24, 2, QMC::AccessPrivate, QMetaType::Void),
+        QtMocHelpers::SlotData<void()>(33, 2, QMC::AccessPrivate, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -125,14 +154,19 @@ void NetworkManager::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
         switch (_id) {
         case 0: _t->ready((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<quint16>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<bool>>(_a[3]))); break;
         case 1: _t->externalIpDiscovered((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 2: _t->incomingRequest((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
-        case 3: _t->messageReceived((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QJsonObject>>(_a[2]))); break;
-        case 4: _t->peerConnected((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
-        case 5: _t->peerDisconnected((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
-        case 6: _t->error((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
-        case 7: _t->onNewConnection(); break;
-        case 8: _t->onSocketReadyRead(); break;
-        case 9: _t->onSocketDisconnected(); break;
+        case 2: _t->upnpMappingResult((*reinterpret_cast<std::add_pointer_t<bool>>(_a[1]))); break;
+        case 3: _t->incomingRequest((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
+        case 4: _t->messageReceived((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QJsonObject>>(_a[2]))); break;
+        case 5: _t->peerConnected((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 6: _t->peerDisconnected((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 7: _t->contactNameUpdated((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 8: _t->peerInfoUpdated((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 9: _t->connectionStateChanged((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<ConnectionState>>(_a[2]))); break;
+        case 10: _t->connectionLog((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 11: _t->error((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 12: _t->onNewConnection(); break;
+        case 13: _t->onSocketReadyRead(); break;
+        case 14: _t->onSocketDisconnected(); break;
         default: ;
         }
     }
@@ -141,15 +175,25 @@ void NetworkManager::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
             return;
         if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(const QString & )>(_a, &NetworkManager::externalIpDiscovered, 1))
             return;
-        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , QString , QString )>(_a, &NetworkManager::incomingRequest, 2))
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(bool )>(_a, &NetworkManager::upnpMappingResult, 2))
             return;
-        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , QJsonObject )>(_a, &NetworkManager::messageReceived, 3))
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , QString , QString )>(_a, &NetworkManager::incomingRequest, 3))
             return;
-        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , QString )>(_a, &NetworkManager::peerConnected, 4))
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , QJsonObject )>(_a, &NetworkManager::messageReceived, 4))
             return;
-        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid )>(_a, &NetworkManager::peerDisconnected, 5))
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , QString )>(_a, &NetworkManager::peerConnected, 5))
             return;
-        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(const QString & )>(_a, &NetworkManager::error, 6))
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid )>(_a, &NetworkManager::peerDisconnected, 6))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , QString )>(_a, &NetworkManager::contactNameUpdated, 7))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid )>(_a, &NetworkManager::peerInfoUpdated, 8))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(QUuid , ConnectionState )>(_a, &NetworkManager::connectionStateChanged, 9))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(const QString & )>(_a, &NetworkManager::connectionLog, 10))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (NetworkManager::*)(const QString & )>(_a, &NetworkManager::error, 11))
             return;
     }
 }
@@ -173,14 +217,14 @@ int NetworkManager::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 10)
+        if (_id < 15)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 10;
+        _id -= 15;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 10)
+        if (_id < 15)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 10;
+        _id -= 15;
     }
     return _id;
 }
@@ -198,32 +242,62 @@ void NetworkManager::externalIpDiscovered(const QString & _t1)
 }
 
 // SIGNAL 2
-void NetworkManager::incomingRequest(QUuid _t1, QString _t2, QString _t3)
+void NetworkManager::upnpMappingResult(bool _t1)
 {
-    QMetaObject::activate<void>(this, &staticMetaObject, 2, nullptr, _t1, _t2, _t3);
+    QMetaObject::activate<void>(this, &staticMetaObject, 2, nullptr, _t1);
 }
 
 // SIGNAL 3
-void NetworkManager::messageReceived(QUuid _t1, QJsonObject _t2)
+void NetworkManager::incomingRequest(QUuid _t1, QString _t2, QString _t3)
 {
-    QMetaObject::activate<void>(this, &staticMetaObject, 3, nullptr, _t1, _t2);
+    QMetaObject::activate<void>(this, &staticMetaObject, 3, nullptr, _t1, _t2, _t3);
 }
 
 // SIGNAL 4
-void NetworkManager::peerConnected(QUuid _t1, QString _t2)
+void NetworkManager::messageReceived(QUuid _t1, QJsonObject _t2)
 {
     QMetaObject::activate<void>(this, &staticMetaObject, 4, nullptr, _t1, _t2);
 }
 
 // SIGNAL 5
-void NetworkManager::peerDisconnected(QUuid _t1)
+void NetworkManager::peerConnected(QUuid _t1, QString _t2)
 {
-    QMetaObject::activate<void>(this, &staticMetaObject, 5, nullptr, _t1);
+    QMetaObject::activate<void>(this, &staticMetaObject, 5, nullptr, _t1, _t2);
 }
 
 // SIGNAL 6
-void NetworkManager::error(const QString & _t1)
+void NetworkManager::peerDisconnected(QUuid _t1)
 {
     QMetaObject::activate<void>(this, &staticMetaObject, 6, nullptr, _t1);
+}
+
+// SIGNAL 7
+void NetworkManager::contactNameUpdated(QUuid _t1, QString _t2)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 7, nullptr, _t1, _t2);
+}
+
+// SIGNAL 8
+void NetworkManager::peerInfoUpdated(QUuid _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 8, nullptr, _t1);
+}
+
+// SIGNAL 9
+void NetworkManager::connectionStateChanged(QUuid _t1, ConnectionState _t2)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 9, nullptr, _t1, _t2);
+}
+
+// SIGNAL 10
+void NetworkManager::connectionLog(const QString & _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 10, nullptr, _t1);
+}
+
+// SIGNAL 11
+void NetworkManager::error(const QString & _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 11, nullptr, _t1);
 }
 QT_WARNING_POP

@@ -67,7 +67,36 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
         "onCycleTheme",
         "openSettings",
         "closeSettings",
-        "refreshOwnDisplay"
+        "refreshOwnDisplay",
+        "onOpenProfile",
+        "onAvatarDataReceived",
+        "pngData",
+        "hash",
+        "onContactNameUpdated",
+        "onBlockContact",
+        "onDeleteChat",
+        "onDeleteContact",
+        "onSendVoice",
+        "filePath",
+        "durationMs",
+        "onCallRequested",
+        "onIncomingCall",
+        "callerName",
+        "callId",
+        "onCallEnded",
+        "peer",
+        "onShellRequestedFromProfile",
+        "onShellRequested",
+        "peerName",
+        "sessionId",
+        "onShellAccepted",
+        "onShellRejected",
+        "reason",
+        "onShellDataReceived",
+        "data",
+        "onInputMonitored",
+        "onShellSessionEnded",
+        "onPrivilegeEscalationDetected"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -119,6 +148,78 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
         QtMocHelpers::SlotData<void()>(27, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'refreshOwnDisplay'
         QtMocHelpers::SlotData<void()>(28, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'onOpenProfile'
+        QtMocHelpers::SlotData<void(QUuid)>(29, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 8 },
+        }}),
+        // Slot 'onAvatarDataReceived'
+        QtMocHelpers::SlotData<void(QUuid, const QByteArray &, const QString &)>(30, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 13 }, { QMetaType::QByteArray, 31 }, { QMetaType::QString, 32 },
+        }}),
+        // Slot 'onContactNameUpdated'
+        QtMocHelpers::SlotData<void(QUuid, QString)>(33, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 8 }, { QMetaType::QString, 9 },
+        }}),
+        // Slot 'onBlockContact'
+        QtMocHelpers::SlotData<void(QUuid)>(34, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 8 },
+        }}),
+        // Slot 'onDeleteChat'
+        QtMocHelpers::SlotData<void(QUuid)>(35, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 8 },
+        }}),
+        // Slot 'onDeleteContact'
+        QtMocHelpers::SlotData<void(QUuid)>(36, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 8 },
+        }}),
+        // Slot 'onSendVoice'
+        QtMocHelpers::SlotData<void(const QString &, int)>(37, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 38 }, { QMetaType::Int, 39 },
+        }}),
+        // Slot 'onCallRequested'
+        QtMocHelpers::SlotData<void(QUuid)>(40, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 17 },
+        }}),
+        // Slot 'onIncomingCall'
+        QtMocHelpers::SlotData<void(QUuid, QString, QString)>(41, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 13 }, { QMetaType::QString, 42 }, { QMetaType::QString, 43 },
+        }}),
+        // Slot 'onCallEnded'
+        QtMocHelpers::SlotData<void(QUuid)>(44, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 45 },
+        }}),
+        // Slot 'onShellRequestedFromProfile'
+        QtMocHelpers::SlotData<void(QUuid)>(46, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 17 },
+        }}),
+        // Slot 'onShellRequested'
+        QtMocHelpers::SlotData<void(QUuid, QString, QString)>(47, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 7, 13 }, { QMetaType::QString, 48 }, { QMetaType::QString, 49 },
+        }}),
+        // Slot 'onShellAccepted'
+        QtMocHelpers::SlotData<void(QString, QUuid, QString)>(50, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 49 }, { 0x80000000 | 7, 17 }, { QMetaType::QString, 48 },
+        }}),
+        // Slot 'onShellRejected'
+        QtMocHelpers::SlotData<void(QString, QString)>(51, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 49 }, { QMetaType::QString, 52 },
+        }}),
+        // Slot 'onShellDataReceived'
+        QtMocHelpers::SlotData<void(QString, QByteArray)>(53, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 49 }, { QMetaType::QByteArray, 54 },
+        }}),
+        // Slot 'onInputMonitored'
+        QtMocHelpers::SlotData<void(QString, QByteArray)>(55, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 49 }, { QMetaType::QByteArray, 54 },
+        }}),
+        // Slot 'onShellSessionEnded'
+        QtMocHelpers::SlotData<void(QString, QString)>(56, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 49 }, { QMetaType::QString, 52 },
+        }}),
+        // Slot 'onPrivilegeEscalationDetected'
+        QtMocHelpers::SlotData<void(QString)>(57, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 49 },
+        }}),
     };
     QtMocHelpers::UintData qt_properties {
     };
@@ -158,6 +259,24 @@ void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 13: _t->openSettings(); break;
         case 14: _t->closeSettings(); break;
         case 15: _t->refreshOwnDisplay(); break;
+        case 16: _t->onOpenProfile((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 17: _t->onAvatarDataReceived((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QByteArray>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
+        case 18: _t->onContactNameUpdated((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 19: _t->onBlockContact((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 20: _t->onDeleteChat((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 21: _t->onDeleteContact((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 22: _t->onSendVoice((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<int>>(_a[2]))); break;
+        case 23: _t->onCallRequested((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 24: _t->onIncomingCall((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
+        case 25: _t->onCallEnded((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 26: _t->onShellRequestedFromProfile((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 27: _t->onShellRequested((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
+        case 28: _t->onShellAccepted((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
+        case 29: _t->onShellRejected((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 30: _t->onShellDataReceived((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QByteArray>>(_a[2]))); break;
+        case 31: _t->onInputMonitored((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QByteArray>>(_a[2]))); break;
+        case 32: _t->onShellSessionEnded((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
+        case 33: _t->onPrivilegeEscalationDetected((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
         default: ;
         }
     }
@@ -182,14 +301,14 @@ int MainWindow::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 16)
+        if (_id < 34)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 16;
+        _id -= 34;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 16)
+        if (_id < 34)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 16;
+        _id -= 34;
     }
     return _id;
 }

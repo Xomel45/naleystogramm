@@ -22,7 +22,7 @@ public:
     // Поменяй на своё GitHub repo
     static constexpr const char* kGitHubOwner   = "Xomel45";
     static constexpr const char* kGitHubRepo    = "naleystogramm";
-    static constexpr const char* kCurrentVersion = "0.1.0";
+    static constexpr const char* kCurrentVersion = "0.5.3";
 
     explicit UpdateChecker(QObject* parent = nullptr);
 

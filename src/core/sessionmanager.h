@@ -3,6 +3,14 @@
 #include <QString>
 #include <QUuid>
 #include <QJsonObject>
+#include <QByteArray>
+
+// Режим проброса портов — определяет, как приложение рекламирует свой адрес пирам
+enum class PortForwardingMode : int {
+    UpnpAuto = 0,  // UPnP (автоматический, по умолчанию)
+    Manual   = 1,  // Ручной (VPN / статический IP + внешний порт)
+    Disabled = 2,  // Отключено (только локальная сеть, без проброса)
+};
 
 // ── SessionManager ─────────────────────────────────────────────────────────
 // Единое хранилище всех пользовательских настроек в session.json
@@ -76,6 +84,30 @@ public:
     [[nodiscard]] QString lastUpdateCheck() const { return m_lastUpdateCheck; }
     void setLastUpdateCheck(const QString& iso);
 
+    // ── Port Forwarding ───────────────────────────────────────────────────
+    [[nodiscard]] PortForwardingMode portForwardingMode() const { return m_portForwardingMode; }
+    [[nodiscard]] QString            manualPublicIp()     const { return m_manualPublicIp; }
+    [[nodiscard]] quint16            manualPublicPort()   const { return m_manualPublicPort; }
+    void setPortForwardingMode(PortForwardingMode mode);
+    void setManualPublicIp(const QString& ip);
+    void setManualPublicPort(quint16 port);
+
+    // ── Security ──────────────────────────────────────────────────────────
+    // Разрешить входящие запросы удалённого шелла (по умолчанию включено)
+    [[nodiscard]] bool remoteShellEnabled() const { return m_remoteShellEnabled; }
+    void setRemoteShellEnabled(bool on);
+
+    // ── Avatar ────────────────────────────────────────────────────────────
+    [[nodiscard]] QString avatarPath() const { return m_avatarPath; }
+    void setAvatarPath(const QString& path);   // автосохранение
+
+    // SHA-256 hex файла; пустая строка если файл не читается
+    [[nodiscard]] static QByteArray computeAvatarHash(const QString& filePath);
+
+    // Создаёт все необходимые директории для хранения данных приложения.
+    // Вызывается однократно при старте, до инициализации Storage и Logger.
+    static void ensureDirectories();
+
 signals:
     void loaded();
     void saved();
@@ -106,4 +138,15 @@ private:
 
     // Updates
     QString m_lastUpdateCheck {};
+
+    // Port Forwarding
+    PortForwardingMode m_portForwardingMode {PortForwardingMode::UpnpAuto};
+    QString            m_manualPublicIp     {};
+    quint16            m_manualPublicPort   {47821};
+
+    // Security
+    bool    m_remoteShellEnabled {true};
+
+    // Avatar
+    QString m_avatarPath {};
 };

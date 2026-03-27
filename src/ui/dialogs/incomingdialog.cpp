@@ -6,7 +6,7 @@
 
 IncomingDialog::IncomingDialog(const QString& name, const QString& ip,
                                 QWidget* parent) : QDialog(parent) {
-    setWindowTitle("Входящий запрос");
+    setWindowTitle(tr("Incoming request"));
     setFixedWidth(360);
     // Глобальный QSS уже применён через ThemeManager
 
@@ -18,7 +18,7 @@ IncomingDialog::IncomingDialog(const QString& name, const QString& ip,
     icon->setAlignment(Qt::AlignCenter);
     icon->setStyleSheet("font-size: 38px;");
 
-    auto* title = new QLabel("Входящий запрос");
+    auto* title = new QLabel(tr("Incoming request"));
     title->setObjectName("dlgTitle");
     title->setAlignment(Qt::AlignCenter);
 
@@ -28,16 +28,16 @@ IncomingDialog::IncomingDialog(const QString& name, const QString& ip,
     info->setAlignment(Qt::AlignCenter);
     info->setTextFormat(Qt::RichText);
 
-    auto* subtitle = new QLabel("хочет подключиться к тебе");
+    auto* subtitle = new QLabel(tr("wants to connect to you"));
     subtitle->setObjectName("dlgSubtitle");
     subtitle->setAlignment(Qt::AlignCenter);
 
     auto* btnRow = new QHBoxLayout();
     btnRow->setSpacing(10);
 
-    auto* rejectBtn = new QPushButton("✕  Отклонить");
+    auto* rejectBtn = new QPushButton(tr("Reject"));
     rejectBtn->setObjectName("dlgRejectBtn");
-    auto* acceptBtn = new QPushButton("✓  Принять");
+    auto* acceptBtn = new QPushButton(tr("Accept"));
     acceptBtn->setObjectName("dlgAcceptBtn");
 
     connect(acceptBtn, &QPushButton::clicked, this, &QDialog::accept);

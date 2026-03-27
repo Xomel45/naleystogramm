@@ -7,11 +7,12 @@
 #include <QJsonObject>
 #include <QDateTime>
 #include <QUuid>
+#include <QCryptographicHash>
 #include <QDebug>
 
 static constexpr const char* kAppDirName  = "naleystogramm";
 static constexpr const char* kFileName    = "session.json";
-static constexpr const char* kVersion     = "0.1.0";
+static constexpr const char* kVersion     = "0.5.3";
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -45,7 +46,7 @@ void SessionManager::initFilePath() {
     dir.cd(kAppDirName);
 
     m_filePath = dir.filePath(kFileName);
-    qDebug("[Session] Path: %s", qPrintable(m_filePath));
+    qDebug("[Session] Config File Located");
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────
@@ -83,9 +84,7 @@ void SessionManager::load() {
     fromJson(doc.object());
     generateIdentityIfNeeded();  // на случай если uuid пустой
     emit loaded();
-    qDebug("[Session] Loaded: name=%s uuid=%s",
-           qPrintable(m_displayName),
-           qPrintable(m_uuid.toString(QUuid::WithoutBraces)));
+    qDebug("[Session] Session Loaded");
 }
 
 // ── Save ──────────────────────────────────────────────────────────────────
@@ -102,19 +101,23 @@ void SessionManager::save() {
     f.write(doc.toJson(QJsonDocument::Indented));
     f.close();
     emit saved();
-    qDebug("[Session] Saved to %s", qPrintable(m_filePath));
+    qDebug("[Session] Session Saved");
 }
 
 // ── JSON сериализация ─────────────────────────────────────────────────────
 
 QJsonObject SessionManager::toJson() const {
     QJsonObject identity;
-    identity["uuid"] = m_uuid.toString(QUuid::WithoutBraces);
-    identity["name"] = m_displayName;
+    identity["uuid"]       = m_uuid.toString(QUuid::WithoutBraces);
+    identity["name"]       = m_displayName;
+    identity["avatarPath"] = m_avatarPath;
 
     QJsonObject network;
-    network["port"]   = static_cast<int>(m_port);
-    network["bindIp"] = m_bindIp;
+    network["port"]               = static_cast<int>(m_port);
+    network["bindIp"]             = m_bindIp;
+    network["portForwardingMode"] = static_cast<int>(m_portForwardingMode);
+    network["manualPublicIp"]     = m_manualPublicIp;
+    network["manualPublicPort"]   = static_cast<int>(m_manualPublicPort);
 
     QJsonObject ui;
     ui["theme"]          = m_theme;
@@ -129,11 +132,15 @@ QJsonObject SessionManager::toJson() const {
     meta["version"] = kVersion;
     meta["savedAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
+    QJsonObject security;
+    security["remoteShell"] = m_remoteShellEnabled;
+
     QJsonObject root;
     root["identity"] = identity;
     root["network"]  = network;
     root["ui"]       = ui;
     root["updates"]  = updates;
+    root["security"] = security;
     root["meta"]     = meta;
 
     return root;
@@ -143,13 +150,18 @@ void SessionManager::fromJson(const QJsonObject& obj) {
     // Identity
     const auto id = obj["identity"].toObject();
     const QString uuidStr = id["uuid"].toString();
-    m_uuid = uuidStr.isEmpty() ? QUuid() : QUuid(uuidStr);
+    m_uuid        = uuidStr.isEmpty() ? QUuid() : QUuid(uuidStr);
     m_displayName = id["name"].toString("User");
+    m_avatarPath  = id["avatarPath"].toString();
 
     // Network
     const auto net = obj["network"].toObject();
-    m_port   = static_cast<quint16>(net["port"].toInt(47821));
-    m_bindIp = net["bindIp"].toString();
+    m_port               = static_cast<quint16>(net["port"].toInt(47821));
+    m_bindIp             = net["bindIp"].toString();
+    m_portForwardingMode = static_cast<PortForwardingMode>(
+        net["portForwardingMode"].toInt(static_cast<int>(PortForwardingMode::UpnpAuto)));
+    m_manualPublicIp     = net["manualPublicIp"].toString();
+    m_manualPublicPort   = static_cast<quint16>(net["manualPublicPort"].toInt(47821));
 
     // UI
     const auto ui = obj["ui"].toObject();
@@ -161,13 +173,16 @@ void SessionManager::fromJson(const QJsonObject& obj) {
     // Updates
     const auto upd = obj["updates"].toObject();
     m_lastUpdateCheck = upd["lastChecked"].toString();
+
+    // Security
+    const auto sec = obj["security"].toObject();
+    m_remoteShellEnabled = sec["remoteShell"].toBool(true);
 }
 
 void SessionManager::generateIdentityIfNeeded() {
     if (m_uuid.isNull()) {
         m_uuid = QUuid::createUuid();
-        qDebug("[Session] Generated new UUID: %s",
-               qPrintable(m_uuid.toString(QUuid::WithoutBraces)));
+        qDebug("[Session] Identity Generated");
     }
     if (m_displayName.isEmpty())
         m_displayName = "User";
@@ -186,4 +201,61 @@ void SessionManager::setLeftPanelWidth(int w)            { m_leftPanelWidth = w;
 void SessionManager::setLastUpdateCheck(const QString& iso) {
     m_lastUpdateCheck = iso;
     save();
+}
+
+void SessionManager::setPortForwardingMode(PortForwardingMode mode) {
+    m_portForwardingMode = mode;
+    save();
+}
+
+void SessionManager::setManualPublicIp(const QString& ip) {
+    m_manualPublicIp = ip;
+    save();
+}
+
+void SessionManager::setManualPublicPort(quint16 port) {
+    m_manualPublicPort = port;
+    save();
+}
+
+void SessionManager::setRemoteShellEnabled(bool on) {
+    m_remoteShellEnabled = on;
+    save();
+}
+
+void SessionManager::setAvatarPath(const QString& path) {
+    m_avatarPath = path;
+    save();
+}
+
+QByteArray SessionManager::computeAvatarHash(const QString& filePath) {
+    QFile f(filePath);
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    return QCryptographicHash::hash(f.readAll(), QCryptographicHash::Sha256).toHex();
+}
+
+// ── Создание директорий ────────────────────────────────────────────────────
+// Гарантирует существование всех папок до инициализации подсистем (Storage, Logger).
+// Вызывается один раз при старте из main.cpp сразу после загрузки сессии.
+
+void SessionManager::ensureDirectories() {
+    // Список пар: описание → абсолютный путь
+    const struct { const char* label; QString path; } dirs[] = {
+        { "Config",  QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+                     + "/naleystogramm" },
+        { "Avatars", QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                     + "/avatars" },
+        { "Logs",    QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                     + "/logs" },
+        { "Keys",    QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+                     + "/keys" },
+    };
+
+    for (const auto& d : dirs) {
+        if (QDir().mkpath(d.path)) {
+            qDebug("[Session] Directory Ready: %s", d.label);
+        } else {
+            qWarning("[Session] Directory Creation Failed: %s", d.label);
+        }
+    }
 }

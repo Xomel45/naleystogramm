@@ -43,11 +43,18 @@ template <> constexpr inline auto ContactsWidget::qt_create_metaobjectdata<qt_me
         "",
         "QUuid",
         "uuid",
+        "profileRequested",
+        "blockRequested",
+        "deleteChatRequested",
+        "contactDeleteRequested",
         "onItemClicked",
         "QListWidgetItem*",
         "item",
         "onSearchChanged",
-        "text"
+        "text",
+        "onContextMenuRequested",
+        "QPoint",
+        "pos"
     };
 
     QtMocHelpers::UintData qt_methods {
@@ -55,13 +62,33 @@ template <> constexpr inline auto ContactsWidget::qt_create_metaobjectdata<qt_me
         QtMocHelpers::SignalData<void(QUuid)>(1, 2, QMC::AccessPublic, QMetaType::Void, {{
             { 0x80000000 | 3, 4 },
         }}),
+        // Signal 'profileRequested'
+        QtMocHelpers::SignalData<void(QUuid)>(5, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 3, 4 },
+        }}),
+        // Signal 'blockRequested'
+        QtMocHelpers::SignalData<void(QUuid)>(6, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 3, 4 },
+        }}),
+        // Signal 'deleteChatRequested'
+        QtMocHelpers::SignalData<void(QUuid)>(7, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 3, 4 },
+        }}),
+        // Signal 'contactDeleteRequested'
+        QtMocHelpers::SignalData<void(QUuid)>(8, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { 0x80000000 | 3, 4 },
+        }}),
         // Slot 'onItemClicked'
-        QtMocHelpers::SlotData<void(QListWidgetItem *)>(5, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { 0x80000000 | 6, 7 },
+        QtMocHelpers::SlotData<void(QListWidgetItem *)>(9, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 10, 11 },
         }}),
         // Slot 'onSearchChanged'
-        QtMocHelpers::SlotData<void(const QString &)>(8, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QString, 9 },
+        QtMocHelpers::SlotData<void(const QString &)>(12, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 13 },
+        }}),
+        // Slot 'onContextMenuRequested'
+        QtMocHelpers::SlotData<void(const QPoint &)>(14, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { 0x80000000 | 15, 16 },
         }}),
     };
     QtMocHelpers::UintData qt_properties {
@@ -87,13 +114,26 @@ void ContactsWidget::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
     if (_c == QMetaObject::InvokeMetaMethod) {
         switch (_id) {
         case 0: _t->contactSelected((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
-        case 1: _t->onItemClicked((*reinterpret_cast<std::add_pointer_t<QListWidgetItem*>>(_a[1]))); break;
-        case 2: _t->onSearchChanged((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 1: _t->profileRequested((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 2: _t->blockRequested((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 3: _t->deleteChatRequested((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 4: _t->contactDeleteRequested((*reinterpret_cast<std::add_pointer_t<QUuid>>(_a[1]))); break;
+        case 5: _t->onItemClicked((*reinterpret_cast<std::add_pointer_t<QListWidgetItem*>>(_a[1]))); break;
+        case 6: _t->onSearchChanged((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 7: _t->onContextMenuRequested((*reinterpret_cast<std::add_pointer_t<QPoint>>(_a[1]))); break;
         default: ;
         }
     }
     if (_c == QMetaObject::IndexOfMethod) {
         if (QtMocHelpers::indexOfMethod<void (ContactsWidget::*)(QUuid )>(_a, &ContactsWidget::contactSelected, 0))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (ContactsWidget::*)(QUuid )>(_a, &ContactsWidget::profileRequested, 1))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (ContactsWidget::*)(QUuid )>(_a, &ContactsWidget::blockRequested, 2))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (ContactsWidget::*)(QUuid )>(_a, &ContactsWidget::deleteChatRequested, 3))
+            return;
+        if (QtMocHelpers::indexOfMethod<void (ContactsWidget::*)(QUuid )>(_a, &ContactsWidget::contactDeleteRequested, 4))
             return;
     }
 }
@@ -117,14 +157,14 @@ int ContactsWidget::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 3)
+        if (_id < 8)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 3;
+        _id -= 8;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 3)
+        if (_id < 8)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 3;
+        _id -= 8;
     }
     return _id;
 }
@@ -133,5 +173,29 @@ int ContactsWidget::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 void ContactsWidget::contactSelected(QUuid _t1)
 {
     QMetaObject::activate<void>(this, &staticMetaObject, 0, nullptr, _t1);
+}
+
+// SIGNAL 1
+void ContactsWidget::profileRequested(QUuid _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 1, nullptr, _t1);
+}
+
+// SIGNAL 2
+void ContactsWidget::blockRequested(QUuid _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 2, nullptr, _t1);
+}
+
+// SIGNAL 3
+void ContactsWidget::deleteChatRequested(QUuid _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 3, nullptr, _t1);
+}
+
+// SIGNAL 4
+void ContactsWidget::contactDeleteRequested(QUuid _t1)
+{
+    QMetaObject::activate<void>(this, &staticMetaObject, 4, nullptr, _t1);
 }
 QT_WARNING_POP

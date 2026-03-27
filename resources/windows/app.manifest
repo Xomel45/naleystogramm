@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Windows Application Manifest для Naleystogramm -->
+<!-- Встроен прямо в .exe, внешний файл не нужен -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+
+  <!-- Идентификация сборки -->
+  <assemblyIdentity
+      version="0.3.2.0"
+      processorArchitecture="amd64"
+      name="Naleystogramm.App"
+      type="win32"
+  />
+
+  <description>Naleystogramm — зашифрованный P2P мессенджер</description>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       UAC: требуем права администратора при запуске
+       Windows покажет диалог "Разрешить этому приложению вносить изменения?"
+       uiAccess="false" — не нужен доступ к защищённому UI (экранные читалки и т.д.)
+       ═══════════════════════════════════════════════════════════════════ -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel
+            level="requireAdministrator"
+            uiAccess="false"
+        />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       DPI Awareness — чёткое отображение на HighDPI / 4K экранах
+       ═══════════════════════════════════════════════════════════════════ -->
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!-- Устаревший API (Windows Vista / 7 / 8 совместимость) -->
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">True/PM</dpiAware>
+      <!-- Современный API (Windows 10 1703+): Per-Monitor V2 — лучший вариант -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+      <!-- Поддержка длинных путей (Windows 10 1607+ с включённой групповой политикой) -->
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+
+  <!-- ═══════════════════════════════════════════════════════════════════
+       Современные визуальные стили Windows (ComCtl32 v6)
+       Без этого кнопки выглядят как Windows 2000
+       ═══════════════════════════════════════════════════════════════════ -->
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+          type="win32"
+          name="Microsoft.Windows.Common-Controls"
+          version="6.0.0.0"
+          processorArchitecture="*"
+          publicKeyToken="6595b64144ccf1df"
+          language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+
+</assembly>
