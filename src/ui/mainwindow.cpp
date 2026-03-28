@@ -590,6 +590,9 @@ void MainWindow::onPeerConnected(QUuid uuid, QString name) {
     m_contacts->setPeerOnline(uuid, true);
     statusBar()->showMessage(tr("%1 connected").arg(name), 3000);
 
+    // Обновляем имя контакта из HANDSHAKE_ACK — пир сам сообщает своё актуальное имя
+    onContactNameUpdated(uuid, name);
+
     QJsonObject keyMsg;
     keyMsg["type"]   = "KEY_BUNDLE";
     keyMsg["bundle"] = m_e2e->ourBundleJson();

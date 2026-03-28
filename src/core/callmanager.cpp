@@ -1,6 +1,8 @@
 #include "callmanager.h"
 #include "network.h"
 #include "../crypto/e2e.h"
+#include "sessionmanager.h"
+#include "identity.h"
 #include <QTimer>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -303,6 +305,14 @@ void CallManager::startMedia(const QHostAddress& peerIp, quint16 peerUdpPort,
         emit callError("Не удалось вывести медиа-ключ");
         resetState();
         return;
+    }
+
+    // В режиме Client-Server — включаем UDP-ретрансляцию до startCall()
+    if (SessionManager::instance().portForwardingMode() == PortForwardingMode::ClientServer) {
+        const QString relayIp  = SessionManager::instance().relayServerIp();
+        const quint16 relayUdp = SessionManager::instance().relayUdpPort();
+        const QUuid myUuid     = Identity::instance().uuid();
+        m_media->enableUdpRelay(relayIp, relayUdp, myUuid, m_peerUuid);
     }
 
     if (!m_media->startCall(peerIp, peerUdpPort, mediaKey)) {

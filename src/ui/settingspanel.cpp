@@ -1,5 +1,6 @@
 #include "settingspanel.h"
 #include "thememanager.h"
+#include "customthememanager.h"
 #include "logpanel.h"
 #include "../core/identity.h"
 #include "../core/updatechecker.h"
@@ -258,6 +259,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_pfModeCombo->addItem(tr("UPnP (автоматически)"),  static_cast<int>(PortForwardingMode::UpnpAuto));
     m_pfModeCombo->addItem(tr("Вручную (VPN / статический IP)"), static_cast<int>(PortForwardingMode::Manual));
     m_pfModeCombo->addItem(tr("Отключено (только локальная сеть)"), static_cast<int>(PortForwardingMode::Disabled));
+    m_pfModeCombo->addItem(tr("🖥 Client-Server (ретранслятор)"), static_cast<int>(PortForwardingMode::ClientServer));
     contentLayout->addWidget(m_pfModeCombo);
 
     // Контейнер полей для режима Manual — скрывается в других режимах
@@ -286,17 +288,55 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_manualFields->hide();  // скрыт по умолчанию (UPnP режим)
     contentLayout->addWidget(m_manualFields);
 
+    // ── Контейнер полей Client-Server (ретранслятор) ──────────────────────
+    m_relayFields = new QWidget();
+    auto* relayLayout = new QVBoxLayout(m_relayFields);
+    relayLayout->setContentsMargins(0, 6, 0, 0);
+    relayLayout->setSpacing(4);
+
+    relayLayout->addWidget(fieldLabel(tr("IP-адрес relay-сервера")));
+    m_relayIpEdit = new QLineEdit();
+    m_relayIpEdit->setObjectName("settingsInput");
+    m_relayIpEdit->setPlaceholderText("203.0.113.10");
+    relayLayout->addWidget(m_relayIpEdit);
+
+    relayLayout->addSpacing(4);
+    relayLayout->addWidget(fieldLabel(tr("TCP-порт (сообщения)")));
+    m_relayTcpPortSpin = new QSpinBox();
+    m_relayTcpPortSpin->setObjectName("settingsInput");
+    m_relayTcpPortSpin->setRange(1, 65535);
+    m_relayTcpPortSpin->setValue(47822);
+    relayLayout->addWidget(m_relayTcpPortSpin);
+
+    relayLayout->addSpacing(4);
+    relayLayout->addWidget(fieldLabel(tr("UDP-порт (звонки)")));
+    m_relayUdpPortSpin = new QSpinBox();
+    m_relayUdpPortSpin->setObjectName("settingsInput");
+    m_relayUdpPortSpin->setRange(1, 65535);
+    m_relayUdpPortSpin->setValue(47823);
+    relayLayout->addWidget(m_relayUdpPortSpin);
+
+    m_relayWarning = new QLabel(tr("⚠ Требуется перезапуск для применения изменений."));
+    m_relayWarning->setObjectName("warningLabel");
+    m_relayWarning->setWordWrap(true);
+    relayLayout->addWidget(m_relayWarning);
+
+    m_relayFields->hide();
+    contentLayout->addWidget(m_relayFields);
+
     // Подсказки для каждого режима (показываем одну активную)
     contentLayout->addWidget(hint(
         tr("UPnP — автоматический проброс портов через роутер.\n"
            "Manual — задайте IP и порт вручную (для VPN, static IP, ручного NAT).\n"
-           "Disabled — только LAN, пиры подключаются напрямую по локальному IP.")));
+           "Disabled — только LAN, пиры подключаются напрямую по локальному IP.\n"
+           "Client-Server — все соединения через ваш relay-сервер (белый IP / VPS).")));
 
-    // Показываем/скрываем поля Manual при смене режима
+    // Показываем/скрываем поля при смене режима
     connect(m_pfModeCombo, &QComboBox::currentIndexChanged, this, [this](int) {
         const auto mode = static_cast<PortForwardingMode>(
             m_pfModeCombo->currentData().toInt());
         m_manualFields->setVisible(mode == PortForwardingMode::Manual);
+        m_relayFields->setVisible(mode == PortForwardingMode::ClientServer);
     });
 
     contentLayout->addSpacing(8);
@@ -339,28 +379,45 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addWidget(fieldLabel(tr("Theme")));
     contentLayout->addSpacing(4);
 
-    // Комбобокс с 7 темами (заменяет 3 pill-кнопки)
+    // Комбобокс: 7 встроенных тем + сепаратор + пользовательские (если есть)
     m_themeCombo = new QComboBox();
     m_themeCombo->setObjectName("settingsInput");
-    m_themeCombo->addItem("◐  " + tr("Dark"),      "dark");
-    m_themeCombo->addItem("○  " + tr("Light"),     "light");
-    m_themeCombo->addItem("●  " + tr("B&W"),       "bw");
-    m_themeCombo->addItem("🌲  " + tr("Forest"),   "forest");
+    m_themeCombo->addItem("◐  " + tr("Dark"),       "dark");
+    m_themeCombo->addItem("○  " + tr("Light"),      "light");
+    m_themeCombo->addItem("●  " + tr("B&W"),        "bw");
+    m_themeCombo->addItem("🌲  " + tr("Forest"),    "forest");
     m_themeCombo->addItem("🌃  " + tr("Cyberpunk"), "cyberpunk");
-    m_themeCombo->addItem("❄  " + tr("Nordic"),    "nordic");
-    m_themeCombo->addItem("🌅  " + tr("Sunset"),   "sunset");
+    m_themeCombo->addItem("❄  " + tr("Nordic"),     "nordic");
+    m_themeCombo->addItem("🌅  " + tr("Sunset"),    "sunset");
+
+    // Пользовательские темы (сканируем при построении)
+    rebuildCustomThemeItems();
 
     // Устанавливаем текущую тему
     {
         const QString cur = SessionManager::instance().theme();
-        const int idx = m_themeCombo->findData(cur.isEmpty() ? "dark" : cur);
+        const QString key = cur.isEmpty() ? "dark" : cur;
+        const int idx = m_themeCombo->findData(key);
         if (idx >= 0) m_themeCombo->setCurrentIndex(idx);
     }
+
+    // Подсказка о перезапуске (показывается только для кастомных тем)
+    m_customRestartHint = hint(tr("Требуется перезапуск для применения темы"));
+    m_customRestartHint->setVisible(false);
 
     // Переключение темы при выборе в комбобоксе
     connect(m_themeCombo, &QComboBox::currentIndexChanged,
             this, [this](int) {
         const QString s = m_themeCombo->currentData().toString();
+
+        if (s.startsWith("custom:")) {
+            // Пользовательская тема: сохраняем в session.json, требуем перезапуск
+            SessionManager::instance().setTheme(s);
+            m_customRestartHint->setVisible(true);
+            return;
+        }
+
+        m_customRestartHint->setVisible(false);
         Theme t = Theme::Dark;
         if      (s == "light")     t = Theme::Light;
         else if (s == "bw")        t = Theme::BW;
@@ -371,7 +428,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
         ThemeManager::instance().setTheme(t);
     });
 
-    // Синхронизация комбобокса при внешней смене темы
+    // Синхронизация комбобокса при внешней смене встроенной темы
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
             m_themeCombo, [this](Theme t) {
         QString s = "dark";
@@ -390,6 +447,14 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     });
 
     contentLayout->addWidget(m_themeCombo);
+    contentLayout->addWidget(m_customRestartHint);
+
+    // Кнопка импорта темы
+    m_importThemeBtn = new QPushButton(tr("Import theme..."));
+    m_importThemeBtn->setObjectName("dlgCancelBtn");
+    connect(m_importThemeBtn, &QPushButton::clicked, this, &SettingsPanel::onImportTheme);
+    contentLayout->addWidget(m_importThemeBtn);
+
     contentLayout->addSpacing(12);
 
     contentLayout->addWidget(fieldLabel(tr("Language")));
@@ -528,10 +593,15 @@ void SettingsPanel::reload() {
     const int idx = m_langCombo->findData(sm.language());
     if (idx >= 0) m_langCombo->setCurrentIndex(idx);
 
+    // Пересканируем пользовательские темы (могли добавиться после открытия настроек)
+    rebuildCustomThemeItems();
+
     // Синхронизируем тему в комбобоксе
     const QString themeStr = sm.theme();
-    const int themeIdx = m_themeCombo->findData(themeStr.isEmpty() ? "dark" : themeStr);
+    const QString themeKey = themeStr.isEmpty() ? "dark" : themeStr;
+    const int themeIdx = m_themeCombo->findData(themeKey);
     if (themeIdx >= 0) m_themeCombo->setCurrentIndex(themeIdx);
+    m_customRestartHint->setVisible(themeKey.startsWith("custom:"));
 
     // Режим проброса портов — синхронизируем комбобокс и поля Manual
     {
@@ -546,6 +616,11 @@ void SettingsPanel::reload() {
         m_manualPortSpin->setValue(sm.manualPublicPort() > 0
                                    ? sm.manualPublicPort() : 47821);
         m_manualFields->setVisible(sm.portForwardingMode() == PortForwardingMode::Manual);
+
+        m_relayIpEdit->setText(sm.relayServerIp());
+        m_relayTcpPortSpin->setValue(sm.relayTcpPort() > 0 ? sm.relayTcpPort() : 47822);
+        m_relayUdpPortSpin->setValue(sm.relayUdpPort() > 0 ? sm.relayUdpPort() : 47823);
+        m_relayFields->setVisible(sm.portForwardingMode() == PortForwardingMode::ClientServer);
     }
 
     // Синхронизируем переключатель удалённого шелла
@@ -584,21 +659,33 @@ void SettingsPanel::onSave() {
     const auto pfMode = static_cast<PortForwardingMode>(
         m_pfModeCombo->currentData().toInt());
 
+    static const QRegularExpression kIpv4Re(R"(^(\d{1,3}\.){3}\d{1,3}$)");
+
     if (pfMode == PortForwardingMode::Manual) {
-        // Валидация IPv4-адреса перед сохранением
-        static const QRegularExpression kIpv4Re(
-            R"(^(\d{1,3}\.){3}\d{1,3}$)");
         const QString manIp = m_manualIpEdit->text().trimmed();
         if (!kIpv4Re.match(manIp).hasMatch()) {
             QMessageBox::warning(this, tr("Ошибка ввода"),
                 tr("Некорректный формат IPv4-адреса.\n"
                    "Пример: 203.0.113.42"));
-            return;  // не сохраняем и не закрываем панель
+            return;
         }
         sm.setManualPublicIp(manIp);
-        sm.setManualPublicPort(
-            static_cast<quint16>(m_manualPortSpin->value()));
+        sm.setManualPublicPort(static_cast<quint16>(m_manualPortSpin->value()));
     }
+
+    if (pfMode == PortForwardingMode::ClientServer) {
+        const QString relayIp = m_relayIpEdit->text().trimmed();
+        if (relayIp.isEmpty() || !kIpv4Re.match(relayIp).hasMatch()) {
+            QMessageBox::warning(this, tr("Ошибка ввода"),
+                tr("Укажите корректный IPv4-адрес relay-сервера.\n"
+                   "Пример: 203.0.113.10"));
+            return;
+        }
+        sm.setRelayServerIp(relayIp);
+        sm.setRelayTcpPort(static_cast<quint16>(m_relayTcpPortSpin->value()));
+        sm.setRelayUdpPort(static_cast<quint16>(m_relayUdpPortSpin->value()));
+    }
+
     sm.setPortForwardingMode(pfMode);
 
     emit backRequested();
@@ -665,4 +752,47 @@ void SettingsPanel::applyAvatarPixmap(const QString& path) {
 
     m_avatarLabel->setText({});
     m_avatarLabel->setPixmap(rounded);
+}
+
+// ── Пользовательские темы ─────────────────────────────────────────────────
+
+void SettingsPanel::rebuildCustomThemeItems() {
+    // Удаляем все пункты начиная с сепаратора (индекс 7 и далее)
+    while (m_themeCombo->count() > 7)
+        m_themeCombo->removeItem(m_themeCombo->count() - 1);
+
+    const QList<CustomThemeMeta> customs = CustomThemeManager::scan();
+    if (customs.isEmpty()) return;
+
+    m_themeCombo->insertSeparator(m_themeCombo->count());
+    for (const CustomThemeMeta& meta : customs) {
+        const QString label = "🎨  " + meta.displayName
+                              + (meta.author.isEmpty() ? "" : " (" + meta.author + ")");
+        m_themeCombo->addItem(label, "custom:" + meta.folderName);
+    }
+}
+
+void SettingsPanel::onImportTheme() {
+    const QString path = QFileDialog::getOpenFileName(
+        this,
+        tr("Импортировать тему"),
+        QStandardPaths::writableLocation(QStandardPaths::HomeLocation),
+        tr("Архивы тем (*.zip *.tar.gz *.tgz *.7z)"),
+        nullptr,
+        QFileDialog::DontUseNativeDialog);
+
+    if (path.isEmpty()) return;
+
+    QString error;
+    if (!CustomThemeManager::importArchive(path, error)) {
+        QMessageBox::critical(this, tr("Ошибка импорта"), error);
+        return;
+    }
+
+    // Пересканируем и выбираем только что импортированную тему
+    rebuildCustomThemeItems();
+    QMessageBox::information(this,
+        tr("Тема импортирована"),
+        tr("Тема успешно импортирована.\n"
+           "Выберите её в списке и перезапустите приложение для применения."));
 }

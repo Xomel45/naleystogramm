@@ -12,7 +12,7 @@
 
 // Текущая версия приложения — проставляется в version_created при каждой записи.
 // При версионном обновлении менять одновременно с updatechecker.h и sessionmanager.cpp.
-static constexpr const char* kStorageAppVersion = "0.5.3";
+static constexpr const char* kStorageAppVersion = "0.6.0";
 
 StorageManager::StorageManager(QObject* parent) : QObject(parent) {}
 

@@ -31,6 +31,7 @@ private slots:
     void onSave();
     void onReset();
     void onAvatarClicked();
+    void onImportTheme();
 
 private:
     void buildHeader();
@@ -38,6 +39,9 @@ private:
     void buildNetworkSection(QWidget* container);
     void buildSecuritySection(QWidget* container);
     void buildInterfaceSection(QWidget* container);
+
+    // Пересканирует папку тем и перестраивает кастомные пункты в m_themeCombo
+    void rebuildCustomThemeItems();
 
     // Отображает аватар с круглой маской в m_avatarLabel
     void applyAvatarPixmap(const QString& path);
@@ -54,14 +58,23 @@ private:
     QLabel*    m_proxyStatus  {nullptr};
 
     // Режим проброса портов
-    QComboBox* m_pfModeCombo    {nullptr};  // UPnP / Manual / Disabled
+    QComboBox* m_pfModeCombo    {nullptr};  // UPnP / Manual / Disabled / Client-Server
     QWidget*   m_manualFields   {nullptr};  // контейнер IP+порт (скрыт если не Manual)
     QLineEdit* m_manualIpEdit   {nullptr};
     QSpinBox*  m_manualPortSpin {nullptr};
 
+    // Relay (Client-Server)
+    QWidget*   m_relayFields      {nullptr};  // контейнер настроек ретранслятора
+    QLineEdit* m_relayIpEdit      {nullptr};
+    QSpinBox*  m_relayTcpPortSpin {nullptr};
+    QSpinBox*  m_relayUdpPortSpin {nullptr};
+    QLabel*    m_relayWarning     {nullptr};  // предупреждение о перезапуске
+
     // Интерфейс
-    QComboBox* m_themeCombo        {nullptr};
-    QComboBox* m_langCombo         {nullptr};
+    QComboBox*   m_themeCombo          {nullptr};
+    QComboBox*   m_langCombo           {nullptr};
+    QLabel*      m_customRestartHint   {nullptr};  // подсказка "требуется перезапуск"
+    QPushButton* m_importThemeBtn      {nullptr};  // кнопка "Импортировать тему..."
 
     // Безопасность
     QPushButton* m_shellToggle {nullptr};

@@ -132,6 +132,14 @@ void NetworkManager::init() {
         emit externalIpDiscovered(m_externalIp);
         emit ready(m_externalIp, m_advertisedPort, false);
 
+    } else if (mode == PortForwardingMode::ClientServer) {
+        // Режим Client-Server: все пиры подключаются через ретрансляционный сервер.
+        m_externalIp     = QString();
+        m_advertisedPort = m_localPort;
+        qDebug("[Network] Режим Client-Server: подключаемся к ретранслятору");
+        connectToRelay();
+        emit ready(m_externalIp, m_advertisedPort, false);
+
     } else {
         // Режим UpnpAuto (по умолчанию): запускаем UPnP + discovery внешнего IP.
         tryUpnp();
@@ -214,6 +222,151 @@ void NetworkManager::retryUpnp() {
     tryUpnp();
 }
 
+// ── Ретранслятор (Client-Server) ─────────────────────────────────────────────
+
+void NetworkManager::connectToRelay() {
+    const QString relayIp  = SessionManager::instance().relayServerIp();
+    const quint16 relayTcp = SessionManager::instance().relayTcpPort();
+
+    if (relayIp.isEmpty()) {
+        qWarning("[Network] Relay: IP сервера не задан — пропускаем подключение");
+        return;
+    }
+
+    if (m_relaySocket) {
+        m_relaySocket->abort();
+        m_relaySocket->deleteLater();
+    }
+
+    m_relaySocket     = new QTcpSocket(this);
+    m_relayRegistered = false;
+
+    connect(m_relaySocket, &QTcpSocket::connected,
+            this, &NetworkManager::onRelayConnected);
+    connect(m_relaySocket, &QTcpSocket::readyRead,
+            this, &NetworkManager::onRelayReadyRead);
+    connect(m_relaySocket, &QTcpSocket::disconnected,
+            this, &NetworkManager::onRelayDisconnected);
+    connect(m_relaySocket, &QTcpSocket::errorOccurred, this,
+        [this](QAbstractSocket::SocketError) {
+            qWarning("[Network] Relay socket error: %s",
+                     qPrintable(m_relaySocket->errorString()));
+        });
+
+    qDebug("[Network] Relay: подключаемся к %s:%d", qPrintable(relayIp), relayTcp);
+    m_relaySocket->connectToHost(relayIp, relayTcp);
+}
+
+void NetworkManager::onRelayConnected() {
+    qDebug("[Network] Relay: подключились, отправляем RELAY_REGISTER");
+    const QJsonObject reg{
+        {"type", "RELAY_REGISTER"},
+        {"uuid", Identity::instance().uuid().toString(QUuid::WithoutBraces)},
+    };
+    m_relaySocket->write(QJsonDocument(reg).toJson(QJsonDocument::Compact) + '\n');
+}
+
+void NetworkManager::onRelayReadyRead() {
+    const QByteArray incoming = m_relaySocket->readAll();
+    if (m_relayReadBuf.size() + incoming.size() > kMaxBufferSize) {
+        qWarning("[Network] Relay: буфер переполнен (%d МБ) — сбрасываем соединение",
+                 kMaxBufferSize / (1024 * 1024));
+        m_relayReadBuf.clear();
+        m_relaySocket->abort();
+        return;
+    }
+    m_relayReadBuf += incoming;
+    int newline;
+    while ((newline = m_relayReadBuf.indexOf('\n')) != -1) {
+        const QByteArray frame = m_relayReadBuf.left(newline);
+        m_relayReadBuf = m_relayReadBuf.mid(newline + 1);
+
+        const auto doc = QJsonDocument::fromJson(frame);
+        if (doc.isNull()) continue;
+        const auto obj  = doc.object();
+        const QString t = obj["type"].toString();
+
+        if (t == "RELAY_REGISTERED") {
+            m_relayRegistered = true;
+            qDebug("[Network] Relay: зарегистрированы на сервере");
+            emit relayConnected();
+
+        } else if (t == "RELAY_MSG") {
+            const QUuid fromUuid = QUuid(obj["from"].toString());
+            const QJsonObject inner = obj["data"].toObject();
+            if (!fromUuid.isNull() && !inner.isEmpty())
+                handleRelayFrame(fromUuid, inner);
+
+        } else if (t == "RELAY_PEER_OFFLINE") {
+            const QUuid peerUuid = QUuid(obj["uuid"].toString());
+            qDebug("[Network] Relay: пир %s недоступен",
+                   qPrintable(peerUuid.toString(QUuid::WithoutBraces)));
+            if (m_peers.contains(peerUuid)) {
+                stopKeepalive(peerUuid);
+                m_relayPeers.remove(peerUuid);
+                m_peers.remove(peerUuid);
+                emit peerDisconnected(peerUuid);
+                emit connectionStateChanged(peerUuid, ConnectionState::Disconnected);
+            }
+
+        } else if (t == "RELAY_ERROR") {
+            qWarning("[Network] Relay error: %s", qPrintable(obj["msg"].toString()));
+        }
+    }
+}
+
+void NetworkManager::onRelayDisconnected() {
+    m_relayRegistered = false;
+    qWarning("[Network] Relay: соединение с сервером разорвано");
+    emit relayDisconnected();
+
+    // Планируем переподключение через 5 секунд
+    if (!m_relayReconnectTimer) {
+        m_relayReconnectTimer = new QTimer(this);
+        m_relayReconnectTimer->setSingleShot(true);
+        connect(m_relayReconnectTimer, &QTimer::timeout,
+                this, &NetworkManager::connectToRelay);
+    }
+    m_relayReconnectTimer->start(5000);
+}
+
+void NetworkManager::sendViaRelay(const QUuid& targetUuid, const QJsonObject& obj) {
+    if (!m_relaySocket ||
+        m_relaySocket->state() != QAbstractSocket::ConnectedState ||
+        !m_relayRegistered)
+    {
+        qWarning("[Network] sendViaRelay: ретранслятор недоступен — [%s] отброшен",
+                 qPrintable(obj.value("type").toString("?")));
+        return;
+    }
+    const QJsonObject wrapper{
+        {"type", "RELAY_MSG"},
+        {"to",   targetUuid.toString(QUuid::WithoutBraces)},
+        {"data", obj},
+    };
+    m_relaySocket->write(QJsonDocument(wrapper).toJson(QJsonDocument::Compact) + '\n');
+    log(QString("Relay: [%1] → %2")
+        .arg(obj.value("type").toString("?"),
+             targetUuid.toString(QUuid::WithoutBraces)));
+}
+
+void NetworkManager::handleRelayFrame(const QUuid& fromUuid, const QJsonObject& innerObj) {
+    // Уже известный активный пир (например ждём HANDSHAKE_ACK после нашего исходящего)
+    if (m_peers.contains(fromUuid)) {
+        handleFrame(m_peers[fromUuid], innerObj);
+        return;
+    }
+    // Входящий relay-пир: создаём pending-запись с его UUID как ключом
+    if (!m_pending.contains(fromUuid)) {
+        m_pending[fromUuid] = PeerConnection{
+            .uuid   = fromUuid,
+            .ip     = SessionManager::instance().relayServerIp(),
+            .socket = nullptr,
+        };
+    }
+    handleFrame(m_pending[fromUuid], innerObj);
+}
+
 void NetworkManager::broadcastProfileUpdate(const QString& name) {
     const QJsonObject msg{
         {"type", "PROFILE_UPDATE"},
@@ -237,6 +390,46 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
                 .arg(peer.name), true);
             return;
         }
+    }
+
+    // ── Режим Client-Server: подключаемся через ретранслятор ─────────────
+    if (SessionManager::instance().portForwardingMode() == PortForwardingMode::ClientServer) {
+        m_reconnectInfo[peer.uuid] = PeerReconnectInfo{
+            .name = peer.name,
+            .ip   = peer.ip,
+            .port = peer.port,
+        };
+        m_peers[peer.uuid] = PeerConnection{
+            .uuid   = peer.uuid,
+            .name   = peer.name,
+            .ip     = peer.ip,
+            .port   = peer.port,
+            .socket = nullptr,
+            .state  = ConnectionState::Connecting,
+            .connectedSince = QDateTime::currentDateTime(),
+        };
+        m_relayPeers.insert(peer.uuid);
+        emit connectionStateChanged(peer.uuid, ConnectionState::Connecting);
+
+        if (m_relayRegistered) {
+            const auto& id = Identity::instance();
+            const QString ownAvatarPath = SessionManager::instance().avatarPath();
+            const QString ownAvatarHash = ownAvatarPath.isEmpty() ? QString()
+                : QString::fromLatin1(SessionManager::computeAvatarHash(ownAvatarPath));
+            const QJsonObject hs{
+                {"type",       "HANDSHAKE"},
+                {"uuid",       id.uuid().toString(QUuid::WithoutBraces)},
+                {"name",       id.displayName()},
+                {"port",       static_cast<int>(m_localPort)},
+                {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
+                {"avatarHash", ownAvatarHash},
+            };
+            sendViaRelay(peer.uuid, hs);
+            log(QString("Relay: HANDSHAKE отправлен → %1").arg(peer.name));
+        } else {
+            qWarning("[Network] connectToPeer via relay: ретранслятор не подключён");
+        }
+        return;
     }
 
     log(QString("Connecting to %1 (%2:%3)...")
@@ -393,6 +586,17 @@ void NetworkManager::tryParseFrames(PeerConnection& conn, bool /*isPending*/) {
         const QByteArray frame = conn.readBuf.left(newline);
         conn.readBuf = conn.readBuf.mid(newline + 1);
 
+        // Защита от аномально больших JSON-фреймов ДО парсинга:
+        // avatarHash, systemInfo и прочие строки-данные не должны превышать 1 МБ.
+        // Настоящий злоумышленник может попытаться прислать 100 МБ в одном поле —
+        // QJsonDocument попробует разместить это в памяти до проверки типа.
+        static constexpr int kMaxFrameSize = 1 * 1024 * 1024; // 1 МБ
+        if (frame.size() > kMaxFrameSize) {
+            log(QString("Большой фрейм %1 байт от %2 — отброшен до парсинга")
+                .arg(frame.size()).arg(conn.ip), true);
+            continue;
+        }
+
         if (const auto doc = QJsonDocument::fromJson(frame); !doc.isNull())
             handleFrame(conn, doc.object());
     }
@@ -456,6 +660,27 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
         log(QString("HANDSHAKE от %1 (серверный порт: %2, systemInfo получен: %3)")
             .arg(peer.name).arg(peer.serverPort)
             .arg(!peer.systemInfo.isEmpty() ? "да" : "нет"));
+
+        // ── Правило «старшего UUID» ────────────────────────────────────────────
+        // Если мы сами сейчас подключаемся к этому же пиру (взаимный connect),
+        // тот у кого UUID лексикографически «больше» оставляет свой исходящий
+        // сокет — входящий молча закрывается. Это предотвращает дублирующие сессии
+        // и гарантирует единственный Double Ratchet стрим на пару.
+        if (peer.socket && m_reconnectInfo.contains(parsedUuid)) {
+            const QString myStr   = Identity::instance().uuid().toString();
+            const QString peerStr = parsedUuid.toString();
+            if (myStr > peerStr) {
+                log(QString("Tie-breaking: наш UUID > %1 — закрываем входящее, сохраняем исходящее")
+                    .arg(peer.name), true);
+                // Откладываем abort() чтобы избежать реентерабельности внутри readyRead
+                QPointer<QTcpSocket> sock = peer.socket;
+                QTimer::singleShot(0, this, [sock]() { if (sock) sock->abort(); });
+                return;
+            }
+            // Наш UUID «меньше» — входящее приоритетнее; isходящий сокет прервётся
+            // сам когда пир не пришлёт HANDSHAKE_ACK (timeout) или закроет соединение.
+        }
+
         emit incomingRequest(peer.uuid, peer.name, peer.ip);
         emit peerInfoUpdated(peer.uuid);
         return;
@@ -587,6 +812,12 @@ void NetworkManager::sendHandshake(QTcpSocket* socket) {
 }
 
 void NetworkManager::sendJson(const QUuid& peerUuid, const QJsonObject& obj) {
+    // Relay-пир: маршрутизируем через ретранслятор
+    if (m_relayPeers.contains(peerUuid)) {
+        sendViaRelay(peerUuid, obj);
+        return;
+    }
+
     // Проверяем: пир подключён и сокет в рабочем состоянии?
     if (!m_peers.contains(peerUuid) ||
         !m_peers[peerUuid].socket ||
@@ -675,11 +906,14 @@ void NetworkManager::acceptIncoming(const QUuid& peerUuid) {
                 .port = conn.serverPort
             };
 
-            disconnect(conn.socket, &QTcpSocket::readyRead, nullptr, nullptr);
-            connect(conn.socket, &QTcpSocket::readyRead,
-                    this, &NetworkManager::onSocketReadyRead);
-            connect(conn.socket, &QTcpSocket::disconnected,
-                    this, &NetworkManager::onSocketDisconnected);
+            // Для relay-пиров (socket == nullptr) сигналы TCP не нужны
+            if (conn.socket) {
+                disconnect(conn.socket, &QTcpSocket::readyRead, nullptr, nullptr);
+                connect(conn.socket, &QTcpSocket::readyRead,
+                        this, &NetworkManager::onSocketReadyRead);
+                connect(conn.socket, &QTcpSocket::disconnected,
+                        this, &NetworkManager::onSocketDisconnected);
+            }
 
             const auto& id = Identity::instance();
             // Включаем свою системную информацию и аватар в ACK —
@@ -695,14 +929,22 @@ void NetworkManager::acceptIncoming(const QUuid& peerUuid) {
                 {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
                 {"avatarHash", ownAvatarHash},
             };
-            conn.socket->write(
-                QJsonDocument(ack).toJson(QJsonDocument::Compact) + '\n');
+            // Отправляем HANDSHAKE_ACK (напрямую или через ретранслятор)
+            if (conn.socket) {
+                conn.socket->write(
+                    QJsonDocument(ack).toJson(QJsonDocument::Compact) + '\n');
+            } else {
+                // Relay-пир: регистрируем и шлём через ретранслятор
+                m_relayPeers.insert(peerUuid);
+                sendViaRelay(peerUuid, ack);
+            }
 
             log(QString("Принято подключение от %1 (серверный порт: %2)")
                 .arg(conn.name).arg(conn.serverPort));
 
-            // Запускаем keepalive
-            startKeepalive(peerUuid);
+            // Keepalive только для прямых TCP-подключений
+            if (conn.socket)
+                startKeepalive(peerUuid);
 
             emit peerConnected(peerUuid, conn.name);
             emit connectionStateChanged(peerUuid, ConnectionState::Connected);
@@ -722,11 +964,16 @@ void NetworkManager::rejectIncoming(const QUuid& peerUuid) {
                 {"accepted", false},
             };
             auto* socket = it.value().socket;
-            socket->write(QJsonDocument(ack).toJson(QJsonDocument::Compact) + '\n');
-            // После разрыва — освобождаем сокет. Он удалён из m_pending,
-            // поэтому lambda в onNewConnection не вызовет deleteLater повторно.
-            connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-            QTimer::singleShot(500, socket, &QTcpSocket::disconnectFromHost);
+            if (socket) {
+                socket->write(QJsonDocument(ack).toJson(QJsonDocument::Compact) + '\n');
+                // После разрыва — освобождаем сокет. Он удалён из m_pending,
+                // поэтому lambda в onNewConnection не вызовет deleteLater повторно.
+                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+                QTimer::singleShot(500, socket, &QTcpSocket::disconnectFromHost);
+            } else {
+                // Relay-пир: шлём отклонение через ретранслятор
+                sendViaRelay(peerUuid, ack);
+            }
             m_pending.erase(it);
             return;
         }

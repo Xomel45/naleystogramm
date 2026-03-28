@@ -337,20 +337,19 @@ info "Создание AppImage..."
 
 # linuxdeploy создаёт AppImage в текущей директории, переносим в build
 APPIMAGE_NAME="Naleystogramm-${APP_VERSION}-x86_64.AppImage"
-CREATED_APPIMAGE=$(ls -1 Naleystogramm*.AppImage 2>/dev/null | head -1)
+# Ищем только что созданный AppImage, исключая уже готовый целевой файл
+CREATED_APPIMAGE=$(ls -1 Naleystogramm*.AppImage 2>/dev/null \
+    | grep -v "^${APPIMAGE_NAME}$" | head -1)
 
+# Если нашли новый файл с другим именем — переименовываем
 if [ -n "$CREATED_APPIMAGE" ] && [ -f "$CREATED_APPIMAGE" ]; then
     mv "$CREATED_APPIMAGE" "$BUILD_DIR/$APPIMAGE_NAME"
     success "AppImage создан: $BUILD_DIR/$APPIMAGE_NAME"
+elif [ -f "$BUILD_DIR/$APPIMAGE_NAME" ]; then
+    # Целевой файл уже существует с нужным именем (linuxdeploy назвал сам)
+    success "AppImage создан: $BUILD_DIR/$APPIMAGE_NAME"
 else
-    # Пробуем найти с любым именем
-    CREATED_APPIMAGE=$(ls -1 *.AppImage 2>/dev/null | head -1)
-    if [ -n "$CREATED_APPIMAGE" ] && [ -f "$CREATED_APPIMAGE" ]; then
-        mv "$CREATED_APPIMAGE" "$BUILD_DIR/$APPIMAGE_NAME"
-        success "AppImage создан: $BUILD_DIR/$APPIMAGE_NAME"
-    else
-        error "AppImage не был создан!"
-    fi
+    error "AppImage не был создан!"
 fi
 
 # ── Вывод информации ──────────────────────────────────────────────────────────

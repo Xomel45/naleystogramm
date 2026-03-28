@@ -1,7 +1,11 @@
 #include "thememanager.h"
+#include "customthememanager.h"
 #include "../core/sessionmanager.h"
 #include <QApplication>
 #include <QPalette>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -13,13 +17,20 @@ ThemeManager& ThemeManager::instance() {
 ThemeManager::ThemeManager() {
     // Читаем тему из session.json
     const QString saved = SessionManager::instance().theme();
-    if      (saved == "light")     m_theme = Theme::Light;
-    else if (saved == "bw")        m_theme = Theme::BW;
-    else if (saved == "forest")    m_theme = Theme::Forest;
-    else if (saved == "cyberpunk") m_theme = Theme::Cyberpunk;
-    else if (saved == "nordic")    m_theme = Theme::Nordic;
-    else if (saved == "sunset")    m_theme = Theme::Sunset;
-    else                           m_theme = Theme::Dark;
+    if (saved.startsWith("custom:")) {
+        // Пользовательская тема — пытаемся загрузить; при ошибке фоллбэк на Dark
+        const QString folderName = saved.mid(7);
+        if (loadCustomTheme(folderName))
+            m_theme = Theme::Custom;
+        else
+            m_theme = Theme::Dark;
+    } else if (saved == "light")     m_theme = Theme::Light;
+    else if   (saved == "bw")        m_theme = Theme::BW;
+    else if   (saved == "forest")    m_theme = Theme::Forest;
+    else if   (saved == "cyberpunk") m_theme = Theme::Cyberpunk;
+    else if   (saved == "nordic")    m_theme = Theme::Nordic;
+    else if   (saved == "sunset")    m_theme = Theme::Sunset;
+    else                             m_theme = Theme::Dark;
     applyPalette();
 }
 
@@ -29,13 +40,14 @@ void ThemeManager::setTheme(Theme t) {
     // Сохраняем в session.json
     QString name;
     switch (t) {
-        case Theme::Dark:      name = "dark";      break;
-        case Theme::Light:     name = "light";     break;
-        case Theme::BW:        name = "bw";        break;
-        case Theme::Forest:    name = "forest";    break;
-        case Theme::Cyberpunk: name = "cyberpunk"; break;
-        case Theme::Nordic:    name = "nordic";    break;
-        case Theme::Sunset:    name = "sunset";    break;
+        case Theme::Dark:      name = "dark";                              break;
+        case Theme::Light:     name = "light";                             break;
+        case Theme::BW:        name = "bw";                                break;
+        case Theme::Forest:    name = "forest";                            break;
+        case Theme::Cyberpunk: name = "cyberpunk";                         break;
+        case Theme::Nordic:    name = "nordic";                            break;
+        case Theme::Sunset:    name = "sunset";                            break;
+        case Theme::Custom:    name = "custom:" + m_customFolderName;      break;
     }
     SessionManager::instance().setTheme(name);
     applyPalette();
@@ -54,6 +66,7 @@ QString ThemeManager::currentThemeName() const {
         case Cyberpunk: return "Киберпанк";
         case Nordic:    return "Нордик";
         case Sunset:    return "Закат";
+        case Custom:    return m_customDisplayName.isEmpty() ? "Пользовательская" : m_customDisplayName;
     }
     return {};
 }
@@ -68,7 +81,72 @@ void ThemeManager::applyPalette() {
         case Cyberpunk: m_palette = cyberpunkPalette(); break;
         case Nordic:    m_palette = nordicPalette();    break;
         case Sunset:    m_palette = sunsetPalette();    break;
+        case Custom:    break; // палитра уже загружена через loadCustomTheme()
     }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ПОЛЬЗОВАТЕЛЬСКАЯ ТЕМА — загрузка из папки themes/
+// ═════════════════════════════════════════════════════════════════════════
+
+bool ThemeManager::loadCustomTheme(const QString& folderName) {
+    const QString dirPath = CustomThemeManager::themesDir() + "/" + folderName;
+    QFile f(dirPath + "/theme.json");
+    if (!f.open(QIODevice::ReadOnly)) return false;
+
+    const QJsonObject obj = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+
+    const QString displayName = obj.value("name").toString();
+    if (displayName.isEmpty()) return false;
+
+    const QJsonObject pal = obj.value("palette").toObject();
+    // Все 23 поля обязательны — если хотя бы одно пустое, тема считается битой
+    auto field = [&](const char* key) { return pal.value(key).toString(); };
+
+    ThemePalette p;
+    p.bg           = field("bg");           if (p.bg.isEmpty())           return false;
+    p.bgSurface    = field("bgSurface");    if (p.bgSurface.isEmpty())    return false;
+    p.bgElevated   = field("bgElevated");   if (p.bgElevated.isEmpty())   return false;
+    p.bgInput      = field("bgInput");      if (p.bgInput.isEmpty())      return false;
+    p.bgBubbleOut  = field("bgBubbleOut");  if (p.bgBubbleOut.isEmpty())  return false;
+    p.bgBubbleIn   = field("bgBubbleIn");   if (p.bgBubbleIn.isEmpty())   return false;
+    p.border       = field("border");       if (p.border.isEmpty())       return false;
+    p.borderFocus  = field("borderFocus");  if (p.borderFocus.isEmpty())  return false;
+    p.textPrimary  = field("textPrimary");  if (p.textPrimary.isEmpty())  return false;
+    p.textSecondary= field("textSecondary");if (p.textSecondary.isEmpty())return false;
+    p.textMuted    = field("textMuted");    if (p.textMuted.isEmpty())    return false;
+    p.textOnAccent = field("textOnAccent"); if (p.textOnAccent.isEmpty()) return false;
+    p.accent       = field("accent");       if (p.accent.isEmpty())       return false;
+    p.accentHover  = field("accentHover");  if (p.accentHover.isEmpty())  return false;
+    p.accentPressed= field("accentPressed");if (p.accentPressed.isEmpty())return false;
+    p.online       = field("online");       if (p.online.isEmpty())       return false;
+    p.offline      = field("offline");      if (p.offline.isEmpty())      return false;
+    p.danger       = field("danger");       if (p.danger.isEmpty())       return false;
+    p.success      = field("success");      if (p.success.isEmpty())      return false;
+    p.bannerBg     = field("bannerBg");     if (p.bannerBg.isEmpty())     return false;
+    p.bannerBorder = field("bannerBorder"); if (p.bannerBorder.isEmpty()) return false;
+    p.bannerText   = field("bannerText");   if (p.bannerText.isEmpty())   return false;
+    p.bannerBtnHover = field("bannerBtnHover"); if (p.bannerBtnHover.isEmpty()) return false;
+
+    m_palette           = p;
+    m_customFolderName  = folderName;
+    m_customDisplayName = displayName;
+
+    // CSS-переопределение (опционально)
+    QFile cssFile(dirPath + "/css/main.css");
+    if (cssFile.open(QIODevice::ReadOnly)) {
+        m_customCss = QString::fromUtf8(cssFile.readAll());
+        cssFile.close();
+    } else {
+        m_customCss.clear();
+    }
+
+    // Фоновое изображение (опционально)
+    const QString bgPath = dirPath + "/backgrounds/bg_main.png";
+    m_customBgMain = QFile::exists(bgPath) ? bgPath : QString();
+
+    return true;
 }
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -328,6 +406,10 @@ ThemePalette ThemeManager::sunsetPalette() {
 // ═════════════════════════════════════════════════════════════════════════
 
 QString ThemeManager::stylesheet() const {
+    // Кастомная тема с явным CSS — возвращаем его целиком
+    if (m_theme == Theme::Custom && !m_customCss.isEmpty())
+        return m_customCss;
+
     const auto& p = m_palette;
 
     return QString(R"(
@@ -340,6 +422,10 @@ QWidget {
     font-family: "SF Pro Display", "Segoe UI Variable", "Cantarell", sans-serif;
     font-size: 13px;
     outline: none;
+}
+
+QLabel {
+    background: transparent;
 }
 
 QMainWindow {
@@ -376,7 +462,7 @@ QWidget#leftPanel {
 /* ── Хедер с именем ─────────────────────────────────────────────────── */
 
 QWidget#headerBar {
-    background: %3;
+    background: %2;
     border-bottom: 1px solid %5;
 }
 

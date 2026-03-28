@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.5.3 LANGUAGES CXX)
+project(naleystogramm VERSION 0.6.0 LANGUAGES CXX)
 
 # RC (Windows Resource Compiler) нужен только при сборке под Windows.
 # На Linux windres не установлен, поэтому включаем язык только там.
@@ -66,10 +66,10 @@ find_package(OpenSSL REQUIRED)
 # ── SQLCipher (опционально: шифрование базы данных at-rest) ───────────────────
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-    pkg_check_modules(SQLCIPHER QUIET sqlcipher)
-    # Opus: отключаем при кросс-компиляции под Windows — pkg-config находит
-    # системный Linux opus вместо MinGW sysroot, что ломает сборку.
+    # SQLCipher и Opus: отключаем при кросс-компиляции под Windows — pkg-config
+    # находит системные Linux-библиотеки вместо MinGW sysroot, что ломает линковку.
     if(NOT WIN32)
+        pkg_check_modules(SQLCIPHER QUIET sqlcipher)
         pkg_check_modules(OPUS QUIET opus)
     endif()
 endif()
@@ -112,6 +112,8 @@ set(SOURCES
     src/ui/mainwindow.ui
     src/ui/thememanager.h
     src/ui/thememanager.cpp
+    src/ui/customthememanager.h
+    src/ui/customthememanager.cpp
     src/ui/chatwidget.h
     src/ui/chatwidget.cpp
     src/ui/contactswidget.h

@@ -1,6 +1,8 @@
 #pragma once
 #include <QObject>
 #include <QHostAddress>
+#include <QQueue>
+#include <QUuid>
 
 #ifdef HAVE_QT_MULTIMEDIA
 class QAudioSource;
@@ -42,6 +44,11 @@ public:
     void setMuted(bool muted);
     [[nodiscard]] bool isMuted() const { return m_muted; }
 
+    // Включить UDP-ретрансляцию: пакеты идут через relay-сервер с UUID-префиксом.
+    // Вызывается до startCall() из CallManager в режиме ClientServer.
+    void enableUdpRelay(const QString& relayIp, quint16 relayUdpPort,
+                        const QUuid& myUuid, const QUuid& peerUuid);
+
 signals:
     // Уровень захваченного звука (0.0–1.0), обновляется каждые 20 мс — для индикатора в UI.
     void audioLevelChanged(float level);
@@ -49,8 +56,9 @@ signals:
     void mediaError(const QString& msg);
 
 private slots:
-    void onReadyRead();     // входящие UDP датаграммы
-    void onCaptureTimer();  // захват кадра PCM каждые kFrameMs мс
+    void onReadyRead();       // входящие UDP датаграммы
+    void onCaptureTimer();    // захват кадра PCM каждые kFrameMs мс
+    void onPlaybackTimer();   // вывод кадра из jitter-буфера (или PLC) каждые kFrameMs мс
 
 private:
     // Упаковать Opus-кадр в UDP пакет: [seq|type|nonce|len|ciphertext|tag]
@@ -88,10 +96,21 @@ private:
     OpusState* m_opus {nullptr};
 #endif
 
-    QTimer*  m_captureTimer {nullptr};
-    quint32  m_seqNum       {0};
-    bool     m_inCall       {false};
-    bool     m_muted        {false};
+    QTimer*  m_captureTimer  {nullptr};
+    QTimer*  m_playbackTimer {nullptr};  // отдельный таймер вывода (jitter-буфер)
+    quint32  m_seqNum        {0};
+    bool     m_inCall        {false};
+    bool     m_muted         {false};
+
+    // Jitter-буфер: декодированные PCM кадры ждут своей очереди
+    QQueue<QByteArray> m_playbackQueue;
+
+    // Relay UDP: пакеты проходят через ретранслятор с UUID-префиксом
+    bool         m_udpRelayMode  {false};
+    QHostAddress m_relayUdpAddr;
+    quint16      m_relayUdpPort  {0};
+    QByteArray   m_myUuidBytes;    // 16 байт (QUuid::toRfc4122)
+    QByteArray   m_peerUuidBytes; // 16 байт (QUuid::toRfc4122)
 
     // Формат аудио: 16-bit PCM, 16000 Гц, моно (совместим с AudioRecorder)
     static constexpr int kSampleRate   = 16000;
@@ -108,5 +127,9 @@ private:
     static constexpr int kOffClen      = 17;   // 4 байта (длина ciphertext)
     static constexpr int kOffData      = 21;   // ciphertext, далее 16 байт тег
     static constexpr int kMinPktSize   = kOffData + kTagSize; // 37 байт
-    static constexpr quint8 kPayloadOpus = 0x01;
+    static constexpr quint8 kPayloadOpus   = 0x01;
+    // Relay UDP: UUID-префикс (16 байт target + 16 байт source)
+    static constexpr int kRelayUuidPrefixSize = 32;
+    // Jitter-буфер: максимум 20 кадров (~400 мс задержки в худшем случае)
+    static constexpr int kJitterBufferMax = 20;
 };

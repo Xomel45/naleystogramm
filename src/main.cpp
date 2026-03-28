@@ -9,6 +9,7 @@
 #include <QEventLoop>
 #include <QThread>
 #include <QThreadPool>
+#include <QTextStream>
 #include "ui/mainwindow.h"
 #include "ui/splashscreen.h"
 #include "core/sessionmanager.h"
@@ -63,11 +64,22 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
 
     app.setApplicationName("naleystogramm");
-    app.setApplicationVersion("0.5.3");
+    app.setApplicationVersion("0.6.0");
     app.setOrganizationName("naleystogramm");
 
     // Прямое подключение — системный прокси не используется
     QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);
+
+    // ── Аварийный сброс темы ──────────────────────────────────────────────
+    // Запуск с --theme-reload сбрасывает тему до Dark без открытия UI.
+    // Используется если кастомная тема привела к нечитаемому интерфейсу.
+    if (app.arguments().contains("--theme-reload")) {
+        SessionManager::instance().load();
+        SessionManager::instance().setTheme("dark");
+        QTextStream(stdout) << "Тема сброшена до тёмной (Dark).\n"
+                               "Запустите приложение без --theme-reload.\n";
+        return 0;
+    }
 
     // ── Шрифт приложения ──────────────────────────────────────────────────
     QFont font;

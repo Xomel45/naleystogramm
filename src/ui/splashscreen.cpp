@@ -26,6 +26,9 @@ SplashScreen::SplashScreen(QWidget* parent)
             border: 1px solid #2a2a4a;
             border-radius: 14px;
         }
+        QLabel {
+            background: transparent;
+        }
         QLabel#splashLogo {
             color: #7c6aff;
             font-size: 34px;
@@ -66,7 +69,7 @@ SplashScreen::SplashScreen(QWidget* parent)
     m_logoLabel->setObjectName("splashLogo");
     m_logoLabel->setAlignment(Qt::AlignCenter);
 
-    m_versionLabel = new QLabel("v0.5.3  \"Консервная банка\"");
+    m_versionLabel = new QLabel("v0.6.0  \"Резиновый кал\"");
     m_versionLabel->setObjectName("splashVersion");
     m_versionLabel->setAlignment(Qt::AlignCenter);
 

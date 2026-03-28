@@ -9,7 +9,8 @@ enum class Theme {
     Forest,    // Лес — тёмно-зелёные тона, природные акценты
     Cyberpunk, // Киберпанк — неоновый фиолетовый, тёмный фон
     Nordic,    // Нордик — холодный синий/серый, скандинавский минимализм
-    Sunset     // Закат — тёплый розово-оранжевый, уютная атмосфера
+    Sunset,    // Закат — тёплый розово-оранжевый, уютная атмосфера
+    Custom     // Пользовательская тема из ~/.cache/.../themes/<folder>/
 };
 
 // ── Палитра одной темы ────────────────────────────────────────────────────
@@ -62,6 +63,14 @@ public:
     [[nodiscard]] const ThemePalette& palette()  const noexcept { return m_palette; }
     [[nodiscard]] QString     stylesheet()       const;
 
+    // Загружает пользовательскую тему из папки по имени (внутри themesDir).
+    // Возвращает true при успехе; при ошибке палитра не меняется.
+    bool loadCustomTheme(const QString& folderName);
+
+    [[nodiscard]] QString customThemeFolderName()  const noexcept { return m_customFolderName; }
+    [[nodiscard]] QString customThemeDisplayName() const noexcept { return m_customDisplayName; }
+    [[nodiscard]] QString customThemeBgMain()      const noexcept { return m_customBgMain; }
+
 signals:
     void themeChanged(Theme newTheme);
 
@@ -78,4 +87,10 @@ private:
 
     Theme        m_theme{Theme::Dark};
     ThemePalette m_palette;
+
+    // Данные активной пользовательской темы (пусто если не Custom)
+    QString m_customFolderName;
+    QString m_customDisplayName;
+    QString m_customCss;      // содержимое css/main.css (пусто → генерируем из палитры)
+    QString m_customBgMain;   // абсолютный путь к backgrounds/bg_main.png (пусто → нет фона)
 };

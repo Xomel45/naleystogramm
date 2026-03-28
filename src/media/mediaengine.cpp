@@ -28,10 +28,11 @@ struct MediaEngine::OpusState {
         int err = 0;
         encoder = opus_encoder_create(sampleRate, channels, OPUS_APPLICATION_VOIP, &err);
         if (err != OPUS_OK || !encoder) return false;
-        // Установим битрейт 24 кбит/с — хорошее качество для речи при малой задержке
-        opus_encoder_ctl(encoder, OPUS_SET_BITRATE(24000));
+        // 32 кбит/с — лучшее качество речи при умеренном трафике
+        opus_encoder_ctl(encoder, OPUS_SET_BITRATE(32000));
         opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(5));
         opus_encoder_ctl(encoder, OPUS_SET_INBAND_FEC(1));   // Forward Error Correction
+        opus_encoder_ctl(encoder, OPUS_SET_DTX(1));          // Discontinuous Transmission (тишина не кодируется)
 
         decoder = opus_decoder_create(sampleRate, channels, &err);
         if (err != OPUS_OK || !decoder) {
@@ -140,6 +141,12 @@ bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
     connect(m_captureTimer, &QTimer::timeout, this, &MediaEngine::onCaptureTimer);
     m_captureTimer->start();
 
+    // ── Таймер воспроизведения (jitter-буфер): отдельный от захвата ──────────
+    m_playbackTimer = new QTimer(this);
+    m_playbackTimer->setInterval(kFrameMs);
+    connect(m_playbackTimer, &QTimer::timeout, this, &MediaEngine::onPlaybackTimer);
+    m_playbackTimer->start();
+
     m_inCall = true;
     qDebug("[MediaEngine] Звонок начат → UDP %s:%d",
            qPrintable(peerIp.toString()), peerUdpPort);
@@ -157,6 +164,12 @@ void MediaEngine::endCall() {
         m_captureTimer->deleteLater();
         m_captureTimer = nullptr;
     }
+    if (m_playbackTimer) {
+        m_playbackTimer->stop();
+        m_playbackTimer->deleteLater();
+        m_playbackTimer = nullptr;
+    }
+    m_playbackQueue.clear();
 
 #ifdef HAVE_QT_MULTIMEDIA
     if (m_capture) {
@@ -253,7 +266,18 @@ void MediaEngine::onCaptureTimer() {
 
     const QByteArray packet = encryptPacket(opusFrame);
     if (packet.isEmpty()) return;
-    m_udpSocket->writeDatagram(packet, m_peerIp, m_peerUdpPort);
+
+    if (m_udpRelayMode) {
+        // Relay: добавляем UUID-префикс [16B target UUID][16B source UUID][пакет]
+        QByteArray relayPacket;
+        relayPacket.reserve(kRelayUuidPrefixSize + packet.size());
+        relayPacket.append(m_peerUuidBytes); // куда
+        relayPacket.append(m_myUuidBytes);   // от кого
+        relayPacket.append(packet);
+        m_udpSocket->writeDatagram(relayPacket, m_relayUdpAddr, m_relayUdpPort);
+    } else {
+        m_udpSocket->writeDatagram(packet, m_peerIp, m_peerUdpPort);
+    }
 #endif // HAVE_OPUS
 }
 
@@ -267,6 +291,15 @@ void MediaEngine::onReadyRead() {
         QByteArray raw(m_udpSocket->pendingDatagramSize(), '\0');
         m_udpSocket->readDatagram(raw.data(), raw.size(), &sender, &senderPort);
 
+        // Relay режим: проверяем и снимаем UUID-префикс
+        if (m_udpRelayMode) {
+            if (raw.size() < kRelayUuidPrefixSize + kMinPktSize) continue;
+            // Первые 16 байт — UUID получателя (нас), следующие 16 — UUID отправителя (пира)
+            const QByteArray srcUuid = raw.mid(16, 16);
+            if (srcUuid != m_peerUuidBytes) continue; // пакет не от нашего пира
+            raw = raw.mid(kRelayUuidPrefixSize);
+        }
+
         if (raw.size() > kMaxPacketSize || raw.size() < kMinPktSize) continue;
 
         const QByteArray opusFrame = decryptPacket(raw);
@@ -274,7 +307,7 @@ void MediaEngine::onReadyRead() {
 
 #ifdef HAVE_OPUS
         if (!m_opus || !m_opus->decoder) continue;
-        // Декодируем Opus → PCM
+        // Декодируем Opus → PCM и кладём в jitter-буфер
         QByteArray pcmOut(kFrameSamples * 2, '\0');
         const int decoded = opus_decode(
             m_opus->decoder,
@@ -289,9 +322,51 @@ void MediaEngine::onReadyRead() {
             continue;
         }
         pcmOut.resize(decoded * 2);
-        playPcm(pcmOut);
+        if (m_playbackQueue.size() < kJitterBufferMax)
+            m_playbackQueue.enqueue(pcmOut);
 #endif
     }
+}
+
+// ── onPlaybackTimer ───────────────────────────────────────────────────────────
+// Каждые kFrameMs мс берём кадр из jitter-буфера или генерируем PLC (если пусто).
+
+void MediaEngine::onPlaybackTimer() {
+#ifdef HAVE_OPUS
+    if (!m_opus || !m_opus->decoder) return;
+
+    if (!m_playbackQueue.isEmpty()) {
+        // Обычный путь: воспроизводим кадр из буфера
+        playPcm(m_playbackQueue.dequeue());
+    } else {
+        // Jitter-буфер пуст — используем Opus PLC (Packet Loss Concealment)
+        QByteArray pcmPlc(kFrameSamples * 2, '\0');
+        const int decoded = opus_decode(
+            m_opus->decoder,
+            nullptr, 0,  // nullptr = PLC
+            reinterpret_cast<opus_int16*>(pcmPlc.data()),
+            kFrameSamples,
+            0
+        );
+        if (decoded > 0) {
+            pcmPlc.resize(decoded * 2);
+            playPcm(pcmPlc);
+        }
+    }
+#endif
+}
+
+// ── enableUdpRelay ────────────────────────────────────────────────────────────
+
+void MediaEngine::enableUdpRelay(const QString& relayIp, quint16 relayUdpPort,
+                                  const QUuid& myUuid, const QUuid& peerUuid)
+{
+    m_udpRelayMode  = true;
+    m_relayUdpAddr  = QHostAddress(relayIp);
+    m_relayUdpPort  = relayUdpPort;
+    m_myUuidBytes   = myUuid.toRfc4122();   // 16 байт
+    m_peerUuidBytes = peerUuid.toRfc4122(); // 16 байт
+    qDebug("[MediaEngine] Relay UDP включён → %s:%d", qPrintable(relayIp), relayUdpPort);
 }
 
 // ── playPcm ───────────────────────────────────────────────────────────────────

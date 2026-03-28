@@ -7,9 +7,10 @@
 
 // Режим проброса портов — определяет, как приложение рекламирует свой адрес пирам
 enum class PortForwardingMode : int {
-    UpnpAuto = 0,  // UPnP (автоматический, по умолчанию)
-    Manual   = 1,  // Ручной (VPN / статический IP + внешний порт)
-    Disabled = 2,  // Отключено (только локальная сеть, без проброса)
+    UpnpAuto     = 0,  // UPnP (автоматический, по умолчанию)
+    Manual       = 1,  // Ручной (VPN / статический IP + внешний порт)
+    Disabled     = 2,  // Отключено (только локальная сеть, без проброса)
+    ClientServer = 3,  // Ретрансляция через выделенный сервер (TCP+UDP relay)
 };
 
 // ── SessionManager ─────────────────────────────────────────────────────────
@@ -92,6 +93,14 @@ public:
     void setManualPublicIp(const QString& ip);
     void setManualPublicPort(quint16 port);
 
+    // ── Relay (Client-Server) ─────────────────────────────────────────────
+    [[nodiscard]] QString relayServerIp()  const { return m_relayServerIp; }
+    [[nodiscard]] quint16 relayTcpPort()   const { return m_relayTcpPort; }
+    [[nodiscard]] quint16 relayUdpPort()   const { return m_relayUdpPort; }
+    void setRelayServerIp(const QString& ip);
+    void setRelayTcpPort(quint16 port);
+    void setRelayUdpPort(quint16 port);
+
     // ── Security ──────────────────────────────────────────────────────────
     // Разрешить входящие запросы удалённого шелла (по умолчанию включено)
     [[nodiscard]] bool remoteShellEnabled() const { return m_remoteShellEnabled; }
@@ -134,7 +143,7 @@ private:
     QString m_theme          {"dark"};
     QString m_language       {"ru"};
     bool    m_demoMode       {false};
-    int     m_leftPanelWidth {280};
+    int     m_leftPanelWidth {320};
 
     // Updates
     QString m_lastUpdateCheck {};
@@ -143,6 +152,11 @@ private:
     PortForwardingMode m_portForwardingMode {PortForwardingMode::UpnpAuto};
     QString            m_manualPublicIp     {};
     quint16            m_manualPublicPort   {47821};
+
+    // Relay (Client-Server)
+    QString m_relayServerIp  {};
+    quint16 m_relayTcpPort   {47822};
+    quint16 m_relayUdpPort   {47823};
 
     // Security
     bool    m_remoteShellEnabled {true};

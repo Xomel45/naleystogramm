@@ -104,6 +104,8 @@ signals:
     void        ready(const QString& externalIp, quint16 port, bool upnpOk);
     void        externalIpDiscovered(const QString& ip);
     void        upnpMappingResult(bool ok);  // Результат UPnP (асинхронный)
+    void        relayConnected();            // Ретранслятор: соединение установлено
+    void        relayDisconnected();         // Ретранслятор: соединение разорвано
 
     // Кто-то хочет подключиться — показать диалог подтверждения
     void        incomingRequest(QUuid peerUuid, QString peerName, QString peerIp);
@@ -132,11 +134,19 @@ private slots:
     void        onNewConnection();
     void        onSocketReadyRead();
     void        onSocketDisconnected();
+    void        onRelayReadyRead();
+    void        onRelayConnected();
+    void        onRelayDisconnected();
 
 private:
     void        startServer();
     void        discoverExternalIp();
     void        tryUpnp();
+
+    // ── Ретранслятор (Client-Server режим) ───────────────────────────────────
+    void        connectToRelay();
+    void        sendViaRelay(const QUuid& targetUuid, const QJsonObject& obj);
+    void        handleRelayFrame(const QUuid& fromUuid, const QJsonObject& innerObj);
 
     void        handleFrame(PeerConnection& peer, const QJsonObject& obj);
     void        sendHandshake(QTcpSocket* socket);
@@ -183,6 +193,13 @@ private:
     quint16     m_advertisedPort {0};
     bool        m_upnpMapped{false};
     bool        m_verboseLogging{false};
+
+    // Relay (Client-Server)
+    QTcpSocket* m_relaySocket         {nullptr};
+    QByteArray  m_relayReadBuf        {};
+    bool        m_relayRegistered     {false};
+    QSet<QUuid> m_relayPeers;                   // UUID пиров подключённых через ретранслятор
+    QTimer*     m_relayReconnectTimer {nullptr};
 
     static constexpr quint16 kDefaultPort          = 47821;
     static constexpr int     kConnectionTimeout    = 10000;   // 10 секунд на подключение

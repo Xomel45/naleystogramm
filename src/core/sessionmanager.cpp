@@ -12,7 +12,7 @@
 
 static constexpr const char* kAppDirName  = "naleystogramm";
 static constexpr const char* kFileName    = "session.json";
-static constexpr const char* kVersion     = "0.5.3";
+static constexpr const char* kVersion     = "0.6.0";
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -118,6 +118,9 @@ QJsonObject SessionManager::toJson() const {
     network["portForwardingMode"] = static_cast<int>(m_portForwardingMode);
     network["manualPublicIp"]     = m_manualPublicIp;
     network["manualPublicPort"]   = static_cast<int>(m_manualPublicPort);
+    network["relayServerIp"]      = m_relayServerIp;
+    network["relayTcpPort"]       = static_cast<int>(m_relayTcpPort);
+    network["relayUdpPort"]       = static_cast<int>(m_relayUdpPort);
 
     QJsonObject ui;
     ui["theme"]          = m_theme;
@@ -162,13 +165,16 @@ void SessionManager::fromJson(const QJsonObject& obj) {
         net["portForwardingMode"].toInt(static_cast<int>(PortForwardingMode::UpnpAuto)));
     m_manualPublicIp     = net["manualPublicIp"].toString();
     m_manualPublicPort   = static_cast<quint16>(net["manualPublicPort"].toInt(47821));
+    m_relayServerIp      = net["relayServerIp"].toString();
+    m_relayTcpPort       = static_cast<quint16>(net["relayTcpPort"].toInt(47822));
+    m_relayUdpPort       = static_cast<quint16>(net["relayUdpPort"].toInt(47823));
 
     // UI
     const auto ui = obj["ui"].toObject();
     m_theme          = ui["theme"].toString("dark");
     m_language       = ui["language"].toString("ru");
     m_demoMode       = ui["demoMode"].toBool(false);
-    m_leftPanelWidth = ui["leftPanelWidth"].toInt(280);
+    m_leftPanelWidth = ui["leftPanelWidth"].toInt(320);
 
     // Updates
     const auto upd = obj["updates"].toObject();
@@ -217,6 +223,10 @@ void SessionManager::setManualPublicPort(quint16 port) {
     m_manualPublicPort = port;
     save();
 }
+
+void SessionManager::setRelayServerIp(const QString& ip) { m_relayServerIp = ip;   save(); }
+void SessionManager::setRelayTcpPort(quint16 port)        { m_relayTcpPort = port;  save(); }
+void SessionManager::setRelayUdpPort(quint16 port)        { m_relayUdpPort = port;  save(); }
 
 void SessionManager::setRemoteShellEnabled(bool on) {
     m_remoteShellEnabled = on;
