@@ -65,30 +65,28 @@ QByteArray X3DH::kdf(const QByteArray& ikm, const QByteArray& info) {
     static const QByteArray salt(32, '\0'); // zero salt per Signal spec
     static const int outLen = 32;
 
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
+    EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr));
     if (!ctx) return {};
 
     QByteArray out(outLen, '\0');
 
-    if (EVP_PKEY_derive_init(ctx) <= 0 ||
-        EVP_PKEY_CTX_set_hkdf_md(ctx, EVP_sha256()) <= 0 ||
-        EVP_PKEY_CTX_set1_hkdf_salt(ctx,
+    if (EVP_PKEY_derive_init(ctx.get()) <= 0 ||
+        EVP_PKEY_CTX_set_hkdf_md(ctx.get(), EVP_sha256()) <= 0 ||
+        EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(),
             reinterpret_cast<const unsigned char*>(salt.constData()),
             static_cast<int>(salt.size())) <= 0 ||
-        EVP_PKEY_CTX_set1_hkdf_key(ctx,
+        EVP_PKEY_CTX_set1_hkdf_key(ctx.get(),
             reinterpret_cast<const unsigned char*>(ikm.constData()),
             static_cast<int>(ikm.size())) <= 0 ||
-        EVP_PKEY_CTX_add1_hkdf_info(ctx,
+        EVP_PKEY_CTX_add1_hkdf_info(ctx.get(),
             reinterpret_cast<const unsigned char*>(info.constData()),
             static_cast<int>(info.size())) <= 0)
     {
-        EVP_PKEY_CTX_free(ctx);
         return {};
     }
 
     size_t outSize = static_cast<size_t>(outLen);
-    EVP_PKEY_derive(ctx, reinterpret_cast<unsigned char*>(out.data()), &outSize);
-    EVP_PKEY_CTX_free(ctx);
+    EVP_PKEY_derive(ctx.get(), reinterpret_cast<unsigned char*>(out.data()), &outSize);
     return out;
 }
 

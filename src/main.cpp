@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QFont>
+#include <QIcon>
 #include <QNetworkProxy>
 #include <QTranslator>
 #include <QLibraryInfo>
@@ -64,8 +65,9 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
 
     app.setApplicationName("naleystogramm");
-    app.setApplicationVersion("0.6.0");
+    app.setApplicationVersion("0.7.0");
     app.setOrganizationName("naleystogramm");
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/app_icon.png")));
 
     // Прямое подключение — системный прокси не используется
     QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);

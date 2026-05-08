@@ -24,6 +24,9 @@ public:
     // Включить/выключить подробный режим
     void setVerbose(bool enabled);
 
+signals:
+    void verboseChanged(bool enabled);
+
 private slots:
     void onClearClicked();
     void onExportClicked();

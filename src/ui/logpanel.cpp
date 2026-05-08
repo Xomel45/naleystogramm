@@ -163,6 +163,7 @@ void LogPanel::onExportClicked() {
 
 void LogPanel::onVerboseToggled(bool checked) {
     Logger::instance().setVerbose(checked);
+    emit verboseChanged(checked);
 }
 
 QString LogPanel::levelColor(LogLevel level) const {

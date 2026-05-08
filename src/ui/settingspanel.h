@@ -23,6 +23,7 @@ signals:
     void nameChanged(const QString& name);
     void networkChanged(const QString& ip, quint16 port);
     void backRequested();  // нажали ← назад
+    void verboseLoggingChanged(bool enabled);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -37,6 +38,7 @@ private:
     void buildHeader();
     void buildProfileSection(QWidget* container);
     void buildNetworkSection(QWidget* container);
+    void buildPrivacySection(QWidget* container);
     void buildSecuritySection(QWidget* container);
     void buildInterfaceSection(QWidget* container);
 
@@ -75,6 +77,14 @@ private:
     QComboBox*   m_langCombo           {nullptr};
     QLabel*      m_customRestartHint   {nullptr};  // подсказка "требуется перезапуск"
     QPushButton* m_importThemeBtn      {nullptr};  // кнопка "Импортировать тему..."
+
+    // Конфиденциальность
+    QComboBox* m_privacyMessages {nullptr};
+    QComboBox* m_privacyFiles    {nullptr};
+    QComboBox* m_privacyCalls    {nullptr};
+    QComboBox* m_privacyVoice    {nullptr};
+    QComboBox* m_privacyAvatar   {nullptr};
+    QComboBox* m_privacyShell    {nullptr};
 
     // Безопасность
     QPushButton* m_shellToggle {nullptr};

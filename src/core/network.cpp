@@ -234,9 +234,16 @@ void NetworkManager::connectToRelay() {
     }
 
     if (m_relaySocket) {
+        // Отключаем сигналы до abort() — иначе disconnected эмитится синхронно
+        // и onRelayDisconnected() запустит reconnect-таймер, хотя мы уже переподключаемся.
+        m_relaySocket->disconnect(this);
         m_relaySocket->abort();
         m_relaySocket->deleteLater();
     }
+
+    // Сбрасываем reconnect-таймер: мы уже в процессе переподключения
+    if (m_relayReconnectTimer)
+        m_relayReconnectTimer->stop();
 
     m_relaySocket     = new QTcpSocket(this);
     m_relayRegistered = false;
@@ -247,10 +254,12 @@ void NetworkManager::connectToRelay() {
             this, &NetworkManager::onRelayReadyRead);
     connect(m_relaySocket, &QTcpSocket::disconnected,
             this, &NetworkManager::onRelayDisconnected);
+    // Захватываем указатель на конкретный сокет — не this->m_relaySocket,
+    // чтобы при замене сокета в следующем connectToRelay() читать правильный errorString.
     connect(m_relaySocket, &QTcpSocket::errorOccurred, this,
-        [this](QAbstractSocket::SocketError) {
+        [sock = m_relaySocket](QAbstractSocket::SocketError) {
             qWarning("[Network] Relay socket error: %s",
-                     qPrintable(m_relaySocket->errorString()));
+                     qPrintable(sock->errorString()));
         });
 
     qDebug("[Network] Relay: подключаемся к %s:%d", qPrintable(relayIp), relayTcp);
@@ -433,7 +442,7 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
     }
 
     log(QString("Connecting to %1 (%2:%3)...")
-        .arg(peer.name, peer.ip).arg(peer.port));
+        .arg(peer.name, peer.ip).arg(peer.port), true);
 
     // Сохраняем информацию для возможного переподключения
     m_reconnectInfo[peer.uuid] = PeerReconnectInfo{
@@ -453,7 +462,7 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
     QPointer<QTimer> timerGuard = timeoutTimer;
 
     connect(timeoutTimer, &QTimer::timeout, this, [this, socket, peer, timerGuard]() {
-        log(QString("Connection timeout to %1").arg(peer.name));
+        log(QString("Connection timeout to %1").arg(peer.name), true);
         socket->abort();
         socket->deleteLater();
         if (timerGuard) timerGuard->deleteLater();
@@ -479,7 +488,7 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
         }
 
         log(QString("Connected to %1 (%2:%3)")
-            .arg(peer.name, peer.ip).arg(peer.port));
+            .arg(peer.name, peer.ip).arg(peer.port), true);
 
         // Создаём запись пира с полным состоянием
         m_peers[peer.uuid] = PeerConnection{
@@ -766,7 +775,7 @@ void NetworkManager::onSocketDisconnected() {
             const QUuid uuid = it.key();
             const QString name = it.value().name;
 
-            log(QString("Disconnected from %1").arg(name));
+            log(QString("Disconnected from %1").arg(name), true);
 
             // Останавливаем keepalive
             stopKeepalive(uuid);

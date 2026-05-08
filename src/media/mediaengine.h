@@ -5,6 +5,7 @@
 #include <QUuid>
 
 #ifdef HAVE_QT_MULTIMEDIA
+#include <QAudioDevice>
 class QAudioSource;
 class QAudioSink;
 class QIODevice;
@@ -43,6 +44,14 @@ public:
     // Заглушить микрофон (отправляем тишину вместо реального звука).
     void setMuted(bool muted);
     [[nodiscard]] bool isMuted() const { return m_muted; }
+
+#ifdef HAVE_QT_MULTIMEDIA
+    // Горячая замена устройств: работает до и во время звонка.
+    // До startCall() — сохраняет предпочтение, которое будет использовано при запуске.
+    // Во время звонка — немедленно перезапускает захват/воспроизведение.
+    void setInputDevice (const QAudioDevice& dev);
+    void setOutputDevice(const QAudioDevice& dev);
+#endif
 
     // Включить UDP-ретрансляцию: пакеты идут через relay-сервер с UUID-префиксом.
     // Вызывается до startCall() из CallManager в режиме ClientServer.
@@ -89,6 +98,8 @@ private:
     QAudioSink*   m_playback       {nullptr};
     QIODevice*    m_captureDevice  {nullptr};
     QIODevice*    m_playbackDevice {nullptr};
+    QAudioDevice  m_preferredInput;   // нулевой = использовать системный default
+    QAudioDevice  m_preferredOutput;
 #endif
 
 #ifdef HAVE_OPUS

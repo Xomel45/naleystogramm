@@ -3,6 +3,8 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPushButton>
+#include <QIcon>
+#include <QSize>
 
 IncomingDialog::IncomingDialog(const QString& name, const QString& ip,
                                 QWidget* parent) : QDialog(parent) {
@@ -37,8 +39,12 @@ IncomingDialog::IncomingDialog(const QString& name, const QString& ip,
 
     auto* rejectBtn = new QPushButton(tr("Reject"));
     rejectBtn->setObjectName("dlgRejectBtn");
+    rejectBtn->setIcon(QIcon(QStringLiteral(":/icons/call_decline.png")));
+    rejectBtn->setIconSize(QSize(18, 18));
     auto* acceptBtn = new QPushButton(tr("Accept"));
     acceptBtn->setObjectName("dlgAcceptBtn");
+    acceptBtn->setIcon(QIcon(QStringLiteral(":/icons/call_answer.png")));
+    acceptBtn->setIconSize(QSize(18, 18));
 
     connect(acceptBtn, &QPushButton::clicked, this, &QDialog::accept);
     connect(rejectBtn, &QPushButton::clicked, this, &QDialog::reject);

@@ -5,6 +5,13 @@
 #include <QJsonObject>
 #include <QByteArray>
 
+// Уровень конфиденциальности — кто может совершать то или иное действие
+enum class PrivacyLevel : int {
+    Everyone     = 0,  // Все (любой пир)
+    ContactsOnly = 1,  // Только контакты (UUID есть в списке контактов)
+    Nobody       = 2,  // Никто (полный запрет)
+};
+
 // Режим проброса портов — определяет, как приложение рекламирует свой адрес пирам
 enum class PortForwardingMode : int {
     UpnpAuto     = 0,  // UPnP (автоматический, по умолчанию)
@@ -106,6 +113,20 @@ public:
     [[nodiscard]] bool remoteShellEnabled() const { return m_remoteShellEnabled; }
     void setRemoteShellEnabled(bool on);
 
+    // ── Privacy ───────────────────────────────────────────────────────────
+    [[nodiscard]] PrivacyLevel privacyMessages() const { return m_privacyMessages; }
+    [[nodiscard]] PrivacyLevel privacyFiles()    const { return m_privacyFiles;    }
+    [[nodiscard]] PrivacyLevel privacyCalls()    const { return m_privacyCalls;    }
+    [[nodiscard]] PrivacyLevel privacyVoice()    const { return m_privacyVoice;    }
+    [[nodiscard]] PrivacyLevel privacyAvatar()   const { return m_privacyAvatar;   }
+    [[nodiscard]] PrivacyLevel privacyShell()    const { return m_privacyShell;    }
+    void setPrivacyMessages(PrivacyLevel v);
+    void setPrivacyFiles   (PrivacyLevel v);
+    void setPrivacyCalls   (PrivacyLevel v);
+    void setPrivacyVoice   (PrivacyLevel v);
+    void setPrivacyAvatar  (PrivacyLevel v);
+    void setPrivacyShell   (PrivacyLevel v);
+
     // ── Avatar ────────────────────────────────────────────────────────────
     [[nodiscard]] QString avatarPath() const { return m_avatarPath; }
     void setAvatarPath(const QString& path);   // автосохранение
@@ -160,6 +181,14 @@ private:
 
     // Security
     bool    m_remoteShellEnabled {true};
+
+    // Privacy
+    PrivacyLevel m_privacyMessages {PrivacyLevel::Everyone};
+    PrivacyLevel m_privacyFiles    {PrivacyLevel::Everyone};
+    PrivacyLevel m_privacyCalls    {PrivacyLevel::Everyone};
+    PrivacyLevel m_privacyVoice    {PrivacyLevel::Everyone};
+    PrivacyLevel m_privacyAvatar   {PrivacyLevel::Everyone};
+    PrivacyLevel m_privacyShell    {PrivacyLevel::ContactsOnly};
 
     // Avatar
     QString m_avatarPath {};

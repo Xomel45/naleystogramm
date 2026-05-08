@@ -112,7 +112,9 @@ bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
     fmt.setSampleFormat(QAudioFormat::Int16);
 
     // ── Захват (микрофон) ─────────────────────────────────────────────────────
-    const QAudioDevice inputDev = QMediaDevices::defaultAudioInput();
+    const QAudioDevice inputDev = (!m_preferredInput.isNull())
+        ? m_preferredInput
+        : QMediaDevices::defaultAudioInput();
     if (inputDev.isNull()) {
         emit mediaError("Микрофон не найден");
         endCall();
@@ -128,7 +130,9 @@ bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
     }
 
     // ── Воспроизведение (динамики) ────────────────────────────────────────────
-    const QAudioDevice outputDev = QMediaDevices::defaultAudioOutput();
+    const QAudioDevice outputDev = (!m_preferredOutput.isNull())
+        ? m_preferredOutput
+        : QMediaDevices::defaultAudioOutput();
     if (!outputDev.isNull()) {
         m_playback = new QAudioSink(outputDev, fmt, this);
         m_playbackDevice = m_playback->start();
@@ -214,6 +218,61 @@ quint16 MediaEngine::localUdpPort() const {
 void MediaEngine::setMuted(bool muted) {
     m_muted = muted;
 }
+
+// ── setInputDevice ────────────────────────────────────────────────────────────
+
+#ifdef HAVE_QT_MULTIMEDIA
+void MediaEngine::setInputDevice(const QAudioDevice& dev) {
+    if (dev.isNull()) return;
+    m_preferredInput = dev;
+    if (!m_inCall) return;   // применится при следующем startCall()
+
+    // Горячая замена: перезапускаем захват с новым устройством
+    if (m_capture) {
+        m_capture->stop();
+        m_capture->deleteLater();
+        m_capture = nullptr;
+        m_captureDevice = nullptr;
+    }
+    QAudioFormat fmt;
+    fmt.setSampleRate(kSampleRate);
+    fmt.setChannelCount(kChannels);
+    fmt.setSampleFormat(QAudioFormat::Int16);
+    m_capture = new QAudioSource(dev, fmt, this);
+    m_captureDevice = m_capture->start();
+    if (m_capture->error() != QAudio::NoError) {
+        emit mediaError(QString("Ошибка переключения микрофона: %1")
+                        .arg(static_cast<int>(m_capture->error())));
+    }
+    qDebug("[MediaEngine] Микрофон переключён: %s", qPrintable(dev.description()));
+}
+
+void MediaEngine::setOutputDevice(const QAudioDevice& dev) {
+    if (dev.isNull()) return;
+    m_preferredOutput = dev;
+    if (!m_inCall) return;   // применится при следующем startCall()
+
+    // Горячая замена: перезапускаем воспроизведение с новым устройством
+    if (m_playback) {
+        m_playback->stop();
+        m_playback->deleteLater();
+        m_playback = nullptr;
+        m_playbackDevice = nullptr;
+    }
+    m_playbackQueue.clear();
+    QAudioFormat fmt;
+    fmt.setSampleRate(kSampleRate);
+    fmt.setChannelCount(kChannels);
+    fmt.setSampleFormat(QAudioFormat::Int16);
+    m_playback = new QAudioSink(dev, fmt, this);
+    m_playbackDevice = m_playback->start();
+    if (m_playback->error() != QAudio::NoError) {
+        emit mediaError(QString("Ошибка переключения динамика: %1")
+                        .arg(static_cast<int>(m_playback->error())));
+    }
+    qDebug("[MediaEngine] Динамик переключён: %s", qPrintable(dev.description()));
+}
+#endif
 
 // ── onCaptureTimer ────────────────────────────────────────────────────────────
 // Захватываем ровно один кадр kFrameSamples (320 сэмплов * 2 байта = 640 байт),

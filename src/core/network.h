@@ -68,9 +68,10 @@ public:
     // Запуск сервера + обнаружение внешнего IP + попытка UPnP
     void        init();
 
-    [[nodiscard]] QString  externalIp()  const noexcept { return m_externalIp; }
-    [[nodiscard]] quint16  localPort()   const noexcept { return m_localPort; }
-    [[nodiscard]] bool     upnpMapped()  const noexcept { return m_upnpMapped; }
+    [[nodiscard]] QString  externalIp()     const noexcept { return m_externalIp; }
+    [[nodiscard]] quint16  localPort()      const noexcept { return m_localPort; }
+    [[nodiscard]] quint16  advertisedPort() const noexcept { return m_advertisedPort ? m_advertisedPort : m_localPort; }
+    [[nodiscard]] bool     upnpMapped()     const noexcept { return m_upnpMapped; }
 
     // Инициировать исходящее подключение
     void        connectToPeer(const PeerInfo& peer);

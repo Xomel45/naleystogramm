@@ -1,0 +1,13 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file alias="icons/app_icon.png">icons/app_icon.png</file>
+        <file alias="icons/call_answer.png">icons/call_answer.png</file>
+        <file alias="icons/call_decline.png">icons/call_decline.png</file>
+        <file alias="icons/vol_mute.png">icons/vol_mute.png</file>
+        <file alias="icons/vol_unmute.png">icons/vol_unmute.png</file>
+        <file alias="icons/media_play.png">icons/media_play.png</file>
+        <file alias="icons/media_pause.png">icons/media_pause.png</file>
+        <file alias="icons/msg_delivered.png">icons/msg_delivered.png</file>
+    </qresource>
+</RCC>

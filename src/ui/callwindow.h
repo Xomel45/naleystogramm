@@ -2,6 +2,11 @@
 #include <QDialog>
 #include <QElapsedTimer>
 
+#ifdef HAVE_QT_MULTIMEDIA
+#include <QAudioDevice>
+class QComboBox;
+#endif
+
 class QLabel;
 class QPushButton;
 class QProgressBar;
@@ -34,6 +39,10 @@ signals:
     void hangupClicked();            // кнопка 📵 Завершить
     void acceptClicked();            // кнопка ✅ Принять (только при Ringing)
     void rejectClicked();            // кнопка ❌ Отклонить (только при Ringing)
+#ifdef HAVE_QT_MULTIMEDIA
+    void inputDeviceChanged (const QAudioDevice& dev);  // пользователь выбрал микрофон
+    void outputDeviceChanged(const QAudioDevice& dev);  // пользователь выбрал динамик
+#endif
 
 private slots:
     void onDurationTick();           // обновляем счётчик времени разговора
@@ -55,4 +64,9 @@ private:
     QTimer*       m_durationTimer {nullptr};
     QElapsedTimer m_callTimer;
     bool          m_muted         {false};
+
+#ifdef HAVE_QT_MULTIMEDIA
+    QComboBox* m_inputDevCombo  {nullptr};
+    QComboBox* m_outputDevCombo {nullptr};
+#endif
 };

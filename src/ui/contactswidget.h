@@ -29,6 +29,9 @@ public:
     void updateLastMessage(const QUuid& uuid, const QString& text);
     // Обновить отображаемое имя контакта без полной перезагрузки списка
     void updateContactName(const QUuid& uuid, const QString& name);
+    // Счётчик непрочитанных сообщений
+    void incrementUnread(const QUuid& uuid);
+    void clearUnread(const QUuid& uuid);
 
 signals:
     void contactSelected(QUuid uuid);
@@ -50,4 +53,5 @@ private:
     QList<Contact> m_contacts;
     QMap<QUuid, PeerPresence> m_presence;   // Присутствие пиров (4 состояния)
     QMap<QUuid, QString>      m_lastMsg;
+    QMap<QUuid, int>          m_unreadCounts;
 };

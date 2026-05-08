@@ -3,6 +3,7 @@
 #include <QDateTime>
 #include <QUuid>
 #include <QPixmap>
+#include <QMap>
 #include "../core/storage.h"
 
 class QTextEdit;
@@ -27,7 +28,8 @@ public:
     void loadHistory(const QList<Message>& messages);
     // Вставить старые сообщения в начало (lazy loading при прокрутке вверх)
     void prependHistory(const QList<Message>& messages);
-    void appendMessage(const QString& text, bool outgoing, const QDateTime& ts);
+    void appendMessage(const QString& text, bool outgoing, const QDateTime& ts,
+                       const QString& msgId = {});
     // Добавить голосовое сообщение в чат (filePath — путь к WAV, пустой для входящих при загрузке)
     void appendVoiceMessage(bool outgoing, int durationMs, const QDateTime& ts,
                             const QString& filePath = {});
@@ -58,6 +60,16 @@ signals:
     void loadMoreRequested();
     // Пользователь нажал кнопку голосового звонка
     void callRequested(QUuid peerUuid);
+    // Typing indicators (для отправки через network)
+    void typingStarted();
+    void typingStopped();
+
+public slots:
+    // Показать/скрыть индикатор "пишет..."
+    void showTypingIndicator(const QString& peerName);
+    void hideTypingIndicator();
+    // Пометить исходящее сообщение как доставленное
+    void markDelivered(const QString& msgId);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -70,7 +82,8 @@ private slots:
 
 private:
     void setupUi();
-    QWidget* makeBubble(const QString& text, bool outgoing, const QDateTime& ts);
+    QWidget* makeBubble(const QString& text, bool outgoing, const QDateTime& ts,
+                        const QString& msgId = {});
     // Создать пузырь для голосового сообщения с кнопкой воспроизведения
     QWidget* makeVoiceBubble(bool outgoing, int durationMs, const QDateTime& ts,
                              const QString& filePath = {});
@@ -113,4 +126,14 @@ private:
     QAudioOutput*  m_audioOutput{nullptr};
     QPushButton*   m_activePlayBtn{nullptr};  // текущая активная кнопка ▶/⏸
 #endif
+
+    // Typing indicator (входящий)
+    QLabel*  m_typingLabel{nullptr};
+
+    // Typing debounce (исходящий)
+    QTimer*  m_typingOutTimer{nullptr};
+    bool     m_typingActive{false};
+
+    // Статус доставки — msgId → иконка в пузыре
+    QMap<QString, QLabel*> m_deliveryIcons;
 };

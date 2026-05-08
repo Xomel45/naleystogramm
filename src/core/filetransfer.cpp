@@ -480,11 +480,11 @@ void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
 
         // Расшифровываем ключ
         if (msg.contains("enc_key_env") && m_e2e && m_e2e->hasSession(from)) {
-            const QByteArray keyMaterial = m_e2e->decrypt(
+            const auto keyMaterial = m_e2e->decrypt(
                 from, msg["enc_key_env"].toObject());
-            if (keyMaterial.size() >= kAesKeySize + kGcmNonceSize) {
-                t.key   = keyMaterial.left(kAesKeySize);
-                t.nonce = keyMaterial.mid(kAesKeySize, kGcmNonceSize);
+            if (keyMaterial.has_value() && keyMaterial->size() >= kAesKeySize + kGcmNonceSize) {
+                t.key   = keyMaterial->left(kAesKeySize);
+                t.nonce = keyMaterial->mid(kAesKeySize, kGcmNonceSize);
                 LOG_DEBUG(FileTransfer, "File key decrypted via E2E session");
             } else {
                 LOG_ERROR(FileTransfer, "Failed to decrypt file key via E2E");

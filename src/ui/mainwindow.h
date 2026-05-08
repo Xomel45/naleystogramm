@@ -7,7 +7,9 @@
 #include <QMap>
 #include <QHash>
 #include <QSet>
+#include <QSystemTrayIcon>
 #include "../core/network.h"
+#include "../core/sessionmanager.h"
 #include "../core/storage.h"
 #include "../core/filetransfer.h"
 #include "../core/callmanager.h"
@@ -84,10 +86,17 @@ private slots:
     void onShellSessionEnded(QString sessionId, QString reason);
     void onPrivilegeEscalationDetected(QString sessionId);
 
+protected:
+    void closeEvent(QCloseEvent* event) override;
+
 private:
     void setupUi();
     void applyTheme();
     void updateStatusBar(const QString& ip, quint16 port, bool upnp);
+
+    // Проверяет уровень конфиденциальности — true если действие разрешено
+    [[nodiscard]] bool checkPrivacy(PrivacyLevel level, const QUuid& from) const;
+    [[nodiscard]] bool isKnownContact(const QUuid& uuid) const;
 
     Ui::MainWindow*  ui          {nullptr};
     QStackedWidget*  m_leftStack    {nullptr};
@@ -124,4 +133,13 @@ private:
 
     // Кнопка статуса UPnP в статус-баре (постоянный виджет)
     QPushButton*     m_upnpBtn  {nullptr};
+
+    // System tray
+    QSystemTrayIcon* m_tray {nullptr};
+
+    // Ожидание ACK: msgId → UUID пира (для markDelivered)
+    QMap<QString, QUuid> m_pendingAcks;
+
+    // Таймеры авто-скрытия typing indicator (per peer)
+    QMap<QUuid, QTimer*> m_peerTypingTimers;
 };

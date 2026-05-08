@@ -2,6 +2,7 @@
 #include "x3dh.h"
 #include "ratchet.h"
 #include <QObject>
+#include <expected>
 #include <QMap>
 #include <QHash>
 #include <QMutex>
@@ -28,8 +29,8 @@ public:
     void        processInitMessage(const QUuid& peerUuid,
                                     const QJsonObject& initMsg);
 
-    [[nodiscard]] QJsonObject encrypt(const QUuid& peerUuid, const QByteArray& plaintext);
-    [[nodiscard]] QByteArray  decrypt(const QUuid& peerUuid, const QJsonObject& envelope);
+    [[nodiscard]] QJsonObject                          encrypt(const QUuid& peerUuid, const QByteArray& plaintext);
+    [[nodiscard]] std::expected<QByteArray, QString>   decrypt(const QUuid& peerUuid, const QJsonObject& envelope);
     [[nodiscard]] bool        hasSession(const QUuid& peerUuid) const;
 
     // Получить 32-байтный ключ шифрования медиа для звонка.

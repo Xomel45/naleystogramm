@@ -5,6 +5,12 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QIcon>
+#include <QSize>
+#ifdef HAVE_QT_MULTIMEDIA
+#include <QComboBox>
+#include <QMediaDevices>
+#endif
 
 // ── CallWindow ────────────────────────────────────────────────────────────────
 
@@ -12,7 +18,7 @@ CallWindow::CallWindow(QWidget* parent)
     : QDialog(parent, Qt::Window | Qt::WindowStaysOnTopHint | Qt::WindowCloseButtonHint)
 {
     setWindowTitle("Голосовой звонок");
-    setFixedSize(320, 220);
+    setFixedSize(380, 290);
     setAttribute(Qt::WA_DeleteOnClose, false);  // владелец управляет временем жизни
     setupUi();
 }
@@ -53,12 +59,59 @@ void CallWindow::setupUi() {
     m_levelBar->setMaximumHeight(8);
     root->addWidget(m_levelBar);
 
+#ifdef HAVE_QT_MULTIMEDIA
+    // ── Выбор устройств ввода/вывода ──────────────────────────────────────────
+    auto makeDevRow = [&](const QString& icon, QComboBox*& combo) {
+        auto* row = new QHBoxLayout;
+        auto* lbl = new QLabel(icon, this);
+        lbl->setFixedWidth(20);
+        combo = new QComboBox(this);
+        combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        row->addWidget(lbl);
+        row->addWidget(combo);
+        root->addLayout(row);
+    };
+    makeDevRow("🎤", m_inputDevCombo);
+    makeDevRow("🔊", m_outputDevCombo);
+
+    // Заполняем устройства ввода
+    const auto inputDevices = QMediaDevices::audioInputs();
+    const QAudioDevice defaultInput = QMediaDevices::defaultAudioInput();
+    for (const auto& dev : inputDevices) {
+        m_inputDevCombo->addItem(dev.description(), QVariant::fromValue(dev));
+        if (dev.id() == defaultInput.id())
+            m_inputDevCombo->setCurrentIndex(m_inputDevCombo->count() - 1);
+    }
+
+    // Заполняем устройства вывода
+    const auto outputDevices = QMediaDevices::audioOutputs();
+    const QAudioDevice defaultOutput = QMediaDevices::defaultAudioOutput();
+    for (const auto& dev : outputDevices) {
+        m_outputDevCombo->addItem(dev.description(), QVariant::fromValue(dev));
+        if (dev.id() == defaultOutput.id())
+            m_outputDevCombo->setCurrentIndex(m_outputDevCombo->count() - 1);
+    }
+
+    connect(m_inputDevCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        const QAudioDevice dev = m_inputDevCombo->itemData(idx).value<QAudioDevice>();
+        if (!dev.isNull()) emit inputDeviceChanged(dev);
+    });
+    connect(m_outputDevCombo, &QComboBox::currentIndexChanged, this, [this](int idx) {
+        const QAudioDevice dev = m_outputDevCombo->itemData(idx).value<QAudioDevice>();
+        if (!dev.isNull()) emit outputDeviceChanged(dev);
+    });
+#endif
+
     root->addStretch();
 
     // Кнопки: принять / отклонить (только при Ringing)
     auto* callRow = new QHBoxLayout;
-    m_acceptBtn = new QPushButton("✅ Принять", this);
-    m_rejectBtn = new QPushButton("❌ Отклонить", this);
+    m_acceptBtn = new QPushButton(tr("Принять"), this);
+    m_rejectBtn = new QPushButton(tr("Отклонить"), this);
+    m_acceptBtn->setIcon(QIcon(QStringLiteral(":/icons/call_answer.png")));
+    m_rejectBtn->setIcon(QIcon(QStringLiteral(":/icons/call_decline.png")));
+    m_acceptBtn->setIconSize(QSize(18, 18));
+    m_rejectBtn->setIconSize(QSize(18, 18));
     m_acceptBtn->setFixedHeight(36);
     m_rejectBtn->setFixedHeight(36);
     callRow->addWidget(m_acceptBtn);
@@ -67,8 +120,12 @@ void CallWindow::setupUi() {
 
     // Кнопки: заглушить / завершить
     auto* ctrlRow = new QHBoxLayout;
-    m_muteBtn   = new QPushButton("🎙 Выкл. микр.", this);
-    m_hangupBtn = new QPushButton("📵 Завершить", this);
+    m_muteBtn   = new QPushButton(tr("Выкл. микр."), this);
+    m_hangupBtn = new QPushButton(tr("Завершить"), this);
+    m_muteBtn->setIcon(QIcon(QStringLiteral(":/icons/vol_unmute.png")));
+    m_hangupBtn->setIcon(QIcon(QStringLiteral(":/icons/call_decline.png")));
+    m_muteBtn->setIconSize(QSize(18, 18));
+    m_hangupBtn->setIconSize(QSize(18, 18));
     m_muteBtn->setFixedHeight(36);
     m_hangupBtn->setFixedHeight(36);
     m_hangupBtn->setStyleSheet("QPushButton { background: #c0392b; color: white; "
@@ -80,7 +137,10 @@ void CallWindow::setupUi() {
     // Связи
     connect(m_muteBtn, &QPushButton::clicked, this, [this]() {
         m_muted = !m_muted;
-        m_muteBtn->setText(m_muted ? "🔇 Вкл. микр." : "🎙 Выкл. микр.");
+        m_muteBtn->setIcon(m_muted
+            ? QIcon(QStringLiteral(":/icons/vol_mute.png"))
+            : QIcon(QStringLiteral(":/icons/vol_unmute.png")));
+        m_muteBtn->setText(m_muted ? tr("Вкл. микр.") : tr("Выкл. микр."));
         emit muteToggled(m_muted);
     });
     connect(m_hangupBtn, &QPushButton::clicked, this, &CallWindow::hangupClicked);

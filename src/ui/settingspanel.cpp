@@ -343,6 +343,13 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addWidget(separator());
     contentLayout->addSpacing(8);
 
+    // ── КОНФИДЕНЦИАЛЬНОСТЬ ────────────────────────────────────────────────
+    buildPrivacySection(content);
+
+    contentLayout->addSpacing(8);
+    contentLayout->addWidget(separator());
+    contentLayout->addSpacing(8);
+
     // ── БЕЗОПАСНОСТЬ ──────────────────────────────────────────────────────
     contentLayout->addWidget(sectionTitle(tr("Security")));
     contentLayout->addSpacing(6);
@@ -557,6 +564,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_logPanel = new LogPanel();
     m_logPanel->setMinimumHeight(200);
     contentLayout->addWidget(m_logPanel, 1);
+    connect(m_logPanel, &LogPanel::verboseChanged, this, &SettingsPanel::verboseLoggingChanged);
 
     contentLayout->addStretch();
 
@@ -580,6 +588,39 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     rootLayout->addWidget(versionFooter);
 
     reload();
+}
+
+// ── buildPrivacySection ───────────────────────────────────────────────────────
+
+void SettingsPanel::buildPrivacySection(QWidget* container) {
+    auto* lay = qobject_cast<QVBoxLayout*>(container->layout());
+    if (!lay) return;
+
+    lay->addWidget(sectionTitle(tr("Privacy")));
+    lay->addSpacing(6);
+
+    // Вспомогательная функция: создаёт строку fieldLabel + QComboBox
+    auto makePrivacyRow = [&](const QString& label, QComboBox*& combo) {
+        lay->addWidget(fieldLabel(label));
+        lay->addSpacing(4);
+        combo = new QComboBox();
+        combo->addItem(tr("Все"),              static_cast<int>(PrivacyLevel::Everyone));
+        combo->addItem(tr("Только контакты"),  static_cast<int>(PrivacyLevel::ContactsOnly));
+        combo->addItem(tr("Никто"),            static_cast<int>(PrivacyLevel::Nobody));
+        lay->addWidget(combo);
+        lay->addSpacing(8);
+    };
+
+    makePrivacyRow(tr("Кто может писать"),            m_privacyMessages);
+    makePrivacyRow(tr("Кто может отправлять файлы"),  m_privacyFiles);
+    makePrivacyRow(tr("Кто может звонить"),           m_privacyCalls);
+    makePrivacyRow(tr("Кто может слать голосовые"),   m_privacyVoice);
+    makePrivacyRow(tr("Кто видит аватар"),            m_privacyAvatar);
+    makePrivacyRow(tr("Кто может запросить шелл"),    m_privacyShell);
+
+    lay->addWidget(hint(
+        tr("«Только контакты» — разрешает действие только от людей из вашего списка контактов.\n"
+           "Изменения применяются немедленно, без перезапуска.")));
 }
 
 void SettingsPanel::reload() {
@@ -627,6 +668,23 @@ void SettingsPanel::reload() {
     m_shellToggle->setChecked(sm.remoteShellEnabled());
     m_shellToggle->setText(sm.remoteShellEnabled()
         ? tr("Remote shell allowed") : tr("Remote shell blocked"));
+
+    // Синхронизируем настройки конфиденциальности
+    auto syncPrivacyCombo = [](QComboBox* combo, PrivacyLevel level) {
+        const int val = static_cast<int>(level);
+        for (int i = 0; i < combo->count(); ++i) {
+            if (combo->itemData(i).toInt() == val) {
+                combo->setCurrentIndex(i);
+                return;
+            }
+        }
+    };
+    syncPrivacyCombo(m_privacyMessages, sm.privacyMessages());
+    syncPrivacyCombo(m_privacyFiles,    sm.privacyFiles());
+    syncPrivacyCombo(m_privacyCalls,    sm.privacyCalls());
+    syncPrivacyCombo(m_privacyVoice,    sm.privacyVoice());
+    syncPrivacyCombo(m_privacyAvatar,   sm.privacyAvatar());
+    syncPrivacyCombo(m_privacyShell,    sm.privacyShell());
 
     // Загружаем аватар из кэша или показываем букву
     const QString avatarPath = sm.avatarPath();
@@ -687,6 +745,14 @@ void SettingsPanel::onSave() {
     }
 
     sm.setPortForwardingMode(pfMode);
+
+    // Настройки конфиденциальности — применяются немедленно
+    sm.setPrivacyMessages(static_cast<PrivacyLevel>(m_privacyMessages->currentData().toInt()));
+    sm.setPrivacyFiles   (static_cast<PrivacyLevel>(m_privacyFiles->currentData().toInt()));
+    sm.setPrivacyCalls   (static_cast<PrivacyLevel>(m_privacyCalls->currentData().toInt()));
+    sm.setPrivacyVoice   (static_cast<PrivacyLevel>(m_privacyVoice->currentData().toInt()));
+    sm.setPrivacyAvatar  (static_cast<PrivacyLevel>(m_privacyAvatar->currentData().toInt()));
+    sm.setPrivacyShell   (static_cast<PrivacyLevel>(m_privacyShell->currentData().toInt()));
 
     emit backRequested();
 }

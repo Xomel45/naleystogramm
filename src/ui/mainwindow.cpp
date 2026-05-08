@@ -1,6 +1,9 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "../crypto/keyprotector.h"
+#ifdef Q_OS_WIN
+#include "../platform/windowsfirewall.h"
+#endif
 #include "chatwidget.h"
 #include "contactswidget.h"
 #include "settingspanel.h"
@@ -39,6 +42,8 @@
 #include <QBuffer>
 #include <QPixmap>
 #include <QHostAddress>
+#include <QMenu>
+#include <QCloseEvent>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -126,6 +131,24 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_fileTransfer, &FileTransfer::fileOffer,
             this, [this](QUuid from, QString name, qint64 size,
                          QString offerId, int durationMs) {
+        // Проверяем конфиденциальность: голосовые и файлы — разные уровни
+        const auto& sm = SessionManager::instance();
+        if (durationMs > 0) {
+            if (!checkPrivacy(sm.privacyVoice(), from)) {
+                qDebug("[Main] Голосовое от %s отклонено (настройки конфиденциальности)",
+                       qPrintable(from.toString(QUuid::WithoutBraces)));
+                m_fileTransfer->rejectOffer(from, offerId);
+                return;
+            }
+        } else {
+            if (!checkPrivacy(sm.privacyFiles(), from)) {
+                qDebug("[Main] Файл от %s отклонен (настройки конфиденциальности)",
+                       qPrintable(from.toString(QUuid::WithoutBraces)));
+                m_fileTransfer->rejectOffer(from, offerId);
+                return;
+            }
+        }
+
         m_pendingTransferSenders[offerId] = from;
         if (durationMs > 0) {
             // Голосовое сообщение — принимаем без диалога
@@ -205,6 +228,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(m_network, &NetworkManager::connectionLog, this, [](const QString& msg) {
         Logger::instance().info(LogComponent::Network, msg);
     });
+    connect(m_settings, &SettingsPanel::verboseLoggingChanged,
+            m_network,  &NetworkManager::setVerboseLogging);
 
     connect(m_network, &NetworkManager::ready,             this, &MainWindow::onAppReady);
     connect(m_network, &NetworkManager::incomingRequest,   this, &MainWindow::onIncomingRequest);
@@ -282,6 +307,13 @@ MainWindow::MainWindow(QWidget* parent)
     m_network->init();
     m_contacts->setContacts(m_storage->allContacts());
 
+#ifdef Q_OS_WIN
+    // Ждём 1 секунду чтобы главное окно успело отобразиться перед диалогом
+    QTimer::singleShot(1000, this, [this]() {
+        WindowsFirewall::checkAndPrompt(this, m_network->localPort());
+    });
+#endif
+
     // Тихая проверка обновлений — не дёргает если проверяли < 6 часов назад
     auto* checker = new UpdateChecker(this);
     connect(checker, &UpdateChecker::updateAvailable,
@@ -289,9 +321,54 @@ MainWindow::MainWindow(QWidget* parent)
                 m_updateBanner->showUpdate(info);
             });
     checker->checkInBackground();
+
+    // ── System tray ──────────────────────────────────────────────────────────
+    m_tray = new QSystemTrayIcon(QIcon(QStringLiteral(":/icons/app_icon.png")), this);
+    auto* trayMenu = new QMenu(this);
+    auto* showAct = trayMenu->addAction(tr("Открыть"));
+    trayMenu->addSeparator();
+    auto* quitAct = trayMenu->addAction(tr("Выйти"));
+    m_tray->setContextMenu(trayMenu);
+    m_tray->setToolTip("Naleystogramm");
+    m_tray->show();
+
+    connect(showAct, &QAction::triggered, this, [this]() {
+        showNormal();
+        raise();
+        activateWindow();
+    });
+    connect(quitAct, &QAction::triggered, qApp, &QApplication::quit);
+    connect(m_tray, &QSystemTrayIcon::activated, this,
+            [this](QSystemTrayIcon::ActivationReason r) {
+        if (r == QSystemTrayIcon::Trigger) {
+            if (isHidden() || isMinimized()) { showNormal(); raise(); activateWindow(); }
+            else hide();
+        }
+    });
+
+    // ── Typing indicators (исходящие) ────────────────────────────────────────
+    connect(m_chat, &ChatWidget::typingStarted, this, [this]() {
+        if (m_activePeer.isNull()) return;
+        m_network->sendJson(m_activePeer,
+            QJsonObject{{"type", "TYPING"}, {"state", "start"}});
+    });
+    connect(m_chat, &ChatWidget::typingStopped, this, [this]() {
+        if (m_activePeer.isNull()) return;
+        m_network->sendJson(m_activePeer,
+            QJsonObject{{"type", "TYPING"}, {"state", "stop"}});
+    });
 }
 
 MainWindow::~MainWindow() { delete ui; }
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (m_tray && m_tray->isVisible()) {
+        hide();
+        event->ignore();
+    } else {
+        QMainWindow::closeEvent(event);
+    }
+}
 
 // ── UI Setup ──────────────────────────────────────────────────────────────
 
@@ -543,6 +620,21 @@ void MainWindow::refreshOwnDisplay() {
     updateStatusBar(m_lastIp, m_lastPort, m_lastUpnp);
 }
 
+// ── Вспомогательные проверки конфиденциальности ──────────────────────────
+
+bool MainWindow::isKnownContact(const QUuid& uuid) const {
+    return !m_storage->getContact(uuid).uuid.isNull();
+}
+
+bool MainWindow::checkPrivacy(PrivacyLevel level, const QUuid& from) const {
+    switch (level) {
+        case PrivacyLevel::Everyone:     return true;
+        case PrivacyLevel::ContactsOnly: return isKnownContact(from);
+        case PrivacyLevel::Nobody:       return false;
+    }
+    return true;
+}
+
 // ── Slots ─────────────────────────────────────────────────────────────────
 
 void MainWindow::onCycleTheme() {}
@@ -647,6 +739,42 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
 
     const QString type = msg["type"].toString();
 
+    // ── Typing indicator (входящий) ───────────────────────────────────────────
+    if (type == "TYPING") {
+        if (m_activePeer == from) {
+            const QString state = msg["state"].toString();
+            if (state == "start") {
+                const Contact c = m_storage->getContact(from);
+                m_chat->showTypingIndicator(c.name);
+                // Авто-скрытие через 5 сек если stop не пришёл
+                auto*& timer = m_peerTypingTimers[from];
+                if (!timer) {
+                    timer = new QTimer(this);
+                    timer->setSingleShot(true);
+                    timer->setInterval(5000);
+                    connect(timer, &QTimer::timeout, this, [this, from]() {
+                        if (m_activePeer == from) m_chat->hideTypingIndicator();
+                    });
+                }
+                timer->start();
+            } else {
+                m_chat->hideTypingIndicator();
+                if (auto* t = m_peerTypingTimers.value(from)) t->stop();
+            }
+        }
+        return;
+    }
+
+    // ── Статус доставки (ACK) ─────────────────────────────────────────────────
+    if (type == "MSG_ACK") {
+        const QString ackId = msg["msg_id"].toString();
+        if (!ackId.isEmpty() && m_pendingAcks.contains(ackId)) {
+            m_pendingAcks.remove(ackId);
+            m_chat->markDelivered(ackId);
+        }
+        return;
+    }
+
     // ── Сигналинг голосовых звонков — делегируем CallManager ─────────────────
     if (type == "CALL_INVITE" || type == "CALL_ACCEPT" ||
         type == "CALL_REJECT" || type == "CALL_END") {
@@ -666,9 +794,9 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
     // decrypt() игнорирует поле type — поэтому можно безопасно переиспользовать
     // механизм E2E для любого outer type.
     if (type == "SHELL_DATA" || type == "SHELL_INPUT") {
-        const QByteArray plain = m_e2e->decrypt(from, msg);
-        if (!plain.isEmpty())
-            m_shellManager->handleDecryptedData(from, plain);
+        const auto plain = m_e2e->decrypt(from, msg);
+        if (plain.has_value())
+            m_shellManager->handleDecryptedData(from, *plain);
         return;
     }
 
@@ -697,6 +825,13 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
     if (type == "KEY_ACK") return;
 
     if (type == "AVATAR_REQUEST") {
+        // Проверяем уровень конфиденциальности — не отправляем аватар если запрещено
+        if (!checkPrivacy(SessionManager::instance().privacyAvatar(), from)) {
+            qDebug("[Main] Запрос аватара от %s отклонён (настройки конфиденциальности)",
+                   qPrintable(from.toString(QUuid::WithoutBraces)));
+            return;
+        }
+
         // Пир просит наш аватар — отправляем если он есть
         const QString ownPath = SessionManager::instance().avatarPath();
         if (ownPath.isEmpty() || !QFile::exists(ownPath)) return;
@@ -733,6 +868,12 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
     }
 
     if (type == "CHAT") {
+        if (!checkPrivacy(SessionManager::instance().privacyMessages(), from)) {
+            qDebug("[Main] Сообщение от %s отклонено (настройки конфиденциальности)",
+                   qPrintable(from.toString(QUuid::WithoutBraces)));
+            return;
+        }
+
         // Авто-добавляем неизвестного отправителя — иначе saveMessage упадёт на FK-ограничении
         if (m_storage->getContact(from).uuid.isNull()) {
             const auto info = m_network->getPeerInfo(from);
@@ -750,8 +891,8 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
             qDebug("[Main] Авто-добавлен неизвестный отправитель: %s", qPrintable(tmp.name));
         }
 
-        const QByteArray plain = m_e2e->decrypt(from, msg);
-        if (plain.isEmpty()) {
+        const auto plain = m_e2e->decrypt(from, msg);
+        if (!plain.has_value()) {
             // Ключи не совпадают — показываем системное сообщение вместо тихого падения
             qWarning("[Main] Ошибка расшифровки от %s",
                      qPrintable(from.toString(QUuid::WithoutBraces)));
@@ -762,7 +903,16 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
                     false, QDateTime::currentDateTime());
             return;
         }
-        const QString text = QString::fromUtf8(plain);
+        const QString text = QString::fromUtf8(*plain);
+
+        // Отправляем ACK чтобы отправитель увидел иконку доставки
+        const QString ackId = msg["msg_id"].toString();
+        if (!ackId.isEmpty()) {
+            m_network->sendJson(from, QJsonObject{
+                {"type", "MSG_ACK"},
+                {"msg_id", ackId}
+            });
+        }
 
         Message m;
         m.peerUuid = from; m.outgoing = false;
@@ -771,8 +921,21 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         if (m_storage->saveMessage(m) <= 0)
             qWarning("[Main] Failed to save incoming message");
 
-        if (m_activePeer == from)
+        if (m_activePeer == from) {
             m_chat->appendMessage(text, false, QDateTime::currentDateTime());
+            m_chat->hideTypingIndicator();
+        } else {
+            m_contacts->incrementUnread(from);
+            // Уведомление в трей если окно скрыто
+            if (m_tray && (isHidden() || isMinimized())) {
+                const Contact c = m_storage->getContact(from);
+                const QString senderName = c.uuid.isNull()
+                    ? from.toString(QUuid::WithoutBraces).left(8)
+                    : c.name;
+                m_tray->showMessage(senderName, text,
+                    QSystemTrayIcon::Information, 4000);
+            }
+        }
         m_contacts->updateLastMessage(from, text);
         return;
     }
@@ -813,6 +976,7 @@ void MainWindow::onAddContactClicked() {
 
 void MainWindow::onContactSelected(QUuid uuid) {
     m_activePeer = uuid;
+    m_contacts->clearUnread(uuid);
     const Contact c = m_storage->getContact(uuid);
 
     // Проверяем совместимость: если запись создана более новой версией приложения —
@@ -857,9 +1021,12 @@ void MainWindow::onSendMessage(const QString& text) {
         return;
     }
 
-    const QJsonObject env = m_e2e->encrypt(m_activePeer, text.toUtf8());
+    const QString msgId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QJsonObject env = m_e2e->encrypt(m_activePeer, text.toUtf8());
     if (env.isEmpty()) return;
+    env["msg_id"] = msgId;
     m_network->sendJson(m_activePeer, env);
+    m_pendingAcks[msgId] = m_activePeer;
 
     Message msg;
     msg.peerUuid = m_activePeer; msg.outgoing = true;
@@ -868,7 +1035,7 @@ void MainWindow::onSendMessage(const QString& text) {
     if (m_storage->saveMessage(msg) <= 0)
         qWarning("[Main] Failed to save outgoing message");
 
-    m_chat->appendMessage(text, true, QDateTime::currentDateTime());
+    m_chat->appendMessage(text, true, QDateTime::currentDateTime(), msgId);
     m_contacts->updateLastMessage(m_activePeer, text);
 }
 
@@ -936,12 +1103,25 @@ void MainWindow::onCallRequested(QUuid peerUuid) {
             m_callManager, &CallManager::endCall);
     connect(m_callManager->mediaEngine(), &MediaEngine::audioLevelChanged,
             m_callWindow, &CallWindow::setAudioLevel);
+#ifdef HAVE_QT_MULTIMEDIA
+    connect(m_callWindow, &CallWindow::inputDeviceChanged,
+            m_callManager->mediaEngine(), &MediaEngine::setInputDevice);
+    connect(m_callWindow, &CallWindow::outputDeviceChanged,
+            m_callManager->mediaEngine(), &MediaEngine::setOutputDevice);
+#endif
     m_callWindow->show();
 
     m_callManager->initiateCall(peerUuid, QHostAddress(info.ip));
 }
 
 void MainWindow::onIncomingCall(QUuid from, QString callerName, QString callId) {
+    if (!checkPrivacy(SessionManager::instance().privacyCalls(), from)) {
+        qDebug("[Main] Входящий звонок от %s отклонён (настройки конфиденциальности)",
+               qPrintable(from.toString(QUuid::WithoutBraces)));
+        m_callManager->rejectCall(callId);
+        return;
+    }
+
     m_callWindow = new CallWindow(this);
     m_callWindow->setPeerName(callerName.isEmpty() ? from.toString() : callerName);
     m_callWindow->setState(CallWindow::State::Ringing);
@@ -962,6 +1142,12 @@ void MainWindow::onIncomingCall(QUuid from, QString callerName, QString callId) 
     });
     connect(m_callManager->mediaEngine(), &MediaEngine::audioLevelChanged,
             m_callWindow, &CallWindow::setAudioLevel);
+#ifdef HAVE_QT_MULTIMEDIA
+    connect(m_callWindow, &CallWindow::inputDeviceChanged,
+            m_callManager->mediaEngine(), &MediaEngine::setInputDevice);
+    connect(m_callWindow, &CallWindow::outputDeviceChanged,
+            m_callManager->mediaEngine(), &MediaEngine::setOutputDevice);
+#endif
     m_callWindow->show();
 }
 
@@ -975,13 +1161,24 @@ void MainWindow::onCallEnded(QUuid /*peer*/) {
 
 void MainWindow::onShowMyId() {
     const auto& id = Identity::instance();
-    const QString connStr = id.connectionString(
-        m_network->externalIp(), m_network->localPort());
+    const QString ip   = m_network->externalIp();
+    const quint16 port = m_network->advertisedPort();
+    const QString connStr = id.connectionString(ip, port);
 
     QMessageBox dlg(this);
     dlg.setWindowTitle(tr("My ID"));
-    dlg.setText(tr("<b>Send this string to your contact:</b>"));
-    dlg.setInformativeText(connStr);
+
+    if (ip.isEmpty()) {
+        dlg.setText(tr("<b>Warning: public IP not yet known</b>"));
+        dlg.setInformativeText(
+            tr("The app is still discovering your external IP.\n"
+               "Wait a few seconds and try again, or set Manual mode in Settings.\n\n"
+               "Incomplete string (not usable yet):\n%1").arg(connStr));
+    } else {
+        dlg.setText(tr("<b>Send this string to your contact:</b>"));
+        dlg.setInformativeText(connStr);
+    }
+
     auto* copyBtn = dlg.addButton(tr("Copy"), QMessageBox::ActionRole);
     dlg.addButton(tr("Close"), QMessageBox::RejectRole);
     dlg.exec();
@@ -1197,6 +1394,14 @@ void MainWindow::onShellRequested(QUuid from, QString peerName, QString sessionI
     if (!SessionManager::instance().remoteShellEnabled()) {
         qWarning("[Shell] Входящий запрос отклонён: удалённый шелл отключён в настройках");
         m_shellManager->rejectRequest(sessionId, "disabled_by_user");
+        return;
+    }
+
+    // Проверяем уровень конфиденциальности для шелла
+    if (!checkPrivacy(SessionManager::instance().privacyShell(), from)) {
+        qDebug("[Shell] Входящий запрос от %s отклонён (настройки конфиденциальности)",
+               qPrintable(from.toString(QUuid::WithoutBraces)));
+        m_shellManager->rejectRequest(sessionId, "privacy");
         return;
     }
 

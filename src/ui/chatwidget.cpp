@@ -15,6 +15,23 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QEvent>
+#include <QIcon>
+#include <QImage>
+#include <QPixmap>
+#include <QSize>
+
+// Перекрашивает иконку в белый цвет (для тёмного фона)
+static QIcon whiteIcon(const QString& resourcePath) {
+    QImage img(resourcePath);
+    if (img.isNull()) return {};
+    img = img.convertToFormat(QImage::Format_ARGB32);
+    for (int y = 0; y < img.height(); ++y)
+        for (int x = 0; x < img.width(); ++x) {
+            const QColor c = img.pixelColor(x, y);
+            if (c.alpha() > 0) img.setPixelColor(x, y, QColor(255, 255, 255, c.alpha()));
+        }
+    return QIcon(QPixmap::fromImage(img));
+}
 #ifdef HAVE_QT_MULTIMEDIA
 #include <QMediaPlayer>
 #include <QAudioOutput>
@@ -80,11 +97,39 @@ ChatWidget::ChatWidget(QWidget* parent) : QWidget(parent) {
     connect(m_player, &QMediaPlayer::playbackStateChanged,
             this, [this](QMediaPlayer::PlaybackState state) {
         if (state == QMediaPlayer::StoppedState && m_activePlayBtn) {
-            m_activePlayBtn->setText("▶");
+            m_activePlayBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
+            m_activePlayBtn->setText({});
             m_activePlayBtn = nullptr;
         }
     });
 #endif
+
+    // Debounce-таймер исходящего typing: 3 сек тишины → typingStopped
+    m_typingOutTimer = new QTimer(this);
+    m_typingOutTimer->setInterval(3000);
+    m_typingOutTimer->setSingleShot(true);
+    connect(m_typingOutTimer, &QTimer::timeout, this, [this]() {
+        if (m_typingActive) {
+            m_typingActive = false;
+            emit typingStopped();
+        }
+    });
+
+    connect(m_input, &QTextEdit::textChanged, this, [this]() {
+        if (!m_typingActive && !m_input->toPlainText().isEmpty()) {
+            m_typingActive = true;
+            emit typingStarted();
+        }
+        if (!m_input->toPlainText().isEmpty())
+            m_typingOutTimer->start();
+        else {
+            m_typingOutTimer->stop();
+            if (m_typingActive) {
+                m_typingActive = false;
+                emit typingStopped();
+            }
+        }
+    });
 
     // При смене темы обновляем виджет
     connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
@@ -135,9 +180,11 @@ void ChatWidget::setupUi() {
         connect(m_fileBtn, &QPushButton::clicked,
                 this, &ChatWidget::sendFileRequested);
 
-        m_callBtn = new QPushButton("📞");
+        m_callBtn = new QPushButton();
         m_callBtn->setObjectName("iconBtn");
         m_callBtn->setFixedSize(36, 36);
+        m_callBtn->setIcon(whiteIcon(QStringLiteral(":/icons/call_answer.png")));
+        m_callBtn->setIconSize(QSize(20, 20));
 #ifdef HAVE_OPUS
         m_callBtn->setToolTip(tr("Голосовой звонок"));
 #else
@@ -217,10 +264,12 @@ void ChatWidget::setupUi() {
         m_input = inp;
 
         // Кнопка записи голосового сообщения
-        m_micBtn = new QPushButton("🎤");
+        m_micBtn = new QPushButton();
         m_micBtn->setObjectName("iconBtn");
         m_micBtn->setFixedSize(36, 36);
         m_micBtn->setToolTip(tr("Записать голосовое сообщение"));
+        m_micBtn->setIcon(QIcon(QStringLiteral(":/icons/vol_unmute.png")));
+        m_micBtn->setIconSize(QSize(20, 20));
         connect(m_micBtn, &QPushButton::clicked, this, &ChatWidget::onMicClicked);
 
         // Индикатор записи — скрыт по умолчанию
@@ -242,9 +291,17 @@ void ChatWidget::setupUi() {
         il->addWidget(m_sendBtn);
     }
 
+    // ── Индикатор "пишет..." ──────────────────────────────────────────────
+    m_typingLabel = new QLabel();
+    m_typingLabel->setObjectName("typingIndicator");
+    m_typingLabel->setContentsMargins(20, 2, 20, 2);
+    m_typingLabel->setStyleSheet("font-size: 12px; font-style: italic; color: #8888aa;");
+    m_typingLabel->hide();
+
     layout->addWidget(m_header);
     layout->addWidget(m_placeholder, 1);
     layout->addWidget(m_scrollArea,  1);
+    layout->addWidget(m_typingLabel);
     layout->addWidget(m_inputBar);
 
     m_header->hide();
@@ -338,9 +395,8 @@ void ChatWidget::prependHistory(const QList<Message>& msgs) {
 }
 
 void ChatWidget::appendMessage(const QString& text, bool outgoing,
-                                const QDateTime& ts) {
-    // Группировка по отправителю — небольшой отступ если тот же
-    m_msgLayout->addWidget(makeBubble(text, outgoing, ts));
+                                const QDateTime& ts, const QString& msgId) {
+    m_msgLayout->addWidget(makeBubble(text, outgoing, ts, msgId));
 
     QTimer::singleShot(30, m_scrollArea, [this]() {
         m_scrollArea->verticalScrollBar()->setValue(
@@ -349,7 +405,7 @@ void ChatWidget::appendMessage(const QString& text, bool outgoing,
 }
 
 QWidget* ChatWidget::makeBubble(const QString& text, bool outgoing,
-                                 const QDateTime& ts) {
+                                 const QDateTime& ts, const QString& msgId) {
     const auto& p = ThemeManager::instance().palette();
 
     auto* row = new QWidget();
@@ -382,8 +438,32 @@ QWidget* ChatWidget::makeBubble(const QString& text, bool outgoing,
                 line-height: 1.4;
             }
         )").arg(p.bgBubbleOut, p.textPrimary));
+
+        // Враппер: пузырь + иконка доставки под ним справа
+        auto* col = new QWidget();
+        col->setMaximumWidth(460);
+        auto* colLayout = new QVBoxLayout(col);
+        colLayout->setContentsMargins(0, 0, 0, 0);
+        colLayout->setSpacing(1);
+        bubble->setMaximumWidth(460);
+        colLayout->addWidget(bubble);
+
+        auto* delivRow = new QHBoxLayout();
+        delivRow->setContentsMargins(0, 0, 4, 0);
+        auto* delivIcon = new QLabel();
+        const QPixmap delivPix = QPixmap(QStringLiteral(":/icons/msg_delivered.png"))
+            .scaled(12, 12, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        delivIcon->setPixmap(delivPix);
+        delivIcon->hide();
+        delivRow->addStretch();
+        delivRow->addWidget(delivIcon);
+        colLayout->addLayout(delivRow);
+
+        if (!msgId.isEmpty())
+            m_deliveryIcons[msgId] = delivIcon;
+
         rowLayout->addStretch();
-        rowLayout->addWidget(bubble);
+        rowLayout->addWidget(col);
     } else {
         bubble->setStyleSheet(QString(R"(
             QLabel {
@@ -409,6 +489,14 @@ void ChatWidget::onSendClicked() {
     if (text.isEmpty()) return;
     m_input->clear();
     m_input->setFixedHeight(44);
+
+    // Сбрасываем typing-индикатор при отправке
+    m_typingOutTimer->stop();
+    if (m_typingActive) {
+        m_typingActive = false;
+        emit typingStopped();
+    }
+
     emit sendMessage(text);
 }
 
@@ -464,6 +552,7 @@ void ChatWidget::onMicClicked() {
         m_recIndicator->setText("🔴 0:00");
         m_recIndicator->show();
         m_recSecTimer->start();
+        m_micBtn->setIcon(QIcon());
         m_micBtn->setText("⏹");
         m_micBtn->setToolTip(tr("Остановить запись"));
     } else {
@@ -478,7 +567,9 @@ void ChatWidget::onRecordingDone(const QString& filePath, int durationMs) {
     m_recSeconds = 0;
     m_recIndicator->hide();
     m_recIndicator->setText("🔴 0:00");
-    m_micBtn->setText("🎤");
+    m_micBtn->setIcon(QIcon(QStringLiteral(":/icons/vol_unmute.png")));
+    m_micBtn->setIconSize(QSize(20, 20));
+    m_micBtn->setText({});
     m_micBtn->setToolTip(tr("Записать голосовое сообщение"));
     m_micBtn->setStyleSheet({});
 
@@ -530,9 +621,11 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
     bLayout->setSpacing(8);
 
     // Кнопка воспроизведения
-    auto* playBtn = new QPushButton("▶");
+    auto* playBtn = new QPushButton();
     playBtn->setFixedSize(32, 32);
     playBtn->setObjectName("voicePlayBtn");
+    playBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
+    playBtn->setIconSize(QSize(16, 16));
 
     // Форматируем длительность
     const int totalSec = durationMs / 1000;
@@ -591,16 +684,16 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
             if (m_activePlayBtn == playBtn) {
                 // Повторное нажатие — стоп
                 m_player->stop();
-                playBtn->setText("▶");
+                playBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
                 m_activePlayBtn = nullptr;
             } else {
                 // Остановить предыдущий
                 if (m_activePlayBtn) {
-                    m_activePlayBtn->setText("▶");
+                    m_activePlayBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
                     m_player->stop();
                 }
                 m_activePlayBtn = playBtn;
-                playBtn->setText("⏸");
+                playBtn->setIcon(QIcon(QStringLiteral(":/icons/media_pause.png")));
                 m_player->setSource(QUrl::fromLocalFile(filePath));
                 m_player->play();
             }
@@ -616,4 +709,27 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
     }
 
     return row;
+}
+
+// ── Typing indicator (входящий) ───────────────────────────────────────────
+
+void ChatWidget::showTypingIndicator(const QString& peerName) {
+    if (m_typingLabel) {
+        m_typingLabel->setText(peerName + tr(" печатает..."));
+        m_typingLabel->show();
+    }
+}
+
+void ChatWidget::hideTypingIndicator() {
+    if (m_typingLabel)
+        m_typingLabel->hide();
+}
+
+// ── Статус доставки ───────────────────────────────────────────────────────
+
+void ChatWidget::markDelivered(const QString& msgId) {
+    if (msgId.isEmpty()) return;
+    auto it = m_deliveryIcons.find(msgId);
+    if (it != m_deliveryIcons.end() && it.value())
+        it.value()->show();
 }

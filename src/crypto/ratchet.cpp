@@ -51,14 +51,14 @@ QByteArray DoubleRatchet::aesgcmEncrypt(const QByteArray& key,
     return ciphertext;
 }
 
-QByteArray DoubleRatchet::aesgcmDecrypt(const QByteArray& key,
-                                         const QByteArray& nonce,
-                                         const QByteArray& ciphertext,
-                                         const QByteArray& tag) {
+std::expected<QByteArray, QString> DoubleRatchet::aesgcmDecrypt(
+    const QByteArray& key, const QByteArray& nonce,
+    const QByteArray& ciphertext, const QByteArray& tag)
+{
     EvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new());
     if (!ctx) {
         qCritical("[Ratchet] aesgcmDecrypt: EVP_CIPHER_CTX_new() вернул NULL");
-        return {};
+        return std::unexpected(QStringLiteral("EVP_CIPHER_CTX_new failed"));
     }
     QByteArray plaintext(ciphertext.size(), '\0');
     int len = 0;
@@ -78,14 +78,12 @@ QByteArray DoubleRatchet::aesgcmDecrypt(const QByteArray& key,
         const_cast<unsigned char*>(
             reinterpret_cast<const unsigned char*>(tag.constData())));
 
-    int ret = EVP_DecryptFinal_ex(ctx.get(),
+    const int ret = EVP_DecryptFinal_ex(ctx.get(),
         reinterpret_cast<unsigned char*>(plaintext.data()) + len, &len);
-
-    // RAII освобождает ctx автоматически
 
     if (ret <= 0) {
         qWarning("[Ratchet] GCM auth tag mismatch — message tampered!");
-        return {};
+        return std::unexpected(QStringLiteral("GCM authentication failed"));
     }
     return plaintext;
 }
@@ -93,74 +91,51 @@ QByteArray DoubleRatchet::aesgcmDecrypt(const QByteArray& key,
 // ── X25519 DH ─────────────────────────────────────────────────────────────
 
 bool DoubleRatchet::generateX25519(QByteArray& priv, QByteArray& pub) {
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr);
+    EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr));
     if (!ctx) { logOpenSSLError("generateX25519/ctx_new"); return false; }
-
-    if (EVP_PKEY_keygen_init(ctx) <= 0) {
-        logOpenSSLError("generateX25519/keygen_init");
-        EVP_PKEY_CTX_free(ctx); return false;
+    if (EVP_PKEY_keygen_init(ctx.get()) <= 0) {
+        logOpenSSLError("generateX25519/keygen_init"); return false;
     }
 
-    EVP_PKEY* pkey = nullptr;
-    if (EVP_PKEY_keygen(ctx, &pkey) <= 0) {
-        logOpenSSLError("generateX25519/keygen");
-        EVP_PKEY_CTX_free(ctx); return false;
+    EVP_PKEY* pkeyRaw = nullptr;
+    if (EVP_PKEY_keygen(ctx.get(), &pkeyRaw) <= 0) {
+        logOpenSSLError("generateX25519/keygen"); return false;
     }
-    EVP_PKEY_CTX_free(ctx);
+    EvpPkeyPtr pkey(pkeyRaw);
 
     size_t len = 32;
     priv.resize(32); pub.resize(32);
 
-    if (EVP_PKEY_get_raw_private_key(pkey,
+    if (EVP_PKEY_get_raw_private_key(pkey.get(),
             reinterpret_cast<unsigned char*>(priv.data()), &len) <= 0) {
-        logOpenSSLError("generateX25519/get_priv");
-        EVP_PKEY_free(pkey); return false;
+        logOpenSSLError("generateX25519/get_priv"); return false;
     }
-    if (EVP_PKEY_get_raw_public_key(pkey,
+    if (EVP_PKEY_get_raw_public_key(pkey.get(),
             reinterpret_cast<unsigned char*>(pub.data()), &len) <= 0) {
-        logOpenSSLError("generateX25519/get_pub");
-        EVP_PKEY_free(pkey); return false;
+        logOpenSSLError("generateX25519/get_pub"); return false;
     }
-
-    EVP_PKEY_free(pkey);
     return true;
 }
 
 QByteArray DoubleRatchet::dh(const QByteArray& priv, const QByteArray& pub) {
-    EVP_PKEY* pk = EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, nullptr,
-        reinterpret_cast<const unsigned char*>(priv.constData()), 32);
-    EVP_PKEY* pp = EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr,
-        reinterpret_cast<const unsigned char*>(pub.constData()), 32);
+    EvpPkeyPtr pk(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, nullptr,
+        reinterpret_cast<const unsigned char*>(priv.constData()), 32));
+    EvpPkeyPtr pp(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr,
+        reinterpret_cast<const unsigned char*>(pub.constData()), 32));
 
-    if (!pk || !pp) {
-        logOpenSSLError("dh/new_key");
-        if (pk) EVP_PKEY_free(pk);
-        if (pp) EVP_PKEY_free(pp);
-        return {};
-    }
+    if (!pk || !pp) { logOpenSSLError("dh/new_key"); return {}; }
 
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new(pk, nullptr);
-    if (!ctx) { logOpenSSLError("dh/ctx_new"); EVP_PKEY_free(pk); EVP_PKEY_free(pp); return {}; }
-
-    if (EVP_PKEY_derive_init(ctx) <= 0) {
-        logOpenSSLError("dh/derive_init");
-        EVP_PKEY_CTX_free(ctx); EVP_PKEY_free(pk); EVP_PKEY_free(pp); return {};
-    }
-    if (EVP_PKEY_derive_set_peer(ctx, pp) <= 0) {
-        logOpenSSLError("dh/derive_set_peer");
-        EVP_PKEY_CTX_free(ctx); EVP_PKEY_free(pk); EVP_PKEY_free(pp); return {};
-    }
+    EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new(pk.get(), nullptr));
+    if (!ctx) { logOpenSSLError("dh/ctx_new"); return {}; }
+    if (EVP_PKEY_derive_init(ctx.get()) <= 0) { logOpenSSLError("dh/derive_init"); return {}; }
+    if (EVP_PKEY_derive_set_peer(ctx.get(), pp.get()) <= 0) { logOpenSSLError("dh/derive_set_peer"); return {}; }
 
     size_t secretLen = 32;
     QByteArray secret(32, '\0');
-    if (EVP_PKEY_derive(ctx,
+    if (EVP_PKEY_derive(ctx.get(),
             reinterpret_cast<unsigned char*>(secret.data()), &secretLen) <= 0) {
-        logOpenSSLError("dh/derive");
-        EVP_PKEY_CTX_free(ctx); EVP_PKEY_free(pk); EVP_PKEY_free(pp); return {};
+        logOpenSSLError("dh/derive"); return {};
     }
-
-    EVP_PKEY_CTX_free(ctx);
-    EVP_PKEY_free(pk); EVP_PKEY_free(pp);
     return secret;
 }
 
@@ -172,37 +147,33 @@ QByteArray DoubleRatchet::hkdf2(const QByteArray& ikm,
     // доменное разделение обеспечивается параметром info, а не солью.
     static const QByteArray salt(32, '\0');
 
-    EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr);
+    EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr));
     if (!ctx) { logOpenSSLError("hkdf2/ctx_new"); return {}; }
 
     QByteArray out(outLen, '\0');
 
-    if (EVP_PKEY_derive_init(ctx) <= 0 ||
-        EVP_PKEY_CTX_set_hkdf_md(ctx, EVP_sha256()) <= 0 ||
-        EVP_PKEY_CTX_set1_hkdf_salt(ctx,
+    if (EVP_PKEY_derive_init(ctx.get()) <= 0 ||
+        EVP_PKEY_CTX_set_hkdf_md(ctx.get(), EVP_sha256()) <= 0 ||
+        EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(),
             reinterpret_cast<const unsigned char*>(salt.constData()),
             static_cast<int>(salt.size())) <= 0 ||
-        EVP_PKEY_CTX_set1_hkdf_key(ctx,
+        EVP_PKEY_CTX_set1_hkdf_key(ctx.get(),
             reinterpret_cast<const unsigned char*>(ikm.constData()),
             static_cast<int>(ikm.size())) <= 0 ||
-        EVP_PKEY_CTX_add1_hkdf_info(ctx,
+        EVP_PKEY_CTX_add1_hkdf_info(ctx.get(),
             reinterpret_cast<const unsigned char*>(info.constData()),
             static_cast<int>(info.size())) <= 0)
     {
         logOpenSSLError("hkdf2/setup");
-        EVP_PKEY_CTX_free(ctx);
         return {};
     }
 
     size_t s = static_cast<size_t>(outLen);
-    if (EVP_PKEY_derive(ctx,
+    if (EVP_PKEY_derive(ctx.get(),
             reinterpret_cast<unsigned char*>(out.data()), &s) <= 0) {
         logOpenSSLError("hkdf2/derive");
-        EVP_PKEY_CTX_free(ctx);
         return {};
     }
-
-    EVP_PKEY_CTX_free(ctx);
     return out;
 }
 
@@ -362,8 +333,9 @@ RatchetMessage DoubleRatchet::encrypt(RatchetState& state,
 
 // ── Decrypt ───────────────────────────────────────────────────────────────
 
-QByteArray DoubleRatchet::decrypt(RatchetState& state,
-                                   const RatchetMessage& msg) {
+std::expected<QByteArray, QString> DoubleRatchet::decrypt(
+    RatchetState& state, const RatchetMessage& msg)
+{
     // 1. Проверяем кеш пропущенных ключей — для сообщений, доставленных не по порядку
     const QPair<QByteArray, quint32> skippedKey{msg.dhPub, msg.msgNum};
     const auto it = state.skippedKeys.find(skippedKey);
@@ -372,13 +344,13 @@ QByteArray DoubleRatchet::decrypt(RatchetState& state,
         const QByteArray msgKey = it.value();
         state.skippedKeys.erase(it);
         const QByteArray aesKey = msgKey.left(32);
-        const QByteArray result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
+        auto result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
 #ifdef QT_DEBUG
         qDebug("[Ratchet] Decrypt[пропущен]: MsgNum=%u  MK=%s  DH=%s  %s",
                msg.msgNum,
                msgKey.left(4).toHex().constData(),
                msg.dhPub.left(4).toHex().constData(),
-               result.isEmpty() ? "ОШИБКА" : "OK");
+               result.has_value() ? "OK" : "ОШИБКА");
 #endif
         return result;
     }
@@ -427,11 +399,11 @@ QByteArray DoubleRatchet::decrypt(RatchetState& state,
 #ifdef QT_DEBUG
     const QByteArray ckBefore = state.recvChainKey.left(4).toHex();
 #endif
-    const QByteArray msgKey       = chainStep(state.recvChainKey);
+    const QByteArray msgKey = chainStep(state.recvChainKey);
     state.recvMsgNum++;
 
     const QByteArray aesKey = msgKey.left(32);
-    const QByteArray result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
+    auto result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
 
     // DH_Step=YES означает, что dhRatchet был вызван ДО этой точки в текущем вызове decrypt()
 #ifdef QT_DEBUG
@@ -442,7 +414,7 @@ QByteArray DoubleRatchet::decrypt(RatchetState& state,
            state.recvChainKey.left(4).toHex().constData(),
            msgKey.left(4).toHex().constData(),
            msg.dhPub.left(4).toHex().constData(),
-           result.isEmpty() ? "FAIL" : "OK");
+           result.has_value() ? "OK" : "FAIL");
 #endif
 
     return result;

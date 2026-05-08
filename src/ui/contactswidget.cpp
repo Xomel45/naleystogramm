@@ -152,9 +152,13 @@ void ContactsWidget::rebuildList(const QString& filter) {
 
         // Заблокированные отображаем со значком и красным цветом
         const QString nameStr = c.isBlocked ? (c.name + tr(" 🚫")) : c.name;
+        const int unread = m_unreadCounts.value(c.uuid, 0);
+        const QString badge = unread > 0 ? QString("  [%1]").arg(unread) : QString();
         const QString preview = last.isEmpty() ? "" :
             QString("\n  %1").arg(last.left(40));
-        item->setText(bullet + nameStr + preview);
+        item->setText(bullet + nameStr + badge + preview);
+        if (unread > 0)
+            item->setForeground(QColor("#b8a0ff"));
         item->setData(Qt::UserRole, c.uuid.toString());
         if (c.isBlocked)
             item->setForeground(QColor("#e05555"));
@@ -183,6 +187,16 @@ void ContactsWidget::onItemClicked(QListWidgetItem* item) {
 
 void ContactsWidget::onSearchChanged(const QString& text) {
     rebuildList(text);
+}
+
+void ContactsWidget::incrementUnread(const QUuid& uuid) {
+    m_unreadCounts[uuid]++;
+    rebuildList(m_search->text());
+}
+
+void ContactsWidget::clearUnread(const QUuid& uuid) {
+    if (m_unreadCounts.remove(uuid) > 0)
+        rebuildList(m_search->text());
 }
 
 void ContactsWidget::onContextMenuRequested(const QPoint& pos) {

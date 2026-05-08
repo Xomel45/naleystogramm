@@ -2,6 +2,8 @@
 #include <QByteArray>
 #include <QMap>
 #include <QPair>
+#include <QString>
+#include <expected>
 
 // Double Ratchet Algorithm (per-message E2E encryption)
 // After X3DH establishes a shared secret, Double Ratchet
@@ -63,8 +65,8 @@ public:
     [[nodiscard]] static RatchetMessage encrypt(RatchetState& state,
                                                 const QByteArray& plaintext);
 
-    [[nodiscard]] static QByteArray decrypt(RatchetState& state,
-                                            const RatchetMessage& msg);
+    [[nodiscard]] static std::expected<QByteArray, QString> decrypt(
+        RatchetState& state, const RatchetMessage& msg);
 
     // HKDF-SHA256: публично доступен для деривации ключей вне Double Ratchet
     // (например, для медиа-ключей голосовых звонков в E2EManager).
@@ -88,10 +90,9 @@ private:
                                                    const QByteArray& nonce,
                                                    const QByteArray& plaintext,
                                                    QByteArray& outTag);
-    [[nodiscard]] static QByteArray aesgcmDecrypt(const QByteArray& key,
-                                                   const QByteArray& nonce,
-                                                   const QByteArray& ciphertext,
-                                                   const QByteArray& tag);
+    [[nodiscard]] static std::expected<QByteArray, QString> aesgcmDecrypt(
+        const QByteArray& key, const QByteArray& nonce,
+        const QByteArray& ciphertext, const QByteArray& tag);
     [[nodiscard]] static bool       generateX25519(QByteArray& priv, QByteArray& pub);
     [[nodiscard]] static QByteArray dh(const QByteArray& priv, const QByteArray& pub);
 };

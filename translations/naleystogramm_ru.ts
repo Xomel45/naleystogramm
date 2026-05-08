@@ -1257,6 +1257,52 @@ Client-Server — все соединения через ваш relay-серве
         <source>Debug</source>
         <translation>Отладка</translation>
     </message>
+    <message>
+        <source>Privacy</source>
+        <translation>Конфиденциальность</translation>
+    </message>
+    <message>
+        <source>Все</source>
+        <translation>Все</translation>
+    </message>
+    <message>
+        <source>Только контакты</source>
+        <translation>Только контакты</translation>
+    </message>
+    <message>
+        <source>Никто</source>
+        <translation>Никто</translation>
+    </message>
+    <message>
+        <source>Кто может писать</source>
+        <translation>Кто может писать</translation>
+    </message>
+    <message>
+        <source>Кто может отправлять файлы</source>
+        <translation>Кто может отправлять файлы</translation>
+    </message>
+    <message>
+        <source>Кто может звонить</source>
+        <translation>Кто может звонить</translation>
+    </message>
+    <message>
+        <source>Кто может слать голосовые</source>
+        <translation>Кто может слать голосовые</translation>
+    </message>
+    <message>
+        <source>Кто видит аватар</source>
+        <translation>Кто видит аватар</translation>
+    </message>
+    <message>
+        <source>Кто может запросить шелл</source>
+        <translation>Кто может запросить шелл</translation>
+    </message>
+    <message>
+        <source>«Только контакты» — разрешает действие только от людей из вашего списка контактов.
+Изменения применяются немедленно, без перезапуска.</source>
+        <translation>«Только контакты» — разрешает действие только от людей из вашего списка контактов.
+Изменения применяются немедленно, без перезапуска.</translation>
+    </message>
 </context>
 <context>
     <name>ShellMonitor</name>

@@ -69,7 +69,7 @@ SplashScreen::SplashScreen(QWidget* parent)
     m_logoLabel->setObjectName("splashLogo");
     m_logoLabel->setAlignment(Qt::AlignCenter);
 
-    m_versionLabel = new QLabel("v0.6.0  \"Резиновый кал\"");
+    m_versionLabel = new QLabel("v0.7.0  \"Шлёпанец\"");
     m_versionLabel->setObjectName("splashVersion");
     m_versionLabel->setAlignment(Qt::AlignCenter);
 

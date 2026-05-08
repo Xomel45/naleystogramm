@@ -341,13 +341,14 @@ QJsonObject E2EManager::encrypt(const QUuid& peerUuid,
     return env;
 }
 
-QByteArray E2EManager::decrypt(const QUuid& peerUuid,
-                                 const QJsonObject& envelope) {
+std::expected<QByteArray, QString> E2EManager::decrypt(const QUuid& peerUuid,
+                                                        const QJsonObject& envelope)
+{
     QMutexLocker<QMutex> lock(mutexFor(peerUuid));
 
     if (!m_sessions.contains(peerUuid)) {
         qWarning("[E2E] No session for %s", qPrintable(peerUuid.toString()));
-        return {};
+        return std::unexpected(QStringLiteral("no session"));
     }
 
     RatchetMessage rm;
@@ -368,10 +369,11 @@ QByteArray E2EManager::decrypt(const QUuid& peerUuid,
 #endif
 
     auto& state = m_sessions[peerUuid];
-    const QByteArray result = DoubleRatchet::decrypt(state, rm);
-    if (result.isEmpty())
-        qWarning("[E2E] ❌ расшифровка провалилась (dh=%s  n=%d) — ключи не совпадают!",
-                 rm.dhPub.left(4).toHex().constData(), static_cast<int>(rm.msgNum));
+    auto result = DoubleRatchet::decrypt(state, rm);
+    if (!result.has_value())
+        qWarning("[E2E] ❌ расшифровка провалилась (dh=%s  n=%d): %s",
+                 rm.dhPub.left(4).toHex().constData(), static_cast<int>(rm.msgNum),
+                 qPrintable(result.error()));
     return result;
 }
 

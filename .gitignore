@@ -83,3 +83,6 @@ Thumbs.db
 appimage-tools/
 linuxdeploy*.AppImage
 linuxdeploy-plugin-*.AppImage
+
+# ── Claude Code ───────────────────────────────────────────────────────────────
+.claude/

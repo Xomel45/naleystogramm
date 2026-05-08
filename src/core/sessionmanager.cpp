@@ -12,7 +12,7 @@
 
 static constexpr const char* kAppDirName  = "naleystogramm";
 static constexpr const char* kFileName    = "session.json";
-static constexpr const char* kVersion     = "0.6.0";
+static constexpr const char* kVersion     = "0.7.0";
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -138,12 +138,21 @@ QJsonObject SessionManager::toJson() const {
     QJsonObject security;
     security["remoteShell"] = m_remoteShellEnabled;
 
+    QJsonObject privacy;
+    privacy["messages"] = static_cast<int>(m_privacyMessages);
+    privacy["files"]    = static_cast<int>(m_privacyFiles);
+    privacy["calls"]    = static_cast<int>(m_privacyCalls);
+    privacy["voice"]    = static_cast<int>(m_privacyVoice);
+    privacy["avatar"]   = static_cast<int>(m_privacyAvatar);
+    privacy["shell"]    = static_cast<int>(m_privacyShell);
+
     QJsonObject root;
     root["identity"] = identity;
     root["network"]  = network;
     root["ui"]       = ui;
     root["updates"]  = updates;
     root["security"] = security;
+    root["privacy"]  = privacy;
     root["meta"]     = meta;
 
     return root;
@@ -183,6 +192,18 @@ void SessionManager::fromJson(const QJsonObject& obj) {
     // Security
     const auto sec = obj["security"].toObject();
     m_remoteShellEnabled = sec["remoteShell"].toBool(true);
+
+    // Privacy
+    const auto prv = obj["privacy"].toObject();
+    auto privLevel = [&](const char* key, PrivacyLevel def) {
+        return static_cast<PrivacyLevel>(prv[key].toInt(static_cast<int>(def)));
+    };
+    m_privacyMessages = privLevel("messages", PrivacyLevel::Everyone);
+    m_privacyFiles    = privLevel("files",    PrivacyLevel::Everyone);
+    m_privacyCalls    = privLevel("calls",    PrivacyLevel::Everyone);
+    m_privacyVoice    = privLevel("voice",    PrivacyLevel::Everyone);
+    m_privacyAvatar   = privLevel("avatar",   PrivacyLevel::Everyone);
+    m_privacyShell    = privLevel("shell",    PrivacyLevel::ContactsOnly);
 }
 
 void SessionManager::generateIdentityIfNeeded() {
@@ -232,6 +253,13 @@ void SessionManager::setRemoteShellEnabled(bool on) {
     m_remoteShellEnabled = on;
     save();
 }
+
+void SessionManager::setPrivacyMessages(PrivacyLevel v) { m_privacyMessages = v; save(); }
+void SessionManager::setPrivacyFiles   (PrivacyLevel v) { m_privacyFiles    = v; save(); }
+void SessionManager::setPrivacyCalls   (PrivacyLevel v) { m_privacyCalls    = v; save(); }
+void SessionManager::setPrivacyVoice   (PrivacyLevel v) { m_privacyVoice    = v; save(); }
+void SessionManager::setPrivacyAvatar  (PrivacyLevel v) { m_privacyAvatar   = v; save(); }
+void SessionManager::setPrivacyShell   (PrivacyLevel v) { m_privacyShell    = v; save(); }
 
 void SessionManager::setAvatarPath(const QString& path) {
     m_avatarPath = path;

@@ -326,6 +326,13 @@ done
 
 success "Системные зависимости скопированы"
 
+# ── Удаление ненужных/проблемных плагинов ────────────────────────────────────
+# kimg_jxr.so требует libjxrglue.so.0 которой нет на большинстве систем
+for bad_plugin in kimg_jxr.so kimg_jxr.so.0; do
+    find "$APPDIR" -name "$bad_plugin" -delete 2>/dev/null && \
+        warn "Удалён необязательный плагин: $bad_plugin (libjxrglue недоступен)" || true
+done
+
 # ── Запуск linuxdeploy для создания AppImage ─────────────────────────────────
 info "Создание AppImage..."
 

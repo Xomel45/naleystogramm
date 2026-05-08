@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.6.0 LANGUAGES CXX)
+project(naleystogramm VERSION 0.7.0 LANGUAGES CXX)
 
 # RC (Windows Resource Compiler) нужен только при сборке под Windows.
 # На Linux windres не установлен, поэтому включаем язык только там.
@@ -8,7 +8,7 @@ if(WIN32 OR MINGW OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
     enable_language(RC)
 endif()
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)  # строго стандарт, без GNU-расширений
 set(CMAKE_AUTOMOC ON)
@@ -160,13 +160,20 @@ set(SOURCES
     src/ui/shellwindow.cpp
     src/ui/shellmonitor.h
     src/ui/shellmonitor.cpp
+
+    # Встроенные ресурсы (иконки)
+    resources/resources.qrc
 )
 
 # ── Windows: добавляем ресурс-файл (манифест UAC + иконка) ───────────────────
 # windres скомпилирует .rc → .o и линкер встроит манифест в .exe.
 # Это единственный способ надёжно встроить UAC-манифест без внешних файлов.
 if(WIN32)
-    list(APPEND SOURCES resources/windows/app.rc)
+    list(APPEND SOURCES
+        resources/windows/app.rc
+        src/platform/windowsfirewall.h
+        src/platform/windowsfirewall.cpp
+    )
 
     # windres должен знать где искать app.manifest (рядом с app.rc)
     # CMAKE_RC_FLAGS применяется к ВСЕМ .rc файлам в проекте
