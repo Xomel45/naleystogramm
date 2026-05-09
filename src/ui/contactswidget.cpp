@@ -21,33 +21,16 @@ ContactsWidget::ContactsWidget(QWidget* parent) : QWidget(parent) {
     m_search = new QLineEdit();
     m_search->setPlaceholderText(tr("Search..."));
     m_search->setObjectName("searchInput");
-    m_search->setStyleSheet(R"(
-        QLineEdit {
-            background: #1e1e36; border: 1px solid #2a2a4a;
-            border-radius: 16px; padding: 6px 14px;
-            color: #e8e6ff; font-size: 13px;
-        }
-        QLineEdit:focus { border-color: #7c6aff; }
-    )");
 
     m_list = new QListWidget();
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setSpacing(2);
-    // Размер иконки аватара в списке контактов (круглый 40×40 пикс.)
     m_list->setIconSize(QSize(40, 40));
-    // Все элементы одинаковой высоты — Qt пропускает per-item sizeHint
     m_list->setUniformItemSizes(true);
-    m_list->setStyleSheet(R"(
-        QListWidget { background: transparent; border: none; }
-        QListWidget::item {
-            background: transparent;
-            border-radius: 10px;
-            padding: 8px 6px;
-            color: #e8e6ff;
-        }
-        QListWidget::item:hover    { background: #1e1e36; }
-        QListWidget::item:selected { background: #1e1e36; border: 1px solid #2a2a4a; }
-    )");
+
+    applyTheme();
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this](Theme) { applyTheme(); });
 
     connect(m_search, &QLineEdit::textChanged, this, &ContactsWidget::onSearchChanged);
     connect(m_list, &QListWidget::itemClicked, this, &ContactsWidget::onItemClicked);
@@ -255,4 +238,28 @@ void ContactsWidget::onContextMenuRequested(const QPoint& pos) {
         emit contactDeleteRequested(uuid);
     });
     menu.exec(m_list->mapToGlobal(pos));
+}
+
+void ContactsWidget::applyTheme() {
+    const auto& p = ThemeManager::instance().palette();
+    m_search->setStyleSheet(QString(R"(
+        QLineEdit {
+            background: %1; border: 1px solid %2;
+            border-radius: 16px; padding: 6px 14px;
+            color: %3; font-size: 13px;
+        }
+        QLineEdit:focus { border-color: %4; }
+    )").arg(p.bgInput, p.border, p.textPrimary, p.borderFocus));
+
+    m_list->setStyleSheet(QString(R"(
+        QListWidget { background: transparent; border: none; }
+        QListWidget::item {
+            background: transparent;
+            border-radius: 10px;
+            padding: 8px 6px;
+            color: %1;
+        }
+        QListWidget::item:hover    { background: %2; }
+        QListWidget::item:selected { background: %2; border: 1px solid %3; }
+    )").arg(p.textPrimary, p.bgElevated, p.border));
 }

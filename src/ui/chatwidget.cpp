@@ -289,7 +289,7 @@ void ChatWidget::setupUi() {
         m_sendBtn = new QPushButton();
         m_sendBtn->setObjectName("sendBtn");
         m_sendBtn->setFixedSize(44, 44);
-        ThemeManager::applyIcon(m_sendBtn, QStringLiteral(":/icons/input_send.png"), QSize(20, 20));
+        ThemeManager::applyIconOnAccent(m_sendBtn, QStringLiteral(":/icons/input_send.png"), QSize(20, 20));
 
         connect(inp,      &MsgInput::enterPressed,    this, &ChatWidget::onSendClicked);
         connect(m_sendBtn, &QPushButton::clicked,     this, &ChatWidget::onSendClicked);

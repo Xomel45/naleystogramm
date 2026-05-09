@@ -116,8 +116,12 @@ MainWindow::MainWindow(QWidget* parent)
             this, &MainWindow::onSendVoice);
 
     // ── Удалённый шелл ───────────────────────────────────────────────────────
-    connect(m_shellManager, &RemoteShellManager::shellRequested,
-            this, &MainWindow::onShellRequested);
+    connect(m_shellManager, &RemoteShellManager::shellChallengeGenerated,
+            this, &MainWindow::onShellChallengeGenerated);
+    connect(m_shellManager, &RemoteShellManager::shellSessionStarted,
+            this, &MainWindow::onShellSessionStarted);
+    connect(m_shellManager, &RemoteShellManager::shellPasswordRequired,
+            this, &MainWindow::onShellPasswordRequired);
     connect(m_shellManager, &RemoteShellManager::shellAccepted,
             this, &MainWindow::onShellAccepted);
     connect(m_shellManager, &RemoteShellManager::shellRejected,
@@ -455,7 +459,7 @@ void MainWindow::setupUi() {
     // Кнопка добавить
     auto* addBtn = new QPushButton(tr("Add contact"));
     addBtn->setObjectName("addContactBtn");
-    ThemeManager::applyIcon(addBtn, QStringLiteral(":/icons/profile_add_member.png"), QSize(16, 16));
+    ThemeManager::applyIconOnAccent(addBtn, QStringLiteral(":/icons/profile_add_member.png"), QSize(16, 16));
     connect(addBtn, &QPushButton::clicked, this, &MainWindow::onAddContactClicked);
 
     // Футер — шестерёнка + три кнопки тем
@@ -1442,16 +1446,14 @@ void MainWindow::onShellRequestedFromProfile(QUuid peerUuid) {
     statusBar()->showMessage(tr("Запрос шелла отправлен..."), 4000);
 }
 
-// Входящий запрос шелла — показываем диалог подтверждения (на стороне получателя)
-void MainWindow::onShellRequested(QUuid from, QString peerName, QString sessionId) {
-    // Проверяем kill-switch: если удалённый шелл отключён в настройках — тихо отказываем
+// Receiver: автоматически сгенерирован OTP — показываем пароль в диалоге
+void MainWindow::onShellChallengeGenerated(QString sessionId, QUuid from,
+                                            QString peerName, QString otp) {
     if (!SessionManager::instance().remoteShellEnabled()) {
         qWarning("[Shell] Входящий запрос отклонён: удалённый шелл отключён в настройках");
         m_shellManager->rejectRequest(sessionId, "disabled_by_user");
         return;
     }
-
-    // Проверяем уровень конфиденциальности для шелла
     if (!checkPrivacy(SessionManager::instance().privacyShell(), from)) {
         qDebug("[Shell] Входящий запрос от %s отклонён (настройки конфиденциальности)",
                qPrintable(from.toString(QUuid::WithoutBraces)));
@@ -1463,30 +1465,81 @@ void MainWindow::onShellRequested(QUuid from, QString peerName, QString sessionI
         ? from.toString(QUuid::WithoutBraces).left(8)
         : peerName;
 
-    const auto btn = QMessageBox::question(
-        this,
+    // Создаём монитор заранее — данные могут прийти сразу после спауна процесса
+    auto* monitor = new ShellMonitor(sessionId, name, this);
+    m_shellMonitors.insert(sessionId, monitor);
+    connect(monitor, &ShellMonitor::terminateRequested,
+            this, [this](const QString& sid) {
+        m_shellManager->killSession(sid, "receiver_terminated");
+    });
+
+    // Показываем OTP пользователю — только кнопка «Отклонить»
+    auto* box = new QMessageBox(
+        QMessageBox::Warning,
         tr("Запрос удалённого шелла"),
         tr("Контакт <b>%1</b> запрашивает шелл-сессию на вашем компьютере.<br><br>"
-           "Это предоставит ему <b>терминальный доступ</b> к вашей системе.<br>"
-           "Вы сможете видеть все команды и завершить сессию в любой момент.<br><br>"
-           "Разрешить?").arg(name),
-        QMessageBox::Yes | QMessageBox::No,
-        QMessageBox::No);   // По умолчанию — отказать (безопаснее)
+           "Ваш одноразовый пароль:<br>"
+           "<div align='center'><b><tt style='font-size:18pt'>%2</tt></b></div><br>"
+           "Сообщите этот пароль контакту вне чата,<br>"
+           "если хотите разрешить доступ.<br>"
+           "Вы сможете видеть все команды и завершить сессию в любой момент.").arg(name, otp),
+        QMessageBox::Cancel,
+        this);
+    box->button(QMessageBox::Cancel)->setText(tr("Отклонить"));
+    box->setAttribute(Qt::WA_DeleteOnClose);
 
-    if (btn == QMessageBox::Yes) {
-        // Создаём ShellMonitor до acceptRequest — process уже может выдать данные
-        auto* monitor = new ShellMonitor(sessionId, name, this);
-        m_shellMonitors.insert(sessionId, monitor);
-        connect(monitor, &ShellMonitor::terminateRequested,
-                this, [this](const QString& sid) {
-            m_shellManager->killSession(sid, "receiver_terminated");
-        });
-        monitor->show();
-        m_shellManager->acceptRequest(sessionId);
-        statusBar()->showMessage(tr("Шелл-сессия с %1 открыта").arg(name), 4000);
-    } else {
-        m_shellManager->rejectRequest(sessionId, "declined");
+    connect(box, &QMessageBox::finished, this, [this, sessionId, monitor, box](int result) {
+        if (result == QMessageBox::Cancel) {
+            // Пользователь явно нажал «Отклонить»
+            m_shellMonitors.remove(sessionId);
+            monitor->deleteLater();
+            m_shellManager->rejectRequest(sessionId, "declined");
+        }
+        // Если диалог закрылся иначе (shellSessionStarted) — сессия уже работает
+    });
+
+    // Автозакрытие диалога когда шелл запущен (пароль принят инициатором)
+    connect(m_shellManager, &RemoteShellManager::shellSessionStarted,
+            box, [box, sessionId](const QString& sid) {
+        if (sid == sessionId) box->done(QMessageBox::Ok);
+    });
+    // Автозакрытие если сессия завершилась до принятия пароля
+    connect(m_shellManager, &RemoteShellManager::sessionEnded,
+            box, [box, sessionId](const QString& sid, const QString&) {
+        if (sid == sessionId) box->done(QMessageBox::Ok);
+    });
+
+    box->show();
+    statusBar()->showMessage(tr("Входящий запрос шелла от %1").arg(name), 6000);
+}
+
+// Receiver: шелл-процесс успешно запущен — показываем монитор
+void MainWindow::onShellSessionStarted(QString sessionId) {
+    auto it = m_shellMonitors.find(sessionId);
+    if (it == m_shellMonitors.end()) return;
+    it.value()->show();
+    statusBar()->showMessage(tr("Шелл-сессия открыта"), 4000);
+}
+
+// Initiator: пир ждёт ввода OTP — показываем диалог ввода пароля
+void MainWindow::onShellPasswordRequired(QString sessionId, QUuid /*peerUuid*/,
+                                          QString peerName) {
+    const QString name = peerName.isEmpty() ? tr("контакт") : peerName;
+    bool ok = false;
+    const QString password = QInputDialog::getText(
+        this,
+        tr("Подтверждение шелла"),
+        tr("Введите одноразовый пароль, который отображается в окне <b>%1</b>:").arg(name),
+        QLineEdit::Normal,
+        QString{},
+        &ok);
+
+    if (!ok || password.trimmed().isEmpty()) {
+        m_shellManager->killSession(sessionId, "initiator_cancelled");
+        return;
     }
+
+    m_shellManager->respondToChallenge(sessionId, password.trimmed().toUpper());
 }
 
 // Инициатор: пир принял запрос — открываем ShellWindow
@@ -1511,9 +1564,19 @@ void MainWindow::onShellAccepted(QString sessionId, QUuid /*peerUuid*/, QString 
 // Инициатор: пир отклонил запрос
 void MainWindow::onShellRejected(QString sessionId, QString reason) {
     Q_UNUSED(sessionId)
-    const QString msg = (reason == "declined")
-        ? tr("Контакт отклонил запрос шелла.")
-        : tr("Запрос шелла отклонён: %1").arg(reason);
+    QString msg;
+    if (reason == "declined")
+        msg = tr("Контакт отклонил запрос шелла.");
+    else if (reason == "wrong_password")
+        msg = tr("Неверный одноразовый пароль — шелл-сессия закрыта.");
+    else if (reason == "busy")
+        msg = tr("У контакта уже открыта другая шелл-сессия.");
+    else if (reason == "max_sessions")
+        msg = tr("Невозможно открыть шелл: уже есть активная сессия.");
+    else if (reason == "disabled_by_user")
+        msg = tr("Контакт отключил удалённый шелл в настройках.");
+    else
+        msg = tr("Запрос шелла отклонён: %1").arg(reason);
     QMessageBox::information(this, tr("Шелл отклонён"), msg);
 }
 

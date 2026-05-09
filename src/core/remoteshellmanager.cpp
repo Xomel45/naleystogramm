@@ -2,19 +2,12 @@
 #include "network.h"
 #include "../crypto/e2e.h"
 #include <QProcess>
+#include <QTimer>
+#include <QRandomGenerator>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
 #include <QDebug>
-
-// ── Паттерн эскалации привилегий ──────────────────────────────────────────────
-// \b — граница слова: не совпадёт с "subversion", "supervisor" и т.д.
-// CaseInsensitiveOption — нечувствительность к регистру (SUDO, Sudo и т.д.).
-// Охватывает: sudo, su, pkexec, doas, runas, gsudo,
-//             PowerShell Start-Process -Verb RunAs.
-const QRegularExpression RemoteShellManager::kPrivEscPattern(
-    R"(\b(sudo|su|pkexec|doas|runas|gsudo)\b|Start-Process\s+\S*\s+-Verb\s+RunAs)",
-    QRegularExpression::CaseInsensitiveOption);
 
 // ── Конструктор / деструктор ──────────────────────────────────────────────────
 
@@ -24,8 +17,8 @@ RemoteShellManager::RemoteShellManager(NetworkManager* net, E2EManager* e2e,
 {}
 
 RemoteShellManager::~RemoteShellManager() {
-    // Принудительно завершаем все живые процессы при уничтожении менеджера
     for (auto& sd : m_sessions) {
+        if (sd.inactivityTimer) { sd.inactivityTimer->stop(); }
         if (sd.process) {
             sd.process->kill();
             sd.process->waitForFinished(1000);
@@ -36,9 +29,16 @@ RemoteShellManager::~RemoteShellManager() {
 // ── Инициатор: запросить шелл ─────────────────────────────────────────────────
 
 void RemoteShellManager::requestShell(const QUuid& peerUuid) {
-    const QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    // Допускается не более одной одновременной сессии
+    if (m_sessions.size() >= kMaxConcurrentSessions) {
+        qWarning("[Shell] Отказ: уже есть активная сессия (максимум %d)",
+                 kMaxConcurrentSessions);
+        emit shellRejected(QString{}, "max_sessions");
+        return;
+    }
 
-    const QString peerName = m_net->getPeerInfo(peerUuid).name;
+    const QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString peerName  = m_net->getPeerInfo(peerUuid).name;
 
     SessionData sd;
     sd.role     = Role::Initiator;
@@ -56,28 +56,7 @@ void RemoteShellManager::requestShell(const QUuid& peerUuid) {
            qPrintable(sessionId.left(8)));
 }
 
-// ── Получатель: принять запрос ────────────────────────────────────────────────
-
-void RemoteShellManager::acceptRequest(const QString& sessionId) {
-    auto it = m_sessions.find(sessionId);
-    if (it == m_sessions.end()) {
-        qWarning("[Shell] acceptRequest: неизвестная сессия %s",
-                 qPrintable(sessionId.left(8)));
-        return;
-    }
-
-    m_net->sendJson(it->peerUuid, QJsonObject{
-        {"type",      "SHELL_ACCEPT"},
-        {"sessionId", sessionId},
-    });
-
-    spawnProcess(sessionId);
-
-    qDebug("[Shell] Сессия %s принята, шелл-процесс запускается",
-           qPrintable(sessionId.left(8)));
-}
-
-// ── Получатель: отклонить запрос ─────────────────────────────────────────────
+// ── Получатель: явно отклонить запрос ────────────────────────────────────────
 
 void RemoteShellManager::rejectRequest(const QString& sessionId,
                                         const QString& reason) {
@@ -90,10 +69,27 @@ void RemoteShellManager::rejectRequest(const QString& sessionId,
         {"reason",    reason},
     });
 
-    m_sessions.erase(it);
+    cleanupSession(sessionId);
 
     qDebug("[Shell] Сессия %s отклонена: %s",
            qPrintable(sessionId.left(8)), qPrintable(reason));
+}
+
+// ── Инициатор: ответить на OTP-запрос ────────────────────────────────────────
+
+void RemoteShellManager::respondToChallenge(const QString& sessionId,
+                                             const QString& password) {
+    auto it = m_sessions.find(sessionId);
+    if (it == m_sessions.end() || it->role != Role::Initiator) return;
+
+    m_net->sendJson(it->peerUuid, QJsonObject{
+        {"type",      "SHELL_CHALLENGE_RESPONSE"},
+        {"sessionId", sessionId},
+        {"password",  password},
+    });
+
+    qDebug("[Shell] Отправлен ответ на OTP-запрос, сессия=%s",
+           qPrintable(sessionId.left(8)));
 }
 
 // ── Инициатор: отправить ввод ─────────────────────────────────────────────────
@@ -104,19 +100,16 @@ void RemoteShellManager::sendInput(const QString& sessionId,
     if (it == m_sessions.end() || it->role != Role::Initiator) return;
 
     // ══ КРИТИЧЕСКАЯ ПРОВЕРКА БЕЗОПАСНОСТИ ════════════════════════════════════
-    // Проверяем ввод ПЕРЕД отправкой: sudo, su, pkexec, doas, runas, gsudo,
-    // Start-Process -Verb RunAs.
-    // Обнаружение → немедленное уничтожение сессии с обоих концов.
     if (hasForbiddenPattern(data)) {
-        qCritical("[Shell][SECURITY] ЭСКАЛАЦИЯ ПРИВИЛЕГИЙ! Сессия %s уничтожена. "
-                  "Ввод: %.120s",
-                  qPrintable(sessionId.left(8)),
-                  data.constData());
+        qCritical("[Shell][SECURITY] ЭСКАЛАЦИЯ ПРИВИЛЕГИЙ! Сессия %s уничтожена.",
+                  qPrintable(sessionId.left(8)));
         killSession(sessionId, "privilege_escalation");
         emit privilegeEscalationDetected(sessionId);
         return;
     }
     // ═════════════════════════════════════════════════════════════════════════
+
+    resetInactivityTimer(sessionId);
 
     sendEncrypted(it->peerUuid,
         QJsonObject{
@@ -135,7 +128,6 @@ void RemoteShellManager::killSession(const QString& sessionId,
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
-    // Уведомляем пира о завершении
     m_net->sendJson(it->peerUuid, QJsonObject{
         {"type",      "SHELL_KILL"},
         {"sessionId", sessionId},
@@ -153,41 +145,113 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
     const QString type      = msg["type"].toString();
     const QString sessionId = msg["sessionId"].toString();
 
+    // ── SHELL_REQUEST: от инициатора к получателю ─────────────────────────────
     if (type == "SHELL_REQUEST") {
-        // Сохраняем сессию как Receiver ещё до ответа пользователя
+        // Не допускаем более одной одновременной сессии
+        if (m_sessions.size() >= kMaxConcurrentSessions) {
+            qWarning("[Shell] Входящий SHELL_REQUEST отклонён: занято (сессий=%zu)",
+                     static_cast<std::size_t>(m_sessions.size()));
+            m_net->sendJson(from, QJsonObject{
+                {"type",      "SHELL_REJECT"},
+                {"sessionId", sessionId},
+                {"reason",    "busy"},
+            });
+            return;
+        }
+
         const QString peerName = m_net->getPeerInfo(from).name;
+        const QString otp      = generateOtp();
+
         SessionData sd;
         sd.role     = Role::Receiver;
         sd.peerUuid = from;
         sd.peerName = peerName;
+        sd.otp      = otp;
         m_sessions.insert(sessionId, sd);
 
-        qDebug("[Shell] Входящий запрос шелла от %s, сессия=%s",
+        // Сообщаем инициатору что ждём ответа на OTP-запрос
+        m_net->sendJson(from, QJsonObject{
+            {"type",      "SHELL_CHALLENGE"},
+            {"sessionId", sessionId},
+        });
+
+        qDebug("[Shell] Входящий запрос от %s, сессия=%s — OTP сгенерирован",
                qPrintable(from.toString(QUuid::WithoutBraces).left(8)),
                qPrintable(sessionId.left(8)));
 
-        emit shellRequested(from, peerName, sessionId);
+        // Показываем OTP в окне получателя — пользователь сообщает его инициатору
+        emit shellChallengeGenerated(sessionId, from, peerName, otp);
 
+    // ── SHELL_CHALLENGE: от получателя к инициатору ───────────────────────────
+    } else if (type == "SHELL_CHALLENGE") {
+        auto it = m_sessions.find(sessionId);
+        if (it == m_sessions.end() || it->role != Role::Initiator) return;
+
+        qDebug("[Shell] Получен OTP-запрос, сессия=%s — ожидаем ввод пароля",
+               qPrintable(sessionId.left(8)));
+
+        // Просим инициатора ввести пароль, который виден у получателя
+        emit shellPasswordRequired(sessionId, from, it->peerName);
+
+    // ── SHELL_CHALLENGE_RESPONSE: от инициатора к получателю ─────────────────
+    } else if (type == "SHELL_CHALLENGE_RESPONSE") {
+        auto it = m_sessions.find(sessionId);
+        if (it == m_sessions.end() || it->role != Role::Receiver) return;
+
+        const QString entered = msg["password"].toString();
+
+        if (entered.isEmpty() || entered != it->otp) {
+            qWarning("[Shell][SECURITY] Неверный OTP для сессии %s — шелл отклонён",
+                     qPrintable(sessionId.left(8)));
+
+            m_net->sendJson(from, QJsonObject{
+                {"type",      "SHELL_REJECT"},
+                {"sessionId", sessionId},
+                {"reason",    "wrong_password"},
+            });
+
+            cleanupSession(sessionId);
+            return;
+        }
+
+        // Пароль верный — запускаем шелл и подтверждаем инициатору
+        it->otp.clear(); // одноразовый: сразу обнуляем
+
+        m_net->sendJson(from, QJsonObject{
+            {"type",      "SHELL_ACCEPT"},
+            {"sessionId", sessionId},
+        });
+
+        spawnProcess(sessionId);
+
+        qDebug("[Shell] OTP верный, сессия=%s — шелл запускается",
+               qPrintable(sessionId.left(8)));
+
+    // ── SHELL_ACCEPT: от получателя к инициатору ─────────────────────────────
     } else if (type == "SHELL_ACCEPT") {
         auto it = m_sessions.find(sessionId);
         if (it == m_sessions.end() || it->role != Role::Initiator) return;
 
-        qDebug("[Shell] Запрос шелла принят пиром, сессия=%s",
+        resetInactivityTimer(sessionId);
+
+        qDebug("[Shell] Шелл принят пиром, сессия=%s",
                qPrintable(sessionId.left(8)));
 
         emit shellAccepted(sessionId, from, it->peerName);
 
+    // ── SHELL_REJECT: от получателя к инициатору ─────────────────────────────
     } else if (type == "SHELL_REJECT") {
         auto it = m_sessions.find(sessionId);
         if (it == m_sessions.end()) return;
 
         const QString reason = msg["reason"].toString("declined");
-        m_sessions.erase(it);
+        cleanupSession(sessionId);
 
         qDebug("[Shell] Запрос шелла отклонён: %s", qPrintable(reason));
 
         emit shellRejected(sessionId, reason);
 
+    // ── SHELL_KILL: завершение с любой стороны ────────────────────────────────
     } else if (type == "SHELL_KILL") {
         auto it = m_sessions.find(sessionId);
         if (it == m_sessions.end()) return;
@@ -214,10 +278,10 @@ void RemoteShellManager::handleDecryptedData(const QUuid& from,
 
     if (shellType == "SHELL_DATA") {
         // stdout/stderr от удалённого шелла → отображаем в ShellWindow инициатора
+        resetInactivityTimer(sessionId);
         emit dataReceived(sessionId, data);
 
     } else if (shellType == "SHELL_INPUT") {
-        // Команда от инициатора → записываем в stdin процесса получателя
         auto it = m_sessions.find(sessionId);
         if (it == m_sessions.end() || it->role != Role::Receiver || !it->process) {
             qWarning("[Shell] SHELL_INPUT: нет активного процесса для сессии %s",
@@ -226,15 +290,10 @@ void RemoteShellManager::handleDecryptedData(const QUuid& from,
         }
 
         // ══ ВТОРИЧНАЯ ПРОВЕРКА БЕЗОПАСНОСТИ (defence in depth) ═══════════════
-        // Проверяем даже входящие данные на стороне получателя.
-        // Защищает от случаев когда инициатор не обновил приложение или
-        // когда пакеты модифицированы в памяти до отправки.
         if (hasForbiddenPattern(data)) {
             qCritical("[Shell][SECURITY] ЭСКАЛАЦИЯ (получатель): сессия %s уничтожена",
                       qPrintable(sessionId.left(8)));
 
-            // Уведомляем инициатора напрямую (killSession уже отправит SHELL_KILL,
-            // но сессия из хэша исчезнет — делаем это вручную до cleanupSession)
             m_net->sendJson(from, QJsonObject{
                 {"type",      "SHELL_KILL"},
                 {"sessionId", sessionId},
@@ -247,10 +306,9 @@ void RemoteShellManager::handleDecryptedData(const QUuid& from,
         }
         // ═════════════════════════════════════════════════════════════════════
 
-        // Сигнал для ShellMonitor: показываем команду в мониторе получателя
+        resetInactivityTimer(sessionId);
         emit inputMonitored(sessionId, data);
 
-        // Добавляем перевод строки если его нет — иначе bash не выполнит команду
         QByteArray cmd = data;
         if (!cmd.endsWith('\n')) cmd.append('\n');
         it->process->write(cmd);
@@ -260,9 +318,58 @@ void RemoteShellManager::handleDecryptedData(const QUuid& from,
 // ── Проверка на эскалацию привилегий ─────────────────────────────────────────
 
 bool RemoteShellManager::hasForbiddenPattern(const QByteArray& input) {
-    // Конвертируем в строку для поиска по регулярному выражению
+    static const QList<QRegularExpression> kPatterns = {
+        // sudo / su / pkexec / doas / runas / gsudo как самостоятельные слова
+        QRegularExpression(R"(\b(sudo|su|pkexec|doas|runas|gsudo)\b)",
+                           QRegularExpression::CaseInsensitiveOption),
+        // Полные пути к sudo/su (обход $PATH)
+        QRegularExpression(R"(/usr(/local)?/bin/(sudo|su|pkexec|doas))"),
+        // env-bypass: env sudo, env -i sudo, env VAR=x sudo и т.д.
+        QRegularExpression(R"(\benv\b[^|&;]*\b(sudo|su|pkexec)\b)"),
+        // chmod +s / chmod 4xxx / chmod 6xxx (setuid / setgid бит)
+        QRegularExpression(R"(\bchmod\b[^|&;]*[+\-][sS]|\bchmod\s+[46][0-7]{3}\b)"),
+        // setcap, newuidmap, newgidmap, nsenter (namespace / capabilities)
+        QRegularExpression(R"(\b(setcap|newuidmap|newgidmap|nsenter)\b)"),
+        // chown root — смена владельца на root
+        QRegularExpression(R"(\bchown\s+(root[: ]|0[: ]))",
+                           QRegularExpression::CaseInsensitiveOption),
+        // Запись в /etc/passwd, /etc/shadow, /etc/sudoers, /etc/crontab и др.
+        QRegularExpression(R"(>{1,2}\s*/etc/(passwd|shadow|sudoers|crontab|cron\.\S*|hosts|ld\.so\.(conf|preload)))",
+                           QRegularExpression::CaseInsensitiveOption),
+        // tee в /etc/
+        QRegularExpression(R"(\btee\b[^|&;]*/etc/)"),
+        // Python/Perl/Ruby setuid one-liners
+        QRegularExpression(R"(\b(python[23]?|perl|ruby)\b[^|&;]*\b(setuid|setgid)\s*\()"),
+        // LD_PRELOAD / LD_LIBRARY_PATH инъекция
+        QRegularExpression(R"(\bLD_(PRELOAD|LIBRARY_PATH)\s*=)"),
+        // Чтение физической памяти ядра
+        QRegularExpression(R"(/dev/(mem|kmem|port)\b)"),
+        // PowerShell RunAs (Windows)
+        QRegularExpression(R"(Start-Process\s+\S*\s+-Verb\s+RunAs)",
+                           QRegularExpression::CaseInsensitiveOption),
+        // crontab -e / at now (инъекция cron)
+        QRegularExpression(R"(\bcrontab\s+-e|\bat\s+now\b)"),
+    };
+
     const QString str = QString::fromUtf8(input);
-    return kPrivEscPattern.match(str).hasMatch();
+    for (const auto& pat : kPatterns) {
+        if (pat.match(str).hasMatch())
+            return true;
+    }
+    return false;
+}
+
+// ── Генерация одноразового пароля ─────────────────────────────────────────────
+
+QString RemoteShellManager::generateOtp() {
+    // Исключаем визуально похожие символы: 0/O, 1/I, B/8 и т.д.
+    static const QString kChars = QStringLiteral("ACDEFGHJKLMNPQRTUVWXYZ2346789");
+    QString otp;
+    otp.reserve(kOtpLength);
+    for (int i = 0; i < kOtpLength; ++i)
+        otp += kChars[static_cast<int>(
+            QRandomGenerator::global()->bounded(static_cast<quint32>(kChars.size())))];
+    return otp;
 }
 
 // ── Отправка зашифрованных данных ─────────────────────────────────────────────
@@ -276,14 +383,12 @@ void RemoteShellManager::sendEncrypted(const QUuid& peerUuid,
         return;
     }
 
-    // Шифруем через Double Ratchet (тот же механизм что и чат-сообщения)
     const QByteArray innerJson =
         QJsonDocument(innerObj).toJson(QJsonDocument::Compact);
     QJsonObject env = m_e2e->encrypt(peerUuid, innerJson);
     if (env.isEmpty()) return;
 
-    // Подменяем тип конверта: decrypt() игнорирует поле type,
-    // используя только dh/n/pn/ct/nonce/tag — подмена безопасна.
+    // decrypt() не использует поле type — подмена безопасна
     env["type"] = outerType;
     m_net->sendJson(peerUuid, env);
 }
@@ -297,24 +402,17 @@ void RemoteShellManager::spawnProcess(const QString& sessionId) {
     SessionData& sd = it.value();
 
     auto* proc = new QProcess(this);
-    // Объединяем stdout и stderr в один канал: единый поток вывода
     proc->setProcessChannelMode(QProcess::MergedChannels);
 
-    // Запускаем шелл в зависимости от платформы.
-    // Процесс наследует права текущего пользователя — не root, не admin.
 #ifdef Q_OS_WIN
-    // PowerShell без elevation: -NoExit держит процесс живым,
-    // -NoLogo убирает заголовок версии, -NonInteractive отключает интерактивные запросы.
     proc->start("powershell.exe", {"-NoLogo", "-NoExit", "-NonInteractive"});
 #else
-    // Предпочитаем bash → zsh → sh (обычные права пользователя)
     QString shell = "/bin/bash";
     if (!QFile::exists(shell)) {
         shell = "/bin/zsh";
         if (!QFile::exists(shell))
             shell = "/bin/sh";
     }
-    // Без флага -i: не запрашиваем TTY (нет терминала, SIGTTOU/SIGTTIN не нужны)
     proc->start(shell, {});
 #endif
 
@@ -322,7 +420,6 @@ void RemoteShellManager::spawnProcess(const QString& sessionId) {
         qWarning("[Shell] Не удалось запустить шелл: %s",
                  qPrintable(proc->errorString()));
         proc->deleteLater();
-        // Уведомляем инициатора об ошибке запуска
         m_net->sendJson(sd.peerUuid, QJsonObject{
             {"type",      "SHELL_KILL"},
             {"sessionId", sessionId},
@@ -335,11 +432,11 @@ void RemoteShellManager::spawnProcess(const QString& sessionId) {
 
     sd.process = proc;
 
-    const QUuid   peerUuid  = sd.peerUuid;
+    const QUuid peerUuid = sd.peerUuid;
 
-    // stdout/stderr → base64 → E2E-шифрование → SHELL_DATA → инициатор
     connect(proc, &QProcess::readyReadStandardOutput,
             this, [this, sessionId, peerUuid, proc]() {
+        resetInactivityTimer(sessionId);
         const QByteArray out = proc->readAllStandardOutput();
         if (out.isEmpty()) return;
 
@@ -353,11 +450,9 @@ void RemoteShellManager::spawnProcess(const QString& sessionId) {
         );
     });
 
-    // Процесс завершился сам (exit, Ctrl+D) → уведомляем обе стороны
     connect(proc, &QProcess::finished,
-            this, [this, sessionId, peerUuid](int /*code*/, QProcess::ExitStatus) {
-        auto fit = m_sessions.find(sessionId);
-        if (fit == m_sessions.end()) return;   // уже очищено
+            this, [this, sessionId, peerUuid](int, QProcess::ExitStatus) {
+        if (!m_sessions.contains(sessionId)) return;
 
         qDebug("[Shell] Шелл-процесс завершился, сессия=%s",
                qPrintable(sessionId.left(8)));
@@ -371,9 +466,34 @@ void RemoteShellManager::spawnProcess(const QString& sessionId) {
         emit sessionEnded(sessionId, "process_exited");
     });
 
-    qDebug("[Shell] Шелл-процесс запущен (pid=%lld), сессия=%s",
+    // Таймер бездействия: убиваем сессию через kSessionTimeoutMs
+    auto* timer = new QTimer(this);
+    timer->setSingleShot(true);
+    timer->setInterval(kSessionTimeoutMs);
+    connect(timer, &QTimer::timeout, this, [this, sessionId]() {
+        qWarning("[Shell] Таймаут бездействия: сессия %s завершена",
+                 qPrintable(sessionId.left(8)));
+        killSession(sessionId, "timeout");
+        emit sessionEnded(sessionId, "timeout");
+    });
+    sd.inactivityTimer = timer;
+    timer->start();
+
+    qDebug("[Shell] Шелл-процесс запущен (pid=%lld), сессия=%s, таймаут=%d мин",
            static_cast<long long>(proc->processId()),
-           qPrintable(sessionId.left(8)));
+           qPrintable(sessionId.left(8)),
+           kSessionTimeoutMs / 60000);
+
+    emit shellSessionStarted(sessionId);
+}
+
+// ── Сброс таймера бездействия ─────────────────────────────────────────────────
+
+void RemoteShellManager::resetInactivityTimer(const QString& sessionId) {
+    auto it = m_sessions.find(sessionId);
+    if (it == m_sessions.end()) return;
+    if (it->inactivityTimer)
+        it->inactivityTimer->start(); // restart() — сбрасывает отсчёт
 }
 
 // ── Очистка сессии ────────────────────────────────────────────────────────────
@@ -382,8 +502,13 @@ void RemoteShellManager::cleanupSession(const QString& sessionId) {
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
+    if (it->inactivityTimer) {
+        it->inactivityTimer->stop();
+        it->inactivityTimer->deleteLater();
+        it->inactivityTimer = nullptr;
+    }
+
     if (it->process) {
-        // Отключаем сигналы ДО kill() — предотвращаем повторный вызов finished/cleanup
         it->process->disconnect(this);
         it->process->kill();
         it->process->waitForFinished(2000);

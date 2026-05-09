@@ -1,5 +1,6 @@
 #include "callwindow.h"
 #include "thememanager.h"
+#include "wheelfilter.h"
 #include <QLabel>
 #include <QPushButton>
 #include <QProgressBar>
@@ -68,6 +69,7 @@ void CallWindow::setupUi() {
         lbl->setFixedWidth(20);
         combo = new QComboBox(this);
         combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        noScrollWheel(combo);
         row->addWidget(lbl);
         row->addWidget(combo);
         root->addLayout(row);
@@ -122,7 +124,9 @@ void CallWindow::setupUi() {
     m_muteBtn   = new QPushButton(tr("Выкл. микр."), this);
     m_hangupBtn = new QPushButton(tr("Завершить"), this);
     ThemeManager::applyIcon(m_muteBtn,   QStringLiteral(":/icons/call_mic_on.png"),  QSize(18, 18));
-    ThemeManager::applyIcon(m_hangupBtn, QStringLiteral(":/icons/call_cancel.png"),  QSize(18, 18));
+    // Кнопка завершения — hardcoded красный фон, иконка всегда белая
+    m_hangupBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/call_cancel.png"), Qt::white));
+    m_hangupBtn->setIconSize(QSize(18, 18));
     m_muteBtn->setFixedHeight(36);
     m_hangupBtn->setFixedHeight(36);
     m_hangupBtn->setStyleSheet("QPushButton { background: #c0392b; color: white; "

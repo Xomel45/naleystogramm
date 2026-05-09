@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QAbstractButton>
 #include <QPixmap>
+#include <QImage>
 #include <QPainter>
 
 // ── Singleton ─────────────────────────────────────────────────────────────
@@ -1226,25 +1227,69 @@ QToolTip {
 
 // ── Динамическая раскраска иконок ────────────────────────────────────────────
 
-QIcon ThemeManager::tintedIcon(const QString& path) {
-    const QColor fg(instance().m_palette.textPrimary);
-    QPixmap src(path);
+// Общая реализация раскраски: сохраняет alpha каждого пикселя, меняет RGB на color.
+// Работает попиксельно — надёжно на любом бэкенде Qt/Linux.
+QIcon ThemeManager::tintedIcon(const QString& path, const QColor& color) {
+    const QPixmap src(path);
     if (src.isNull()) return {};
 
-    QPixmap colored(src.size());
-    colored.fill(Qt::transparent);
-    QPainter p(&colored);
-    p.setCompositionMode(QPainter::CompositionMode_Source);
-    p.drawPixmap(0, 0, src);
-    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
-    p.fillRect(colored.rect(), fg);
-    return QIcon(colored);
+    QImage img = src.toImage().convertToFormat(QImage::Format_ARGB32);
+    const int r = color.red(), g = color.green(), b = color.blue();
+    for (int y = 0; y < img.height(); ++y) {
+        QRgb* line = reinterpret_cast<QRgb*>(img.scanLine(y));
+        for (int x = 0; x < img.width(); ++x)
+            line[x] = qRgba(r, g, b, qAlpha(line[x]));
+    }
+    return QIcon(QPixmap::fromImage(img));
 }
 
+// Красит в textPrimary — для иконок на нейтральном/прозрачном фоне.
+QIcon ThemeManager::tintedIcon(const QString& path) {
+    return tintedIcon(path, QColor(instance().m_palette.textPrimary));
+}
+
+// Авто-обновление при смене темы: textPrimary для нейтральных кнопок (iconBtn).
 void ThemeManager::applyIcon(QAbstractButton* btn,
                               const QString& path, const QSize& sz) {
     auto update = [btn, path, sz]() {
         btn->setIcon(tintedIcon(path));
+        btn->setIconSize(sz);
+    };
+    update();
+    connect(&instance(), &ThemeManager::themeChanged,
+            btn, [update](Theme) { update(); });
+}
+
+// Авто-обновление при смене темы: textOnAccent для кнопок с акцентным фоном.
+// Создаёт двухрежимный QIcon:
+//   Normal   → textOnAccent: контрастирует с accent-фоном кнопки (enabled state)
+//   Disabled → textPrimary 38%: виден на тёмном фоне страницы за кнопкой;
+//              Qt's auto-graying чёрной иконки делал бы её чёрной на тёмном фоне.
+void ThemeManager::applyIconOnAccent(QAbstractButton* btn,
+                                      const QString& path, const QSize& sz) {
+    auto update = [btn, path, sz]() {
+        const QColor onAccent = QColor(instance().m_palette.textOnAccent);
+        const QColor primary  = QColor(instance().m_palette.textPrimary);
+
+        const QPixmap pmNormal = tintedIcon(path, onAccent).pixmap(sz);
+        if (pmNormal.isNull()) { btn->setIconSize(sz); return; }
+
+        // Disabled: textPrimary контрастирует с тёмным фоном страницы;
+        // 38% opacity — визуально выглядит как disabled без Qt-graying.
+        QPixmap pmDisabled(sz);
+        pmDisabled.fill(Qt::transparent);
+        {
+            QPainter p(&pmDisabled);
+            p.setOpacity(0.38);
+            p.drawPixmap(0, 0, tintedIcon(path, primary).pixmap(sz));
+        }
+
+        QIcon icon;
+        icon.addPixmap(pmNormal,   QIcon::Normal,   QIcon::Off);
+        icon.addPixmap(pmNormal,   QIcon::Normal,   QIcon::On);
+        icon.addPixmap(pmDisabled, QIcon::Disabled, QIcon::Off);
+        icon.addPixmap(pmDisabled, QIcon::Disabled, QIcon::On);
+        btn->setIcon(icon);
         btn->setIconSize(sz);
     };
     update();

@@ -48,6 +48,7 @@ private slots:
 
 private:
     void rebuildList(const QString& filter = {});
+    void applyTheme();
 
     QLineEdit*   m_search{nullptr};
     QListWidget* m_list{nullptr};

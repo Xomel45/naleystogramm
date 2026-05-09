@@ -76,8 +76,16 @@ public:
     // иконка остаётся белой, на светлых — становится тёмной автоматически.
     static QIcon tintedIcon(const QString& path);
 
+    // Перегрузка с явным цветом — для иконок на произвольном фоне.
+    static QIcon tintedIcon(const QString& path, const QColor& color);
+
     // Устанавливает иконку на кнопку и подключает авто-обновление при смене темы.
+    // Иконка красится в textPrimary — для прозрачных/нейтральных кнопок (iconBtn).
     static void applyIcon(QAbstractButton* btn, const QString& path, const QSize& sz);
+
+    // То же, но иконка красится в textOnAccent — для кнопок с акцентным фоном
+    // (sendBtn, addContactBtn и т.п.). Гарантирует читаемость на любой теме.
+    static void applyIconOnAccent(QAbstractButton* btn, const QString& path, const QSize& sz);
 
     [[nodiscard]] QString customThemeFolderName()  const noexcept { return m_customFolderName; }
     [[nodiscard]] QString customThemeDisplayName() const noexcept { return m_customDisplayName; }

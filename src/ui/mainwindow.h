@@ -78,7 +78,13 @@ private slots:
 
     // ── Удалённый шелл ───────────────────────────────────────────────────────
     void onShellRequestedFromProfile(QUuid peerUuid);
-    void onShellRequested(QUuid from, QString peerName, QString sessionId);
+    // Receiver: входящий запрос — показываем OTP
+    void onShellChallengeGenerated(QString sessionId, QUuid from,
+                                   QString peerName, QString otp);
+    // Receiver: шелл-процесс запущен (OTP-диалог закрывается, монитор показывается)
+    void onShellSessionStarted(QString sessionId);
+    // Initiator: нужно ввести OTP, который виден у получателя
+    void onShellPasswordRequired(QString sessionId, QUuid peerUuid, QString peerName);
     void onShellAccepted(QString sessionId, QUuid peerUuid, QString peerName);
     void onShellRejected(QString sessionId, QString reason);
     void onShellDataReceived(QString sessionId, QByteArray data);

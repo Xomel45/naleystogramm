@@ -1,5 +1,6 @@
 #include "settingspanel.h"
 #include "thememanager.h"
+#include "wheelfilter.h"
 #include "customthememanager.h"
 #include "logpanel.h"
 #include "../core/identity.h"
@@ -230,6 +231,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_portSpin = new QSpinBox();
     m_portSpin->setObjectName("settingsInput");
     m_portSpin->setRange(1024, 65535);
+    noScrollWheel(m_portSpin);
     contentLayout->addWidget(m_portSpin);
     contentLayout->addWidget(hint(tr("Requires restart to take effect")));
     contentLayout->addSpacing(8);
@@ -271,6 +273,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
 
     m_pfModeCombo = new QComboBox();
     m_pfModeCombo->setObjectName("settingsInput");
+    noScrollWheel(m_pfModeCombo);
     m_pfModeCombo->addItem(tr("UPnP (автоматически)"),  static_cast<int>(PortForwardingMode::UpnpAuto));
     m_pfModeCombo->addItem(tr("Вручную (VPN / статический IP)"), static_cast<int>(PortForwardingMode::Manual));
     m_pfModeCombo->addItem(tr("Отключено (только локальная сеть)"), static_cast<int>(PortForwardingMode::Disabled));
@@ -295,6 +298,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_manualPortSpin->setObjectName("settingsInput");
     m_manualPortSpin->setRange(1024, 65535);
     m_manualPortSpin->setValue(47821);
+    noScrollWheel(m_manualPortSpin);
     manLayout->addWidget(m_manualPortSpin);
     manLayout->addWidget(hint(
         tr("Укажите порт, пробрасываемый роутером на ваше устройство.\n"
@@ -321,6 +325,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_relayTcpPortSpin->setObjectName("settingsInput");
     m_relayTcpPortSpin->setRange(1, 65535);
     m_relayTcpPortSpin->setValue(47822);
+    noScrollWheel(m_relayTcpPortSpin);
     relayLayout->addWidget(m_relayTcpPortSpin);
 
     relayLayout->addSpacing(4);
@@ -329,6 +334,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_relayUdpPortSpin->setObjectName("settingsInput");
     m_relayUdpPortSpin->setRange(1, 65535);
     m_relayUdpPortSpin->setValue(47823);
+    noScrollWheel(m_relayUdpPortSpin);
     relayLayout->addWidget(m_relayUdpPortSpin);
 
     m_relayWarning = new QLabel(tr("⚠ Требуется перезапуск для применения изменений."));
@@ -404,6 +410,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     // Комбобокс: 7 встроенных тем + сепаратор + пользовательские (если есть)
     m_themeCombo = new QComboBox();
     m_themeCombo->setObjectName("settingsInput");
+    noScrollWheel(m_themeCombo);
     m_themeCombo->addItem("◐  " + tr("Dark"),       "dark");
     m_themeCombo->addItem("○  " + tr("Light"),      "light");
     m_themeCombo->addItem("●  " + tr("B&W"),        "bw");
@@ -482,6 +489,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addWidget(fieldLabel(tr("Language")));
     m_langCombo = new QComboBox();
     m_langCombo->setObjectName("settingsInput");
+    noScrollWheel(m_langCombo);
     m_langCombo->addItem(tr("Russian"), "ru");
     m_langCombo->addItem(tr("English"),  "en");
     contentLayout->addWidget(m_langCombo);
@@ -637,6 +645,7 @@ void SettingsPanel::buildPrivacySection(QWidget* container) {
         combo->addItem(tr("Все"),              static_cast<int>(PrivacyLevel::Everyone));
         combo->addItem(tr("Только контакты"),  static_cast<int>(PrivacyLevel::ContactsOnly));
         combo->addItem(tr("Никто"),            static_cast<int>(PrivacyLevel::Nobody));
+        noScrollWheel(combo);
         lay->addWidget(combo);
         lay->addSpacing(8);
     };
