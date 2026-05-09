@@ -1,6 +1,10 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include <QIcon>
+#include <QSize>
+
+class QAbstractButton;
 
 enum class Theme {
     Dark,      // Тёмная — глубокие тёмные тона, акценты насыщенные
@@ -66,6 +70,14 @@ public:
     // Загружает пользовательскую тему из папки по имени (внутри themesDir).
     // Возвращает true при успехе; при ошибке палитра не меняется.
     bool loadCustomTheme(const QString& folderName);
+
+    // Возвращает иконку, перекрашенную в цвет textPrimary текущей темы.
+    // Ожидает white-on-transparent PNG (наш стандарт). На тёмных темах
+    // иконка остаётся белой, на светлых — становится тёмной автоматически.
+    static QIcon tintedIcon(const QString& path);
+
+    // Устанавливает иконку на кнопку и подключает авто-обновление при смене темы.
+    static void applyIcon(QAbstractButton* btn, const QString& path, const QSize& sz);
 
     [[nodiscard]] QString customThemeFolderName()  const noexcept { return m_customFolderName; }
     [[nodiscard]] QString customThemeDisplayName() const noexcept { return m_customDisplayName; }

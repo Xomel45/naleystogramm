@@ -1,14 +1,261 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
     <qresource prefix="/">
+        <!-- Основные -->
         <file alias="icons/app_icon.png">icons/app_icon.png</file>
+        <file alias="icons/not-avatar.png">icons/not-avatar.png</file>
+
+        <!-- Существующие -->
         <file alias="icons/call_answer.png">icons/call_answer.png</file>
         <file alias="icons/call_decline.png">icons/call_decline.png</file>
-        <file alias="icons/vol_mute.png">icons/vol_mute.png</file>
-        <file alias="icons/vol_unmute.png">icons/vol_unmute.png</file>
         <file alias="icons/media_play.png">icons/media_play.png</file>
         <file alias="icons/media_pause.png">icons/media_pause.png</file>
         <file alias="icons/msg_delivered.png">icons/msg_delivered.png</file>
-        <file alias="icons/not-avatar.png">icons/not-avatar.png</file>
+
+        <!-- Контекстное меню -->
+        <file alias="icons/ctx_mute.png">icons/ctx_mute.png</file>
+        <file alias="icons/ctx_unmute.png">icons/ctx_unmute.png</file>
+        <file alias="icons/ctx_block.png">icons/ctx_block.png</file>
+        <file alias="icons/ctx_unblock.png">icons/ctx_unblock.png</file>
+        <file alias="icons/ctx_delete.png">icons/ctx_delete.png</file>
+        <file alias="icons/ctx_clear.png">icons/ctx_clear.png</file>
+        <file alias="icons/ctx_info.png">icons/ctx_info.png</file>
+        <file alias="icons/ctx_copy.png">icons/ctx_copy.png</file>
+        <file alias="icons/ctx_reply.png">icons/ctx_reply.png</file>
+        <file alias="icons/ctx_forward.png">icons/ctx_forward.png</file>
+        <file alias="icons/ctx_edit.png">icons/ctx_edit.png</file>
+        <file alias="icons/ctx_pin.png">icons/ctx_pin.png</file>
+        <file alias="icons/ctx_unpin.png">icons/ctx_unpin.png</file>
+        <file alias="icons/ctx_search.png">icons/ctx_search.png</file>
+        <file alias="icons/ctx_select.png">icons/ctx_select.png</file>
+        <file alias="icons/ctx_lock.png">icons/ctx_lock.png</file>
+        <file alias="icons/ctx_phone.png">icons/ctx_phone.png</file>
+        <file alias="icons/ctx_save_image.png">icons/ctx_save_image.png</file>
+        <file alias="icons/ctx_download.png">icons/ctx_download.png</file>
+        <file alias="icons/ctx_share.png">icons/ctx_share.png</file>
+        <file alias="icons/ctx_translate.png">icons/ctx_translate.png</file>
+        <file alias="icons/ctx_cancel.png">icons/ctx_cancel.png</file>
+
+        <!-- Строка ввода -->
+        <file alias="icons/input_attach.png">icons/input_attach.png</file>
+        <file alias="icons/input_voice.png">icons/input_voice.png</file>
+        <file alias="icons/input_voice_active.png">icons/input_voice_active.png</file>
+        <file alias="icons/input_emoji.png">icons/input_emoji.png</file>
+        <file alias="icons/input_send.png">icons/input_send.png</file>
+        <file alias="icons/input_edit.png">icons/input_edit.png</file>
+        <file alias="icons/input_reply.png">icons/input_reply.png</file>
+        <file alias="icons/input_forward.png">icons/input_forward.png</file>
+        <file alias="icons/input_silent.png">icons/input_silent.png</file>
+        <file alias="icons/mini_copy.png">icons/mini_copy.png</file>
+
+        <!-- Статус сообщений / история -->
+        <file alias="icons/msg_sent.png">icons/msg_sent.png</file>
+        <file alias="icons/msg_read.png">icons/msg_read.png</file>
+        <file alias="icons/msg_pin.png">icons/msg_pin.png</file>
+        <file alias="icons/scroll_down.png">icons/scroll_down.png</file>
+        <file alias="icons/scroll_down_circle.png">icons/scroll_down_circle.png</file>
+        <file alias="icons/dlg_sent.png">icons/dlg_sent.png</file>
+        <file alias="icons/dlg_received.png">icons/dlg_received.png</file>
+        <file alias="icons/dlg_pinned.png">icons/dlg_pinned.png</file>
+        <file alias="icons/dlg_mention.png">icons/dlg_mention.png</file>
+        <file alias="icons/dlg_arrow.png">icons/dlg_arrow.png</file>
+
+        <!-- Навигация / топ-бар -->
+        <file alias="icons/nav_back.png">icons/nav_back.png</file>
+        <file alias="icons/nav_search.png">icons/nav_search.png</file>
+        <file alias="icons/nav_call.png">icons/nav_call.png</file>
+        <file alias="icons/nav_profile.png">icons/nav_profile.png</file>
+        <file alias="icons/nav_search_bar.png">icons/nav_search_bar.png</file>
+
+        <!-- Звонки -->
+        <file alias="icons/call_cam_on.png">icons/call_cam_on.png</file>
+        <file alias="icons/call_cam_off.png">icons/call_cam_off.png</file>
+        <file alias="icons/call_mic_on.png">icons/call_mic_on.png</file>
+        <file alias="icons/call_mic_off.png">icons/call_mic_off.png</file>
+        <file alias="icons/call_cancel.png">icons/call_cancel.png</file>
+        <file alias="icons/call_mute_tip.png">icons/call_mute_tip.png</file>
+        <file alias="icons/call_share.png">icons/call_share.png</file>
+
+        <!-- Настройки -->
+        <file alias="icons/settings_profile.png">icons/settings_profile.png</file>
+        <file alias="icons/settings_notif.png">icons/settings_notif.png</file>
+        <file alias="icons/settings_calls.png">icons/settings_calls.png</file>
+        <file alias="icons/settings_lang.png">icons/settings_lang.png</file>
+        <file alias="icons/settings_security.png">icons/settings_security.png</file>
+        <file alias="icons/settings_theme.png">icons/settings_theme.png</file>
+        <file alias="icons/settings_appearance.png">icons/settings_appearance.png</file>
+        <file alias="icons/settings_privacy.png">icons/settings_privacy.png</file>
+        <file alias="icons/settings_advanced.png">icons/settings_advanced.png</file>
+        <file alias="icons/settings_btn.png">icons/settings_btn.png</file>
+        <file alias="icons/settings_online.png">icons/settings_online.png</file>
+        <file alias="icons/settings_lock.png">icons/settings_lock.png</file>
+        <file alias="icons/settings_photo.png">icons/settings_photo.png</file>
+        <file alias="icons/settings_folders.png">icons/settings_folders.png</file>
+        <file alias="icons/settings_arrows.png">icons/settings_arrows.png</file>
+        <file alias="icons/settings_network.png">icons/settings_network.png</file>
+
+        <!-- Chat / inline иконки -->
+        <file alias="icons/audio_once.png">icons/audio_once.png</file>
+        <file alias="icons/filled_location.png">icons/filled_location.png</file>
+        <file alias="icons/input_autodelete.png">icons/input_autodelete.png</file>
+        <file alias="icons/input_bot_command.png">icons/input_bot_command.png</file>
+        <file alias="icons/input_bot_keyboard.png">icons/input_bot_keyboard.png</file>
+        <file alias="icons/input_bot_keyboard_hide.png">icons/input_bot_keyboard_hide.png</file>
+        <file alias="icons/input_draw.png">icons/input_draw.png</file>
+        <file alias="icons/input_gift.png">icons/input_gift.png</file>
+        <file alias="icons/input_like.png">icons/input_like.png</file>
+        <file alias="icons/input_liked.png">icons/input_liked.png</file>
+        <file alias="icons/input_link_settings.png">icons/input_link_settings.png</file>
+        <file alias="icons/input_replace.png">icons/input_replace.png</file>
+        <file alias="icons/input_reply_settings.png">icons/input_reply_settings.png</file>
+        <file alias="icons/input_save.png">icons/input_save.png</file>
+        <file alias="icons/input_schedule.png">icons/input_schedule.png</file>
+        <file alias="icons/input_scheduled.png">icons/input_scheduled.png</file>
+        <file alias="icons/input_scheduled_dot.png">icons/input_scheduled_dot.png</file>
+        <file alias="icons/input_silent_on.png">icons/input_silent_on.png</file>
+        <file alias="icons/input_video.png">icons/input_video.png</file>
+        <file alias="icons/large_away.png">icons/large_away.png</file>
+        <file alias="icons/large_greeting.png">icons/large_greeting.png</file>
+        <file alias="icons/large_lockedchat.png">icons/large_lockedchat.png</file>
+        <file alias="icons/large_messages.png">icons/large_messages.png</file>
+        <file alias="icons/large_quickreply.png">icons/large_quickreply.png</file>
+        <file alias="icons/link_photo_enlarge.png">icons/link_photo_enlarge.png</file>
+        <file alias="icons/live_location_long.png">icons/live_location_long.png</file>
+        <file alias="icons/markup_webview.png">icons/markup_webview.png</file>
+        <file alias="icons/mini_info_alert.png">icons/mini_info_alert.png</file>
+        <file alias="icons/mini_lock.png">icons/mini_lock.png</file>
+        <file alias="icons/mini_media_once.png">icons/mini_media_once.png</file>
+        <file alias="icons/mini_quote.png">icons/mini_quote.png</file>
+        <file alias="icons/mini_stars.png">icons/mini_stars.png</file>
+        <file alias="icons/mini_subscribers.png">icons/mini_subscribers.png</file>
+        <file alias="icons/reactions_bubble.png">icons/reactions_bubble.png</file>
+        <file alias="icons/reactions_expand_panel.png">icons/reactions_expand_panel.png</file>
+        <file alias="icons/reactions_round_big.png">icons/reactions_round_big.png</file>
+        <file alias="icons/reactions_round_small.png">icons/reactions_round_small.png</file>
+        <file alias="icons/reply_type_channel.png">icons/reply_type_channel.png</file>
+        <file alias="icons/reply_type_group.png">icons/reply_type_group.png</file>
+        <file alias="icons/reply_type_user.png">icons/reply_type_user.png</file>
+        <file alias="icons/voice_to_text.png">icons/voice_to_text.png</file>
+        <file alias="icons/voice_to_text_collapse.png">icons/voice_to_text_collapse.png</file>
+
+        <!-- История / файлы -->
+        <file alias="icons/history_file_document.png">icons/history_file_document.png</file>
+        <file alias="icons/history_file_image.png">icons/history_file_image.png</file>
+        <file alias="icons/history_file_download.png">icons/history_file_download.png</file>
+        <file alias="icons/history_file_cancel.png">icons/history_file_cancel.png</file>
+        <file alias="icons/history_file_pause.png">icons/history_file_pause.png</file>
+        <file alias="icons/history_file_play.png">icons/history_file_play.png</file>
+        <file alias="icons/history_audio_cancel.png">icons/history_audio_cancel.png</file>
+        <file alias="icons/history_replies.png">icons/history_replies.png</file>
+        <file alias="icons/history_views.png">icons/history_views.png</file>
+        <file alias="icons/history_comments.png">icons/history_comments.png</file>
+        <file alias="icons/history_unread_mention.png">icons/history_unread_mention.png</file>
+        <file alias="icons/history_unread_reaction.png">icons/history_unread_reaction.png</file>
+
+        <!-- UI элементы -->
+        <file alias="icons/contacts_online.png">icons/contacts_online.png</file>
+        <file alias="icons/mini_forward.png">icons/mini_forward.png</file>
+        <file alias="icons/mini_reply_story.png">icons/mini_reply_story.png</file>
+        <file alias="icons/filled_go_to_message.png">icons/filled_go_to_message.png</file>
+        <file alias="icons/fast_share.png">icons/fast_share.png</file>
+        <file alias="icons/fast_to_original.png">icons/fast_to_original.png</file>
+        <file alias="icons/pinned_show_all.png">icons/pinned_show_all.png</file>
+        <file alias="icons/install_update.png">icons/install_update.png</file>
+        <file alias="icons/notification_send.png">icons/notification_send.png</file>
+        <file alias="icons/toast_info.png">icons/toast_info.png</file>
+        <file alias="icons/new_chat_photo.png">icons/new_chat_photo.png</file>
+        <file alias="icons/upload_chat_photo.png">icons/upload_chat_photo.png</file>
+        <file alias="icons/profile_add_member.png">icons/profile_add_member.png</file>
+        <file alias="icons/profile_verified_check.png">icons/profile_verified_check.png</file>
+        <file alias="icons/profile_verified_star.png">icons/profile_verified_star.png</file>
+        <file alias="icons/proxy_on.png">icons/proxy_on.png</file>
+        <file alias="icons/proxy_off.png">icons/proxy_off.png</file>
+
+        <!-- Медиа -->
+        <file alias="icons/media_fullscreen_from.png">icons/media_fullscreen_from.png</file>
+        <file alias="icons/media_fullscreen_to.png">icons/media_fullscreen_to.png</file>
+        <file alias="icons/media_video_play.png">icons/media_video_play.png</file>
+        <file alias="icons/overview_video_play.png">icons/overview_video_play.png</file>
+        <file alias="icons/overview_photo_check.png">icons/overview_photo_check.png</file>
+
+        <!-- Опросы -->
+        <file alias="icons/poll_choice_right.png">icons/poll_choice_right.png</file>
+        <file alias="icons/poll_choice_wrong.png">icons/poll_choice_wrong.png</file>
+        <file alias="icons/poll_select_check.png">icons/poll_select_check.png</file>
+        <file alias="icons/quiz_timer.png">icons/quiz_timer.png</file>
+
+        <!-- Mediaview -->
+        <file alias="icons/mv_more.png">icons/mv_more.png</file>
+        <file alias="icons/mv_next.png">icons/mv_next.png</file>
+        <file alias="icons/mv_share.png">icons/mv_share.png</file>
+        <file alias="icons/mv_views.png">icons/mv_views.png</file>
+
+        <!-- Player -->
+        <file alias="icons/player_backward.png">icons/player_backward.png</file>
+        <file alias="icons/player_forward.png">icons/player_forward.png</file>
+        <file alias="icons/player_play.png">icons/player_play.png</file>
+        <file alias="icons/player_pause.png">icons/player_pause.png</file>
+        <file alias="icons/player_play_big.png">icons/player_play_big.png</file>
+        <file alias="icons/player_pause_big.png">icons/player_pause_big.png</file>
+        <file alias="icons/player_volume_on.png">icons/player_volume_on.png</file>
+        <file alias="icons/player_volume_off.png">icons/player_volume_off.png</file>
+        <file alias="icons/player_volume_small.png">icons/player_volume_small.png</file>
+        <file alias="icons/player_shuffle.png">icons/player_shuffle.png</file>
+        <file alias="icons/player_repeat.png">icons/player_repeat.png</file>
+        <file alias="icons/player_repeat_single.png">icons/player_repeat_single.png</file>
+        <file alias="icons/player_fullscreen.png">icons/player_fullscreen.png</file>
+        <file alias="icons/player_minimize.png">icons/player_minimize.png</file>
+        <file alias="icons/player_speed.png">icons/player_speed.png</file>
+        <file alias="icons/player_panel_close.png">icons/player_panel_close.png</file>
+        <file alias="icons/playlist_play.png">icons/playlist_play.png</file>
+        <file alias="icons/playlist_pause.png">icons/playlist_pause.png</file>
+        <file alias="icons/playlist_cancel.png">icons/playlist_cancel.png</file>
+
+        <!-- Info / профиль -->
+        <file alias="icons/info_add_member.png">icons/info_add_member.png</file>
+        <file alias="icons/info_back.png">icons/info_back.png</file>
+        <file alias="icons/info_block.png">icons/info_block.png</file>
+        <file alias="icons/info_close.png">icons/info_close.png</file>
+        <file alias="icons/info_delete.png">icons/info_delete.png</file>
+        <file alias="icons/info_edit.png">icons/info_edit.png</file>
+        <file alias="icons/info_members.png">icons/info_members.png</file>
+        <file alias="icons/info_notifications.png">icons/info_notifications.png</file>
+        <file alias="icons/info_permissions.png">icons/info_permissions.png</file>
+        <file alias="icons/info_report.png">icons/info_report.png</file>
+        <file alias="icons/info_search.png">icons/info_search.png</file>
+        <file alias="icons/info_share.png">icons/info_share.png</file>
+        <file alias="icons/info_information.png">icons/info_information.png</file>
+        <file alias="icons/info_media_audio.png">icons/info_media_audio.png</file>
+        <file alias="icons/info_media_file.png">icons/info_media_file.png</file>
+        <file alias="icons/info_media_forward.png">icons/info_media_forward.png</file>
+        <file alias="icons/info_media_delete.png">icons/info_media_delete.png</file>
+        <file alias="icons/info_media_photo.png">icons/info_media_photo.png</file>
+        <file alias="icons/info_media_video.png">icons/info_media_video.png</file>
+        <file alias="icons/info_media_voice.png">icons/info_media_voice.png</file>
+        <file alias="icons/info_media_gif.png">icons/info_media_gif.png</file>
+        <file alias="icons/info_media_link.png">icons/info_media_link.png</file>
+
+        <!-- Dialogs -->
+        <file alias="icons/dialogs_bot.png">icons/dialogs_bot.png</file>
+        <file alias="icons/dialogs_lock_on.png">icons/dialogs_lock_on.png</file>
+        <file alias="icons/dialogs_lock_off.png">icons/dialogs_lock_off.png</file>
+        <file alias="icons/dialogs_sending.png">icons/dialogs_sending.png</file>
+        <file alias="icons/dialogs_cancel_search.png">icons/dialogs_cancel_search.png</file>
+        <file alias="icons/dialogs_menu.png">icons/dialogs_menu.png</file>
+        <file alias="icons/dialogs_verified_check.png">icons/dialogs_verified_check.png</file>
+        <file alias="icons/dialogs_chat.png">icons/dialogs_chat.png</file>
+        <file alias="icons/dialogs_channel.png">icons/dialogs_channel.png</file>
+        <file alias="icons/dialogs_downloads.png">icons/dialogs_downloads.png</file>
+        <file alias="icons/avatar_hidden.png">icons/avatar_hidden.png</file>
+
+        <!-- Send media -->
+        <file alias="icons/send_media_delete.png">icons/send_media_delete.png</file>
+        <file alias="icons/send_media_replace.png">icons/send_media_replace.png</file>
+
+        <!-- Photo editor -->
+        <file alias="icons/editor_flip.png">icons/editor_flip.png</file>
+        <file alias="icons/editor_paint.png">icons/editor_paint.png</file>
+        <file alias="icons/editor_rotate.png">icons/editor_rotate.png</file>
+        <file alias="icons/editor_undo.png">icons/editor_undo.png</file>
     </qresource>
 </RCC>

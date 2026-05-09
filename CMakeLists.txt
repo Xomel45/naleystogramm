@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.7.1 LANGUAGES CXX)
+project(naleystogramm VERSION 0.7.2 LANGUAGES CXX)
 
 # RC (Windows Resource Compiler) нужен только при сборке под Windows.
 # На Linux windres не установлен, поэтому включаем язык только там.

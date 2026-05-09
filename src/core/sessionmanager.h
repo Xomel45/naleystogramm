@@ -87,6 +87,8 @@ public:
     void setLanguage(const QString& lang);
     void setDemoMode(bool on);
     void setLeftPanelWidth(int w);
+    [[nodiscard]] bool    enterSends()      const { return m_enterSends; }
+    void setEnterSends(bool on);
 
     // ── Updates ───────────────────────────────────────────────────────────
     [[nodiscard]] QString lastUpdateCheck() const { return m_lastUpdateCheck; }
@@ -165,6 +167,7 @@ private:
     QString m_language       {"ru"};
     bool    m_demoMode       {false};
     int     m_leftPanelWidth {320};
+    bool    m_enterSends     {true};
 
     // Updates
     QString m_lastUpdateCheck {};

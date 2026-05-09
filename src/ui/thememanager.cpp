@@ -6,6 +6,9 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QAbstractButton>
+#include <QPixmap>
+#include <QPainter>
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -450,6 +453,34 @@ QStatusBar {
 }
 QStatusBar::item { border: none; }
 
+/* ── Контекстное меню ────────────────────────────────────────────────── */
+
+QMenu {
+    background: %3;
+    border: 1px solid %5;
+    border-radius: 10px;
+    padding: 4px 0;
+}
+QMenu::item {
+    color: %12;
+    padding: 7px 18px 7px 12px;
+    border-radius: 6px;
+    margin: 1px 4px;
+    font-size: 13px;
+}
+QMenu::item:selected {
+    background: rgba(128,128,128,0.15);
+    color: %11;
+}
+QMenu::separator {
+    height: 1px;
+    background: %5;
+    margin: 3px 8px;
+}
+QMenu::icon {
+    padding-left: 4px;
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    ЛЕВАЯ ПАНЕЛЬ
 ══════════════════════════════════════════════════════════════════════ */
@@ -464,6 +495,9 @@ QWidget#leftPanel {
 QWidget#headerBar {
     background: %2;
     border-bottom: 1px solid %5;
+}
+QWidget#headerBar QWidget {
+    background: transparent;
 }
 
 QLabel#myNameLabel {
@@ -502,19 +536,18 @@ QListWidget {
 }
 QListWidget::item {
     background: transparent;
-    border-radius: 12px;
-    padding: 10px 8px;
+    border-radius: 14px;
+    padding: 10px 10px;
     color: %12;
-    margin: 1px 0;
+    margin: 2px 0;
     border: 1px solid transparent;
 }
 QListWidget::item:hover {
-    background: %3;
-    border-color: %5;
+    background: rgba(128,128,128,0.10);
 }
 QListWidget::item:selected {
-    background: %3;
-    border: 1px solid %6;
+    background: rgba(128,128,128,0.16);
+    border: 1px solid rgba(128,128,128,0.25);
     color: %11;
 }
 
@@ -539,22 +572,48 @@ QPushButton#addContactBtn:pressed {
     background: %18;
 }
 
-/* ── Иконочные кнопки (🔑, 📎, etc) ─────────────────────────────────── */
+/* ── Иконочные кнопки ────────────────────────────────────────────────── */
 
 QPushButton#iconBtn {
     background: transparent;
     border: none;
-    border-radius: 8px;
+    border-radius: 10px;
     color: %13;
     font-size: 15px;
     padding: 4px;
 }
 QPushButton#iconBtn:hover {
-    background: %3;
-    color: %11;
+    background: rgba(128,128,128,0.14);
 }
 QPushButton#iconBtn:pressed {
-    background: %5;
+    background: rgba(128,128,128,0.22);
+}
+
+/* ── QCheckBox ───────────────────────────────────────────────────────── */
+
+QCheckBox {
+    color: %11;
+    spacing: 8px;
+    font-size: 13px;
+}
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1.5px solid %5;
+    border-radius: 5px;
+    background: %4;
+}
+QCheckBox::indicator:hover {
+    border-color: %6;
+}
+QCheckBox::indicator:checked {
+    background: %15;
+    border-color: %15;
+    image: none;
+}
+QCheckBox::indicator:checked:hover {
+    background: %17;
+    border-color: %17;
 }
 
 /* ══════════════════════════════════════════════════════════════════════
@@ -566,6 +625,9 @@ QPushButton#iconBtn:pressed {
 QWidget#chatHeader {
     background: %3;
     border-bottom: 1px solid %5;
+}
+QWidget#chatHeader QWidget {
+    background: transparent;
 }
 
 QLabel#chatPeerName {
@@ -582,11 +644,19 @@ QLabel#chatPeerStatus {
 }
 
 QLabel#peerAvatar {
-    background: %5;
+    background: rgba(128,128,128,0.18);
+    border-radius: 21px;
+    color: %12;
+    font-size: 15px;
+    border: none;
+}
+
+QLabel#myAvatar {
+    background: rgba(128,128,128,0.18);
     border-radius: 19px;
-    color: %13;
-    font-size: 16px;
-    border: 2px solid %5;
+    color: %12;
+    font-size: 14px;
+    border: none;
 }
 
 /* ── Область сообщений ──────────────────────────────────────────────── */
@@ -601,16 +671,16 @@ QScrollArea > QWidget > QWidget {
 
 QScrollBar:vertical {
     background: transparent;
-    width: 4px;
+    width: 5px;
     margin: 0;
 }
 QScrollBar::handle:vertical {
-    background: %5;
-    border-radius: 2px;
+    background: rgba(128,128,128,0.25);
+    border-radius: 3px;
     min-height: 30px;
 }
 QScrollBar::handle:vertical:hover {
-    background: %13;
+    background: rgba(128,128,128,0.45);
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
@@ -629,8 +699,8 @@ QWidget#inputBar {
 QTextEdit#msgInput {
     background: %4;
     border: 1px solid %5;
-    border-radius: 16px;
-    padding: 10px 14px;
+    border-radius: 20px;
+    padding: 10px 16px;
     color: %11;
     font-size: 14px;
     selection-background-color: %15;
@@ -657,7 +727,7 @@ QPushButton#sendBtn:pressed {
     background: %18;
 }
 QPushButton#sendBtn:disabled {
-    background: %5;
+    background: rgba(128,128,128,0.15);
     color: %13;
 }
 
@@ -688,7 +758,7 @@ QLabel#dlgError {
 QTextEdit#dlgInput {
     background: %4;
     border: 1px solid %5;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 10px 12px;
     color: %11;
     font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
@@ -702,7 +772,7 @@ QPushButton#dlgOkBtn {
     background: %15;
     color: %16;
     border: none;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 10px 20px;
     font-weight: 700;
     font-size: 13px;
@@ -714,7 +784,7 @@ QPushButton#dlgCancelBtn {
     background: %4;
     color: %12;
     border: 1px solid %5;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 10px 20px;
     font-weight: 600;
     font-size: 13px;
@@ -725,7 +795,7 @@ QPushButton#dlgAcceptBtn {
     background: transparent;
     color: %20;
     border: 1.5px solid %20;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 10px 20px;
     font-weight: 700;
     font-size: 13px;
@@ -738,13 +808,13 @@ QPushButton#dlgRejectBtn {
     background: transparent;
     color: %19;
     border: 1.5px solid %19;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 10px 20px;
     font-weight: 700;
     font-size: 13px;
 }
 QPushButton#dlgRejectBtn:hover {
-    background: rgba(255, 77, 109, 0.1);
+    background: rgba(255, 77, 109, 0.10);
 }
 
 /* ── QMessageBox ────────────────────────────────────────────────────── */
@@ -759,7 +829,7 @@ QMessageBox QPushButton {
     background: %4;
     color: %11;
     border: 1px solid %5;
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 8px 16px;
     min-width: 80px;
 }
@@ -783,7 +853,7 @@ QInputDialog QLabel {
 QInputDialog QLineEdit {
     background: %4;
     border: 1px solid %5;
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 8px 12px;
     color: %11;
 }
@@ -792,7 +862,7 @@ QInputDialog QPushButton {
     background: %4;
     color: %11;
     border: 1px solid %5;
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 8px 16px;
 }
 QInputDialog QPushButton:hover { border-color: %6; }
@@ -829,7 +899,7 @@ QLabel#updateBannerText {
 QPushButton#updateBannerBtn {
     background: %22;
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     color: %23;
     font-size: 11px;
     font-weight: 700;
@@ -856,11 +926,11 @@ QListWidget#settingsNav::item {
     border-left: 2px solid transparent;
 }
 QListWidget#settingsNav::item:hover {
-    background: %3;
+    background: rgba(128,128,128,0.10);
     color: %11;
 }
 QListWidget#settingsNav::item:selected {
-    background: %3;
+    background: rgba(128,128,128,0.14);
     color: %11;
     border-left: 2px solid %15;
 }
@@ -902,8 +972,8 @@ QSpinBox#settingsInput,
 QComboBox#settingsInput {
     background: %4;
     border: 1px solid %5;
-    border-radius: 8px;
-    padding: 8px 12px;
+    border-radius: 10px;
+    padding: 9px 12px;
     color: %11;
     font-size: 13px;
     selection-background-color: %15;
@@ -916,7 +986,7 @@ QComboBox#settingsInput:focus {
 QLineEdit#settingsInputMono {
     background: %3;
     border: 1px solid %5;
-    border-radius: 8px;
+    border-radius: 10px;
     padding: 8px 12px;
     color: %13;
     font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
@@ -930,9 +1000,11 @@ QComboBox#settingsInput::drop-down {
 QComboBox#settingsInput QAbstractItemView {
     background: %3;
     border: 1px solid %5;
+    border-radius: 8px;
     color: %11;
-    selection-background-color: %15;
-    selection-color: %16;
+    selection-background-color: rgba(128,128,128,0.18);
+    selection-color: %11;
+    padding: 2px;
 }
 
 QSpinBox#settingsInput::up-button,
@@ -945,7 +1017,7 @@ QSpinBox#settingsInput::down-button {
 QWidget#settingsInfoBox {
     background: %3;
     border: 1px solid %5;
-    border-radius: 8px;
+    border-radius: 10px;
 }
 
 QLabel#settingsOk  { color: %20; font-size: 16px; }
@@ -954,7 +1026,7 @@ QLabel#settingsWarn { color: %19; font-size: 16px; }
 QPushButton#demoToggleBtn {
     background: %3;
     border: 1.5px solid %5;
-    border-radius: 8px;
+    border-radius: 10px;
     color: %12;
     font-size: 12px;
     font-weight: 600;
@@ -973,7 +1045,7 @@ QPushButton#demoToggleBtn:checked {
 QPushButton#settingsThemeRow {
     background: %3;
     border: 1.5px solid %5;
-    border-radius: 8px;
+    border-radius: 10px;
     color: %12;
     font-size: 13px;
     font-weight: 600;
@@ -1011,7 +1083,7 @@ QWidget#settingsPanel {
 QPushButton#settingsThemeCard {
     background: %3;
     border: 1.5px solid %5;
-    border-radius: 10px;
+    border-radius: 12px;
     color: %12;
     font-size: 12px;
     font-weight: 600;
@@ -1074,7 +1146,7 @@ QPushButton#themePillBtn {
 QPushButton#themePillBtn:hover {
     border-color: %6;
     color: %11;
-    background: %3;
+    background: rgba(128,128,128,0.10);
 }
 QPushButton#themePillBtn:checked {
     background: %15;
@@ -1113,8 +1185,8 @@ QToolTip {
     background: %3;
     color: %11;
     border: 1px solid %5;
-    border-radius: 6px;
-    padding: 4px 8px;
+    border-radius: 8px;
+    padding: 5px 10px;
     font-size: 12px;
 }
 
@@ -1150,4 +1222,32 @@ QToolTip {
     .arg(p.bannerBorder)   // %22
     .arg(p.bannerText)     // %23
     .arg(p.bannerBtnHover);// %24
+}
+
+// ── Динамическая раскраска иконок ────────────────────────────────────────────
+
+QIcon ThemeManager::tintedIcon(const QString& path) {
+    const QColor fg(instance().m_palette.textPrimary);
+    QPixmap src(path);
+    if (src.isNull()) return {};
+
+    QPixmap colored(src.size());
+    colored.fill(Qt::transparent);
+    QPainter p(&colored);
+    p.setCompositionMode(QPainter::CompositionMode_Source);
+    p.drawPixmap(0, 0, src);
+    p.setCompositionMode(QPainter::CompositionMode_SourceIn);
+    p.fillRect(colored.rect(), fg);
+    return QIcon(colored);
+}
+
+void ThemeManager::applyIcon(QAbstractButton* btn,
+                              const QString& path, const QSize& sz) {
+    auto update = [btn, path, sz]() {
+        btn->setIcon(tintedIcon(path));
+        btn->setIconSize(sz);
+    };
+    update();
+    connect(&instance(), &ThemeManager::themeChanged,
+            btn, [update](Theme) { update(); });
 }

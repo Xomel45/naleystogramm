@@ -1,4 +1,5 @@
 #include "callwindow.h"
+#include "thememanager.h"
 #include <QLabel>
 #include <QPushButton>
 #include <QProgressBar>
@@ -108,10 +109,8 @@ void CallWindow::setupUi() {
     auto* callRow = new QHBoxLayout;
     m_acceptBtn = new QPushButton(tr("Принять"), this);
     m_rejectBtn = new QPushButton(tr("Отклонить"), this);
-    m_acceptBtn->setIcon(QIcon(QStringLiteral(":/icons/call_answer.png")));
-    m_rejectBtn->setIcon(QIcon(QStringLiteral(":/icons/call_decline.png")));
-    m_acceptBtn->setIconSize(QSize(18, 18));
-    m_rejectBtn->setIconSize(QSize(18, 18));
+    ThemeManager::applyIcon(m_acceptBtn, QStringLiteral(":/icons/call_answer.png"), QSize(18, 18));
+    ThemeManager::applyIcon(m_rejectBtn, QStringLiteral(":/icons/call_decline.png"), QSize(18, 18));
     m_acceptBtn->setFixedHeight(36);
     m_rejectBtn->setFixedHeight(36);
     callRow->addWidget(m_acceptBtn);
@@ -122,10 +121,8 @@ void CallWindow::setupUi() {
     auto* ctrlRow = new QHBoxLayout;
     m_muteBtn   = new QPushButton(tr("Выкл. микр."), this);
     m_hangupBtn = new QPushButton(tr("Завершить"), this);
-    m_muteBtn->setIcon(QIcon(QStringLiteral(":/icons/vol_unmute.png")));
-    m_hangupBtn->setIcon(QIcon(QStringLiteral(":/icons/call_decline.png")));
-    m_muteBtn->setIconSize(QSize(18, 18));
-    m_hangupBtn->setIconSize(QSize(18, 18));
+    ThemeManager::applyIcon(m_muteBtn,   QStringLiteral(":/icons/call_mic_on.png"),  QSize(18, 18));
+    ThemeManager::applyIcon(m_hangupBtn, QStringLiteral(":/icons/call_cancel.png"),  QSize(18, 18));
     m_muteBtn->setFixedHeight(36);
     m_hangupBtn->setFixedHeight(36);
     m_hangupBtn->setStyleSheet("QPushButton { background: #c0392b; color: white; "
@@ -137,9 +134,9 @@ void CallWindow::setupUi() {
     // Связи
     connect(m_muteBtn, &QPushButton::clicked, this, [this]() {
         m_muted = !m_muted;
-        m_muteBtn->setIcon(m_muted
-            ? QIcon(QStringLiteral(":/icons/vol_mute.png"))
-            : QIcon(QStringLiteral(":/icons/vol_unmute.png")));
+        m_muteBtn->setIcon(ThemeManager::tintedIcon(m_muted
+            ? QStringLiteral(":/icons/call_mic_off.png")
+            : QStringLiteral(":/icons/call_mic_on.png")));
         m_muteBtn->setText(m_muted ? tr("Вкл. микр.") : tr("Выкл. микр."));
         emit muteToggled(m_muted);
     });

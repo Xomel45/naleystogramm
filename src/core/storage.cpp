@@ -66,6 +66,7 @@ void StorageManager::migrate() {
     QSqlQuery q(m_db);
     q.exec("PRAGMA journal_mode=WAL");
     q.exec("PRAGMA foreign_keys=ON");
+    q.exec("PRAGMA secure_delete=ON");
 
     q.exec(R"(
         CREATE TABLE IF NOT EXISTS contacts (
@@ -132,6 +133,12 @@ void StorageManager::migrate() {
     // Версия приложения, создавшего/обновившего запись контакта
     if (!cols.contains("version_created"))
         alter.exec("ALTER TABLE contacts ADD COLUMN version_created TEXT NOT NULL DEFAULT '0.1.0'");
+    // Заглушить уведомления от контакта (без блокировки сообщений)
+    if (!cols.contains("is_muted"))
+        alter.exec("ALTER TABLE contacts ADD COLUMN is_muted INTEGER NOT NULL DEFAULT 0");
+    // Время последнего присутствия онлайн (Unix timestamp секунды, 0 = неизвестно)
+    if (!cols.contains("last_seen"))
+        alter.exec("ALTER TABLE contacts ADD COLUMN last_seen INTEGER NOT NULL DEFAULT 0");
 
     // ── Безопасная миграция сообщений: колонки для голосовых сообщений ───────
     QSqlQuery msgInfo(m_db);
@@ -243,10 +250,14 @@ static Contact rowToContact(QSqlQuery& q) {
     c.avatarHash      = q.value("avatar_hash").toString();
     c.avatarPath      = q.value("avatar_path").toString();
     c.isBlocked       = q.value("is_blocked").toInt() != 0;
+    c.isMuted         = q.value("is_muted").toInt() != 0;
     c.systemInfoJson  = q.value("systeminfo_json").toString();
     // versionCreated: для старых записей (до v0.5.1) — дефолтное значение "0.1.0"
     const QString vc = q.value("version_created").toString();
     c.versionCreated  = vc.isEmpty() ? QStringLiteral("0.1.0") : vc;
+    // lastSeen: Unix timestamp → QDateTime (0 = неизвестно)
+    const qint64 lsTs = q.value("last_seen").toLongLong();
+    c.lastSeen = lsTs > 0 ? QDateTime::fromSecsSinceEpoch(lsTs) : QDateTime{};
     return c;
 }
 
@@ -313,6 +324,24 @@ bool StorageManager::blockContact(const QUuid& uuid, bool blocked) {
         qWarning("[Storage] blockContact: %s", qPrintable(q.lastError().text()));
         return false;
     }
+    return true;
+}
+
+bool StorageManager::setContactMuted(const QUuid& uuid, bool muted) {
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE contacts SET is_muted=:v WHERE uuid=:uuid");
+    q.bindValue(":v",    muted ? 1 : 0);
+    q.bindValue(":uuid", uuid.toString(QUuid::WithoutBraces));
+    if (!q.exec()) { qWarning("[Storage] setContactMuted: %s", qPrintable(q.lastError().text())); return false; }
+    return true;
+}
+
+bool StorageManager::updateLastSeen(const QUuid& uuid) {
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE contacts SET last_seen=:ts WHERE uuid=:uuid");
+    q.bindValue(":ts",   QDateTime::currentDateTime().toSecsSinceEpoch());
+    q.bindValue(":uuid", uuid.toString(QUuid::WithoutBraces));
+    if (!q.exec()) { qWarning("[Storage] updateLastSeen: %s", qPrintable(q.lastError().text())); return false; }
     return true;
 }
 

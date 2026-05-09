@@ -21,6 +21,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QFrame>
+#include <QCheckBox>
 #include <QSettings>
 #include <QNetworkProxy>
 #include <QFileDialog>
@@ -30,13 +31,26 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QEvent>
+#include <QIcon>
 
 // ── Helper: секция с заголовком ───────────────────────────────────────────
 
-static QLabel* sectionTitle(const QString& text) {
+static QWidget* sectionTitle(const QString& text, const QString& iconPath = {}) {
+    auto* row = new QWidget();
+    auto* hl = new QHBoxLayout(row);
+    hl->setContentsMargins(0, 0, 0, 0);
+    hl->setSpacing(6);
+    if (!iconPath.isEmpty()) {
+        auto* ico = new QLabel();
+        ico->setPixmap(QPixmap(iconPath)
+            .scaled(16, 16, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+        hl->addWidget(ico);
+    }
     auto* lbl = new QLabel(text);
     lbl->setObjectName("settingsPageTitle");
-    return lbl;
+    hl->addWidget(lbl);
+    hl->addStretch();
+    return row;
 }
 
 static QLabel* fieldLabel(const QString& text) {
@@ -76,10 +90,11 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     hl->setContentsMargins(10, 0, 14, 0);
     hl->setSpacing(8);
 
-    auto* backBtn = new QPushButton("←");
+    auto* backBtn = new QPushButton();
     backBtn->setObjectName("iconBtn");
     backBtn->setFixedSize(32, 32);
     backBtn->setToolTip(tr("Back"));
+    ThemeManager::applyIcon(backBtn, QStringLiteral(":/icons/nav_back.png"), QSize(16, 16));
     connect(backBtn, &QPushButton::clicked, this, &SettingsPanel::backRequested);
 
     auto* titleLbl = new QLabel(tr("Settings"));
@@ -108,7 +123,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->setSpacing(4);
 
     // ── ПРОФИЛЬ ───────────────────────────────────────────────────────────
-    contentLayout->addWidget(sectionTitle(tr("Profile")));
+    contentLayout->addWidget(sectionTitle(tr("Profile"), QStringLiteral(":/icons/settings_profile.png")));
     contentLayout->addSpacing(8);
 
     // Аватар
@@ -174,7 +189,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addSpacing(8);
 
     // ── DEMO MODE ─────────────────────────────────────────────────────────
-    contentLayout->addWidget(sectionTitle(tr("Demo mode")));
+    contentLayout->addWidget(sectionTitle(tr("Demo mode"), QStringLiteral(":/icons/dialogs_lock_on.png")));
     contentLayout->addSpacing(6);
 
     auto* demoRow = new QHBoxLayout();
@@ -208,7 +223,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addSpacing(8);
 
     // ── СЕТЬ ──────────────────────────────────────────────────────────────
-    contentLayout->addWidget(sectionTitle(tr("Network")));
+    contentLayout->addWidget(sectionTitle(tr("Network"), QStringLiteral(":/icons/settings_network.png")));
     contentLayout->addSpacing(8);
 
     contentLayout->addWidget(fieldLabel(tr("Port")));
@@ -351,7 +366,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addSpacing(8);
 
     // ── БЕЗОПАСНОСТЬ ──────────────────────────────────────────────────────
-    contentLayout->addWidget(sectionTitle(tr("Security")));
+    contentLayout->addWidget(sectionTitle(tr("Security"), QStringLiteral(":/icons/settings_security.png")));
     contentLayout->addSpacing(6);
 
     auto* shellRow = new QHBoxLayout();
@@ -380,7 +395,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addSpacing(8);
 
     // ── ИНТЕРФЕЙС ─────────────────────────────────────────────────────────
-    contentLayout->addWidget(sectionTitle(tr("Interface")));
+    contentLayout->addWidget(sectionTitle(tr("Interface"), QStringLiteral(":/icons/settings_appearance.png")));
     contentLayout->addSpacing(8);
 
     contentLayout->addWidget(fieldLabel(tr("Theme")));
@@ -472,12 +487,27 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addWidget(m_langCombo);
     contentLayout->addWidget(hint(tr("Requires restart")));
 
+    contentLayout->addSpacing(12);
+
+    // Enter отправляет сообщение
+    m_enterSendsCheck = new QCheckBox(tr("Enter отправляет сообщение"));
+    m_enterSendsCheck->setChecked(SessionManager::instance().enterSends());
+    connect(m_enterSendsCheck, &QCheckBox::checkStateChanged,
+            this, [this](Qt::CheckState state) {
+        const bool checked = (state == Qt::Checked);
+        SessionManager::instance().setEnterSends(checked);
+        emit enterSendsChanged(checked);
+    });
+    contentLayout->addWidget(m_enterSendsCheck);
+    contentLayout->addWidget(hint(tr("Shift+Enter — новая строка. "
+                                     "Если выключено: Enter — новая строка, Ctrl+Enter — отправить.")));
+
     contentLayout->addSpacing(8);
     contentLayout->addWidget(separator());
     contentLayout->addSpacing(8);
 
     // ── ОБНОВЛЕНИЯ ────────────────────────────────────────────────────────
-    contentLayout->addWidget(sectionTitle(tr("Updates")));
+    contentLayout->addWidget(sectionTitle(tr("Updates"), QStringLiteral(":/icons/install_update.png")));
     contentLayout->addSpacing(8);
 
     auto* versionRow = new QHBoxLayout();
@@ -553,7 +583,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addSpacing(8);
 
     // ── ОТЛАДКА ──────────────────────────────────────────────────────────────
-    contentLayout->addWidget(sectionTitle(tr("Debug")));
+    contentLayout->addWidget(sectionTitle(tr("Debug"), QStringLiteral(":/icons/settings_advanced.png")));
     contentLayout->addSpacing(8);
 
     contentLayout->addWidget(hint(
@@ -596,7 +626,7 @@ void SettingsPanel::buildPrivacySection(QWidget* container) {
     auto* lay = qobject_cast<QVBoxLayout*>(container->layout());
     if (!lay) return;
 
-    lay->addWidget(sectionTitle(tr("Privacy")));
+    lay->addWidget(sectionTitle(tr("Privacy"), QStringLiteral(":/icons/settings_privacy.png")));
     lay->addSpacing(6);
 
     // Вспомогательная функция: создаёт строку fieldLabel + QComboBox
@@ -685,6 +715,10 @@ void SettingsPanel::reload() {
     syncPrivacyCombo(m_privacyVoice,    sm.privacyVoice());
     syncPrivacyCombo(m_privacyAvatar,   sm.privacyAvatar());
     syncPrivacyCombo(m_privacyShell,    sm.privacyShell());
+
+    // Синхронизируем переключатель Enter-отправки
+    if (m_enterSendsCheck)
+        m_enterSendsCheck->setChecked(sm.enterSends());
 
     // Загружаем аватар из кэша или показываем букву
     const QString avatarPath = sm.avatarPath();

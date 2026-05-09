@@ -15,6 +15,8 @@ struct Contact {
     QString    avatarHash {};  // SHA-256 hex кэшированного аватара (пусто = нет)
     QString    avatarPath {};  // абсолютный путь к файлу аватара в кэше
     bool       isBlocked {false}; // контакт заблокирован — все сообщения игнорируются
+    bool       isMuted   {false}; // уведомления от контакта отключены
+    QDateTime  lastSeen  {};     // когда контакт последний раз был онлайн
     QString    systemInfoJson {}; // JSON-снимок системной информации пира (CPU/RAM/OS)
     // Версия приложения, создавшего/обновившего запись. Позволяет обнаружить
     // несовместимость при запуске более старой версии на той же базе данных.
@@ -56,6 +58,10 @@ public:
     [[nodiscard]] bool        updateContactSystemInfo(const QUuid& uuid, const QJsonObject& info);
     // Установить/снять блокировку контакта (все сообщения от него игнорируются)
     [[nodiscard]] bool        blockContact(const QUuid& uuid, bool blocked);
+    // Включить/отключить уведомления от контакта
+    [[nodiscard]] bool        setContactMuted(const QUuid& uuid, bool muted);
+    // Записать текущее время как «последний раз онлайн» для контакта
+    bool        updateLastSeen(const QUuid& uuid);
     [[nodiscard]] Contact     getContact(const QUuid& uuid) const;
     [[nodiscard]] QList<Contact> allContacts() const;
     // Удалить контакт и переписку. Если был заблокирован — UUID сохраняется в blocked_list.

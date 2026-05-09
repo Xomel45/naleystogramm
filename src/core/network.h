@@ -40,6 +40,10 @@ struct PeerConnection {
     QElapsedTimer    pingStopwatch    {};
     bool             awaitingPong     {false};
 
+    // Rate limiting: скользящее окно 1 сек / kMaxFramesPerSecond фреймов
+    QElapsedTimer    rateWindow       {};
+    quint32          rateCount        {0};
+
     // Профиль пира (заполняется из HANDSHAKE)
     qint64           latencyMs        {-1};       // Последний пинг, мс (-1 = нет данных)
     QDateTime        connectedSince   {};          // Момент установки соединения
@@ -212,4 +216,6 @@ private:
     // Защита от DoS: если readBuf пира превышает 16 МБ, соединение обрывается.
     // Легитимные сообщения (JSON) никогда не достигают этого размера.
     static constexpr int     kMaxBufferSize        = 16 * 1024 * 1024; // 16 МБ
+    static constexpr quint32 kMaxFramesPerSecond   = 200;              // Макс. фреймов в секунду от пира
+    static constexpr const char* kMinPeerVersion   = "0.7.2";         // Минимальная версия пира для соединения
 };

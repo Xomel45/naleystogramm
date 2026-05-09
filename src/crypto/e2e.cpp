@@ -12,7 +12,7 @@
 #include <QMutexLocker>
 #include <openssl/rand.h>
 
-static constexpr int kOtpkPoolSize = 10;
+static constexpr int kOtpkPoolSize = 100;
 
 E2EManager::E2EManager(QObject* parent) : QObject(parent) {}
 
@@ -50,24 +50,27 @@ void E2EManager::loadOrGenerateKeys() {
         const QByteArray raw = f.readAll();
         f.close();
 
-        // Определяем формат: зашифрованный блоб или legacy plaintext JSON.
         // Зашифрованный блоб начинается со случайного nonce — не с '{' (0x7B).
-        QByteArray jsonBytes;
         const bool looksLikeJson = !raw.isEmpty() && raw[0] == '{';
-        if (!looksLikeJson && KeyProtector::instance().isReady()) {
-            // Новый формат: расшифровываем
+
+        if (!KeyProtector::instance().isReady()) {
+            qCritical("[E2E] KeyProtector не готов — отказываемся загружать ключи!");
+            return;
+        }
+
+        QByteArray jsonBytes;
+        if (looksLikeJson) {
+            // Plaintext на диске: однократная миграция — шифруем и пересохраняем.
+            qWarning("[E2E] keys.json в открытом виде — выполняем миграцию в зашифрованный формат");
+            jsonBytes = raw;
+            // Пересохраняем немедленно в зашифрованном виде (saveKeys вызовется после parse).
+        } else {
             jsonBytes = KeyProtector::instance().decrypt(raw);
             if (jsonBytes.isEmpty()) {
                 qCritical("[E2E] Не удалось расшифровать keys.json — ключ повреждён?");
-                // НЕ генерируем новые ключи автоматически: это может означать атаку.
                 return;
             }
             qDebug("[E2E] keys.json расшифрован успешно");
-        } else {
-            // Legacy plaintext или KeyProtector не готов
-            jsonBytes = raw;
-            if (!looksLikeJson)
-                qWarning("[E2E] KeyProtector не готов — загружаем ключи без расшифровки");
         }
 
         const auto obj = QJsonDocument::fromJson(jsonBytes).object();
@@ -87,8 +90,12 @@ void E2EManager::loadOrGenerateKeys() {
         }
 
         if (!m_ikPriv.isEmpty() && !m_spkPriv.isEmpty()) {
-            // Вычисляем Ed25519 публичный ключ для верификации SPK подписей
             m_ikEdPub = X3DH::ikPrivToEdPub(m_ikPriv);
+            if (looksLikeJson) {
+                // Завершаем миграцию: перезаписываем файл в зашифрованном виде
+                saveKeys();
+                qDebug("[E2E] Миграция keys.json завершена — файл теперь зашифрован");
+            }
             qDebug("[E2E] Ключи загружены с диска (ikEdPub: %s)",
                    m_ikEdPub.isEmpty() ? "отсутствует" : "ОК");
             return;
@@ -150,22 +157,23 @@ void E2EManager::saveKeys() {
 
     const QByteArray jsonBytes = QJsonDocument(obj).toJson();
 
-    if (KeyProtector::instance().isReady()) {
-        // Шифруем перед записью — приватные ключи хранятся только в зашифрованном виде
-        const QByteArray encrypted = KeyProtector::instance().encrypt(jsonBytes);
-        if (!encrypted.isEmpty()) {
-            f.write(encrypted);
-            qDebug("[E2E] keys.json сохранён в зашифрованном виде");
-        } else {
-            // Резервный вариант: пишем plaintext чтобы не потерять ключи
-            qCritical("[E2E] Шифрование keys.json провалилось — сохраняем plaintext (небезопасно)");
-            f.write(jsonBytes);
-        }
-    } else {
-        // KeyProtector не инициализирован — пишем plaintext
-        qWarning("[E2E] KeyProtector не готов — keys.json сохраняется без шифрования");
-        f.write(jsonBytes);
+    if (!KeyProtector::instance().isReady()) {
+        qCritical("[E2E] KeyProtector не готов — keys.json НЕ сохранён (отказ от plaintext)");
+        f.close();
+        QFile::remove(m_keysPath);  // не оставляем пустой/битый файл
+        return;
     }
+
+    const QByteArray encrypted = KeyProtector::instance().encrypt(jsonBytes);
+    if (encrypted.isEmpty()) {
+        qCritical("[E2E] Шифрование keys.json провалилось — keys.json НЕ сохранён");
+        f.close();
+        QFile::remove(m_keysPath);
+        return;
+    }
+
+    f.write(encrypted);
+    qDebug("[E2E] keys.json сохранён в зашифрованном виде");
 }
 
 // ── Bundle serialization ──────────────────────────────────────────────────
@@ -216,14 +224,9 @@ QJsonObject E2EManager::initiateSession(const QUuid& peerUuid,
     // CKs (цепочка отправки) и peerDH (SPK пира) у отправителя ДОЛЖНЫ совпадать
     // с CKr (ckr в dhRatchet), который вычислит получатель на первом сообщении.
 #ifdef QT_DEBUG
-    {
-        const auto& s = m_sessions[peerUuid];
-        qDebug("[E2E][initSender] uuid=%s  SK=%s  CKs=%s  peerDH(SPK)=%s",
-               qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)),
-               secret->left(4).toHex().constData(),
-               s.sendChainKey.left(4).toHex().constData(),
-               s.peerDHPub.left(4).toHex().constData());
-    }
+    qDebug("[E2E][initSender] uuid=%s  сессия инициализирована",
+           qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)));
+
 #endif
 
     QJsonObject msg;

@@ -12,7 +12,7 @@
 
 static constexpr const char* kAppDirName  = "naleystogramm";
 static constexpr const char* kFileName    = "session.json";
-static constexpr const char* kVersion     = "0.7.1";
+static constexpr const char* kVersion     = "0.7.2";
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -127,6 +127,7 @@ QJsonObject SessionManager::toJson() const {
     ui["language"]       = m_language;
     ui["demoMode"]       = m_demoMode;
     ui["leftPanelWidth"] = m_leftPanelWidth;
+    ui["enterSends"]     = m_enterSends;
 
     QJsonObject updates;
     updates["lastChecked"] = m_lastUpdateCheck;
@@ -184,6 +185,7 @@ void SessionManager::fromJson(const QJsonObject& obj) {
     m_language       = ui["language"].toString("ru");
     m_demoMode       = ui["demoMode"].toBool(false);
     m_leftPanelWidth = ui["leftPanelWidth"].toInt(320);
+    m_enterSends     = ui["enterSends"].toBool(true);
 
     // Updates
     const auto upd = obj["updates"].toObject();
@@ -225,6 +227,7 @@ void SessionManager::setTheme(const QString& theme)      { m_theme = theme;     
 void SessionManager::setLanguage(const QString& lang)    { m_language = lang;     save(); }
 void SessionManager::setDemoMode(bool on)                { m_demoMode = on;       save(); }
 void SessionManager::setLeftPanelWidth(int w)            { m_leftPanelWidth = w;  save(); }
+void SessionManager::setEnterSends(bool on)              { m_enterSends = on;     save(); }
 void SessionManager::setLastUpdateCheck(const QString& iso) {
     m_lastUpdateCheck = iso;
     save();

@@ -247,12 +247,8 @@ QByteArray DoubleRatchet::dhRatchet(RatchetState& state,
     // с CKs (цепочкой отправки) отправителя, вычисленной на том же DH-выходе.
     // Если они расходятся, в логах будут разные значения CKr здесь и CKs в initSender/encrypt.
 #ifdef QT_DEBUG
-    qDebug("[Ratchet] dhRatchet: наш_DH=%s → peerDH=%s  CKr=%s  CKs=%s  RK=%s",
-           state.dhPub.left(4).toHex().constData(),  // наш НОВЫЙ DH (после генерации B1)
-           peerDHPub.left(4).toHex().constData(),
-           ckr.left(4).toHex().constData(),
-           state.sendChainKey.left(4).toHex().constData(),
-           state.rootKey.left(4).toHex().constData());
+    qDebug("[Ratchet] dhRatchet: Ns=%u Ns_prev=%u",
+           state.sendMsgNum, state.prevSendMsgNum);
 #endif
 
     return ckr; // цепочка получения
@@ -316,16 +312,10 @@ RatchetMessage DoubleRatchet::encrypt(RatchetState& state,
     msg.nonce        = nonce;
     msg.ciphertext   = aesgcmEncrypt(aesKey, nonce, plaintext, msg.tag);
 
-    // КЛЮЧЕВОЙ ЛОГ: CK_до на отправителе ОБЯЗАН совпасть с CK_до в Decrypt на получателе.
-    // DH_Step для Encrypt всегда NO — отправитель меняет DH-ключ только когда ПОЛУЧАЕТ ответ.
 #ifdef QT_DEBUG
-    qDebug("[Ratchet] Encrypt: MsgNum=%u  DH_Step=NO  CK_до=%s  CK_после=%s  MK=%s  DH=%s  pN=%u",
-           msg.msgNum,
-           ckBefore.constData(),
-           state.sendChainKey.left(4).toHex().constData(),
-           msgKey.left(4).toHex().constData(),
-           state.dhPub.left(4).toHex().constData(),
-           msg.prevChainLen);
+    qDebug("[Ratchet] Encrypt: MsgNum=%u  pN=%u",
+           msg.msgNum, msg.prevChainLen);
+    Q_UNUSED(ckBefore)
 #endif
 
     return msg;
@@ -346,11 +336,8 @@ std::expected<QByteArray, QString> DoubleRatchet::decrypt(
         const QByteArray aesKey = msgKey.left(32);
         auto result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
 #ifdef QT_DEBUG
-        qDebug("[Ratchet] Decrypt[пропущен]: MsgNum=%u  MK=%s  DH=%s  %s",
-               msg.msgNum,
-               msgKey.left(4).toHex().constData(),
-               msg.dhPub.left(4).toHex().constData(),
-               result.has_value() ? "OK" : "ОШИБКА");
+        qDebug("[Ratchet] Decrypt[пропущен]: MsgNum=%u  %s",
+               msg.msgNum, result.has_value() ? "OK" : "ОШИБКА");
 #endif
         return result;
     }
@@ -361,9 +348,7 @@ std::expected<QByteArray, QString> DoubleRatchet::decrypt(
         // Флаг захвачен ДО dhRatchet, потому что dhRatchet обновляет state.peerDHPub.
         // Используем в финальном логе ниже для поля DH_Step.
 #ifdef QT_DEBUG
-        qDebug("[Ratchet][decrypt] DH-шаг: oldPeer=%s → newPeer=%s  N=%u  pN=%u",
-               state.peerDHPub.left(4).toHex().constData(),
-               msg.dhPub.left(4).toHex().constData(),
+        qDebug("[Ratchet][decrypt] DH-шаг: N=%u  pN=%u",
                msg.msgNum, msg.prevChainLen);
 #endif
 
@@ -405,16 +390,11 @@ std::expected<QByteArray, QString> DoubleRatchet::decrypt(
     const QByteArray aesKey = msgKey.left(32);
     auto result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
 
-    // DH_Step=YES означает, что dhRatchet был вызван ДО этой точки в текущем вызове decrypt()
 #ifdef QT_DEBUG
-    qDebug("[Ratchet] Decrypt: MsgNum=%u  DH_Step=%s  CK_до=%s  CK_после=%s  MK=%s  DH=%s  Result=%s",
-           msg.msgNum,
-           didDHRatchet ? "YES" : "NO",
-           ckBefore.constData(),
-           state.recvChainKey.left(4).toHex().constData(),
-           msgKey.left(4).toHex().constData(),
-           msg.dhPub.left(4).toHex().constData(),
+    qDebug("[Ratchet] Decrypt: MsgNum=%u  DH_Step=%s  Result=%s",
+           msg.msgNum, didDHRatchet ? "YES" : "NO",
            result.has_value() ? "OK" : "FAIL");
+    Q_UNUSED(ckBefore)
 #endif
 
     return result;

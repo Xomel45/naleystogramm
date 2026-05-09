@@ -11,6 +11,7 @@
 #include <QPainter>
 #include <QIcon>
 #include <QDebug>
+#include "thememanager.h"
 
 ContactsWidget::ContactsWidget(QWidget* parent) : QWidget(parent) {
     auto* layout = new QVBoxLayout(this);
@@ -126,6 +127,16 @@ static QIcon makeRoundAvatar(const QString& path) {
     return QIcon(round);
 }
 
+static QString formatLastSeen(const QDateTime& dt) {
+    if (dt.isNull()) return {};
+    const qint64 secs = dt.secsTo(QDateTime::currentDateTime());
+    if (secs < 60)      return QObject::tr("только что");
+    if (secs < 3600)    return QObject::tr("был(а) %1 мин назад").arg(secs / 60);
+    if (secs < 86400)   return QObject::tr("был(а) %1 ч назад").arg(secs / 3600);
+    if (secs < 604800)  return QObject::tr("был(а) %1 дн назад").arg(secs / 86400);
+    return QObject::tr("был(а) %1").arg(dt.toString("dd.MM.yyyy"));
+}
+
 void ContactsWidget::rebuildList(const QString& filter) {
     m_list->clear();
     for (const auto& c : m_contacts) {
@@ -150,13 +161,18 @@ void ContactsWidget::rebuildList(const QString& filter) {
             }
         }
 
-        // Заблокированные отображаем со значком и красным цветом
-        const QString nameStr = c.isBlocked ? (c.name + tr(" 🚫")) : c.name;
+        // Заблокированные отображаем со значком; заглушённые — со значком 🔕
+        const QString nameStr = c.isBlocked ? (c.name + tr(" 🚫"))
+                                            : (c.isMuted ? (QString("🔕 ") + c.name) : c.name);
         const int unread = m_unreadCounts.value(c.uuid, 0);
         const QString badge = unread > 0 ? QString("  [%1]").arg(unread) : QString();
         const QString preview = last.isEmpty() ? "" :
             QString("\n  %1").arg(last.left(40));
-        item->setText(bullet + nameStr + badge + preview);
+        const bool isOnline = m_presence.value(c.uuid, PeerPresence::Offline) != PeerPresence::Offline;
+        const QString lastSeenStr = (!isOnline && !c.lastSeen.isNull())
+            ? QString("\n  %1").arg(formatLastSeen(c.lastSeen))
+            : QString();
+        item->setText(bullet + nameStr + badge + preview + lastSeenStr);
         if (unread > 0)
             item->setForeground(QColor("#b8a0ff"));
         item->setData(Qt::UserRole, c.uuid.toString());
@@ -202,24 +218,32 @@ void ContactsWidget::onContextMenuRequested(const QPoint& pos) {
     const QUuid uuid(item->data(Qt::UserRole).toString());
     if (uuid.isNull()) return;
 
-    // Определяем текущий статус блокировки для правильной надписи пункта меню
+    // Определяем текущий статус блокировки и заглушения для правильных надписей меню
     bool isBlocked = false;
+    bool isMuted   = false;
     for (const auto& c : m_contacts) {
-        if (c.uuid == uuid) { isBlocked = c.isBlocked; break; }
+        if (c.uuid == uuid) { isBlocked = c.isBlocked; isMuted = c.isMuted; break; }
     }
 
     QMenu menu(this);
-    auto* viewAct      = menu.addAction(tr("Просмотр профиля"));
+    auto* viewAct      = menu.addAction(ThemeManager::tintedIcon(":/icons/ctx_info.png"),    tr("Просмотр профиля"));
     menu.addSeparator();
-    // Надпись меняется в зависимости от текущего состояния
-    auto* blockAct     = menu.addAction(isBlocked ? tr("Разблокировать") : tr("Заблокировать"));
-    auto* deleteChatAct = menu.addAction(tr("Удалить чат"));
+    auto* muteAct      = menu.addAction(
+        ThemeManager::tintedIcon(isMuted ? ":/icons/ctx_unmute.png" : ":/icons/ctx_mute.png"),
+        isMuted ? tr("Включить уведомления") : tr("Заглушить"));
     menu.addSeparator();
-    // Удаление контакта — деструктивное действие, отделено разделителем
-    auto* deleteContactAct = menu.addAction(tr("Удалить контакт"));
+    auto* blockAct     = menu.addAction(
+        ThemeManager::tintedIcon(isBlocked ? ":/icons/ctx_unblock.png" : ":/icons/ctx_block.png"),
+        isBlocked ? tr("Разблокировать") : tr("Заблокировать"));
+    auto* deleteChatAct = menu.addAction(ThemeManager::tintedIcon(":/icons/ctx_clear.png"),  tr("Удалить чат"));
+    menu.addSeparator();
+    auto* deleteContactAct = menu.addAction(ThemeManager::tintedIcon(":/icons/ctx_delete.png"), tr("Удалить контакт"));
 
     connect(viewAct, &QAction::triggered, this, [this, uuid]() {
         emit profileRequested(uuid);
+    });
+    connect(muteAct, &QAction::triggered, this, [this, uuid]() {
+        emit muteRequested(uuid);
     });
     connect(blockAct, &QAction::triggered, this, [this, uuid]() {
         emit blockRequested(uuid);

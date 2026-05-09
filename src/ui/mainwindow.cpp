@@ -46,6 +46,8 @@
 #include <QHostAddress>
 #include <QMenu>
 #include <QCloseEvent>
+#include <QIcon>
+#include <QSize>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -294,6 +296,13 @@ MainWindow::MainWindow(QWidget* parent)
     // Действия контекстного меню контактов
     connect(m_contacts, &ContactsWidget::blockRequested,
             this, &MainWindow::onBlockContact);
+    connect(m_contacts, &ContactsWidget::muteRequested,
+            this, [this](const QUuid& uuid) {
+                Contact c = m_storage->getContact(uuid);
+                if (c.uuid.isNull()) return;
+                (void)m_storage->setContactMuted(uuid, !c.isMuted);
+                m_contacts->setContacts(m_storage->allContacts());
+            });
     connect(m_contacts, &ContactsWidget::deleteChatRequested,
             this, &MainWindow::onDeleteChat);
     connect(m_contacts, &ContactsWidget::contactDeleteRequested,
@@ -410,24 +419,26 @@ void MainWindow::setupUi() {
     headerLayout->setSpacing(8);
 
     m_myAvatar = new QLabel();
-    m_myAvatar->setObjectName("peerAvatar");
-    m_myAvatar->setFixedSize(36, 36);
+    m_myAvatar->setObjectName("myAvatar");
+    m_myAvatar->setFixedSize(38, 38);
     m_myAvatar->setAlignment(Qt::AlignCenter);
 
     m_nameLabel = new QLabel(Identity::instance().displayName());
     m_nameLabel->setObjectName("myNameLabel");
     m_nameLabel->setCursor(Qt::PointingHandCursor);
 
-    auto* idBtn = new QPushButton("⊕");
+    auto* idBtn = new QPushButton();
     idBtn->setObjectName("iconBtn");
     idBtn->setFixedSize(32, 32);
     idBtn->setToolTip(tr("My ID"));
+    ThemeManager::applyIcon(idBtn, QStringLiteral(":/icons/nav_profile.png"), QSize(18, 18));
     connect(idBtn, &QPushButton::clicked, this, &MainWindow::onShowMyId);
 
-    auto* editBtn = new QPushButton("✎");
+    auto* editBtn = new QPushButton();
     editBtn->setObjectName("iconBtn");
     editBtn->setFixedSize(32, 32);
     editBtn->setToolTip(tr("Edit name"));
+    ThemeManager::applyIcon(editBtn, QStringLiteral(":/icons/ctx_edit.png"), QSize(18, 18));
     connect(editBtn, &QPushButton::clicked, this, &MainWindow::onEditName);
 
     headerLayout->addWidget(m_myAvatar);
@@ -442,8 +453,9 @@ void MainWindow::setupUi() {
     m_updateBanner = new UpdateBanner(chatsPage);
 
     // Кнопка добавить
-    auto* addBtn = new QPushButton(tr("+ Add contact"));
+    auto* addBtn = new QPushButton(tr("Add contact"));
     addBtn->setObjectName("addContactBtn");
+    ThemeManager::applyIcon(addBtn, QStringLiteral(":/icons/profile_add_member.png"), QSize(16, 16));
     connect(addBtn, &QPushButton::clicked, this, &MainWindow::onAddContactClicked);
 
     // Футер — шестерёнка + три кнопки тем
@@ -453,10 +465,11 @@ void MainWindow::setupUi() {
     footerLayout->setContentsMargins(10, 8, 10, 10);
     footerLayout->setSpacing(6);
 
-    auto* settingsBtn = new QPushButton("⚙");
+    auto* settingsBtn = new QPushButton();
     settingsBtn->setObjectName("iconBtn");
     settingsBtn->setFixedSize(32, 32);
     settingsBtn->setToolTip(tr("Settings"));
+    ThemeManager::applyIcon(settingsBtn, QStringLiteral(":/icons/settings_btn.png"), QSize(20, 20));
     connect(settingsBtn, &QPushButton::clicked, this, &MainWindow::openSettings);
 
     // Кнопки тем перенесены в SettingsPanel — здесь остаётся только кнопка настроек
@@ -480,6 +493,8 @@ void MainWindow::setupUi() {
             });
     connect(m_settings, &SettingsPanel::avatarChanged,
             this, [this](const QString&) { loadOwnAvatar(); });
+    connect(m_settings, &SettingsPanel::enterSendsChanged,
+            this, [this](bool on) { m_chat->setEnterSends(on); });
 
     m_leftStack->addWidget(chatsPage);   // index 0
     m_leftStack->addWidget(m_settings);  // index 1
@@ -487,6 +502,8 @@ void MainWindow::setupUi() {
 
     // ── Правая панель — чат ───────────────────────────────────────────────
     m_chat = new ChatWidget();
+    // Применяем сохранённую настройку режима Enter при создании виджета
+    m_chat->setEnterSends(SessionManager::instance().enterSends());
     connect(m_chat, &ChatWidget::sendMessage,       this, &MainWindow::onSendMessage);
     connect(m_chat, &ChatWidget::sendFileRequested, this, &MainWindow::onSendFile);
 
@@ -747,7 +764,11 @@ void MainWindow::onPeerConnected(QUuid uuid, QString name) {
 }
 
 void MainWindow::onPeerDisconnected(QUuid uuid) {
+    m_storage->updateLastSeen(uuid);
     m_contacts->setPeerOnline(uuid, false);
+    // Перезагружаем контакты чтобы обновить lastSeen в списке
+    const QList<Contact> updated = m_storage->allContacts();
+    m_contacts->setContacts(updated);
     if (m_activePeer == uuid)
         m_chat->setPeerStatus(tr("offline"));
 }
@@ -958,12 +979,12 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
             m_chat->hideTypingIndicator();
         } else {
             m_contacts->incrementUnread(from);
-            // Уведомление в трей если окно скрыто
-            if (m_tray && (isHidden() || isMinimized())) {
-                const Contact c = m_storage->getContact(from);
-                const QString senderName = c.uuid.isNull()
+            // Уведомление в трей если окно скрыто и контакт не заглушён
+            const Contact sender = m_storage->getContact(from);
+            if (!sender.isMuted && m_tray && (isHidden() || isMinimized())) {
+                const QString senderName = sender.uuid.isNull()
                     ? from.toString(QUuid::WithoutBraces).left(8)
-                    : c.name;
+                    : sender.name;
                 m_tray->showMessage(senderName, text,
                     QSystemTrayIcon::Information, 4000);
             }

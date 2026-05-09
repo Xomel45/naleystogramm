@@ -221,16 +221,15 @@ std::optional<QByteArray> X3DH::initiatorAgreement(
     // ── Верификация подписи SPK — критична для защиты от MITM ────────────────
     // Если пир прислал ik_ed (новые клиенты), проверяем подпись SPK.
     // Если верификация провалилась — ABORT: сессия может быть скомпрометирована.
-    if (!bobBundle.ikEdPub.isEmpty()) {
-        if (!verifySpkSig(bobBundle.ikEdPub, bobBundle.signedPreKey, bobBundle.signedPreKeySig)) {
-            qCritical("[X3DH] ⚠️ Подпись ключа недействительна! Возможна атака посредника (MITM). Сессия отклонена.");
-            return std::nullopt;
-        }
-        qDebug("[X3DH] SPK подпись верифицирована успешно");
-    } else {
-        // Старый клиент без ik_ed — верификация невозможна, логируем предупреждение
-        qWarning("[X3DH] Пир не предоставил ik_ed — верификация SPK пропущена (старый клиент)");
+    if (bobBundle.ikEdPub.isEmpty()) {
+        qCritical("[X3DH] Пир не предоставил ik_ed — верификация SPK невозможна. Сессия отклонена.");
+        return std::nullopt;
     }
+    if (!verifySpkSig(bobBundle.ikEdPub, bobBundle.signedPreKey, bobBundle.signedPreKeySig)) {
+        qCritical("[X3DH] Подпись SPK недействительна! Возможна MITM-атака. Сессия отклонена.");
+        return std::nullopt;
+    }
+    qDebug("[X3DH] SPK подпись верифицирована успешно");
 
     // Generate ephemeral key pair EK_A
     QByteArray ekPriv, ekPub;

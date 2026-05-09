@@ -37,6 +37,7 @@ signals:
     void contactSelected(QUuid uuid);
     void profileRequested(QUuid uuid);         // ПКМ → Просмотр профиля
     void blockRequested(QUuid uuid);           // ПКМ → Заблокировать/Разблокировать
+    void muteRequested(QUuid uuid);            // ПКМ → Заглушить/Включить уведомления
     void deleteChatRequested(QUuid uuid);      // ПКМ → Удалить чат
     void contactDeleteRequested(QUuid uuid);   // ПКМ → Удалить контакт
 

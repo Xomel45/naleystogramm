@@ -16,22 +16,13 @@
 #include <QPainterPath>
 #include <QEvent>
 #include <QIcon>
-#include <QImage>
 #include <QPixmap>
 #include <QSize>
+#include <QMenu>
+#include <QApplication>
+#include <QClipboard>
 
-// Перекрашивает иконку в белый цвет (для тёмного фона)
-static QIcon whiteIcon(const QString& resourcePath) {
-    QImage img(resourcePath);
-    if (img.isNull()) return {};
-    img = img.convertToFormat(QImage::Format_ARGB32);
-    for (int y = 0; y < img.height(); ++y)
-        for (int x = 0; x < img.width(); ++x) {
-            const QColor c = img.pixelColor(x, y);
-            if (c.alpha() > 0) img.setPixelColor(x, y, QColor(255, 255, 255, c.alpha()));
-        }
-    return QIcon(QPixmap::fromImage(img));
-}
+
 #ifdef HAVE_QT_MULTIMEDIA
 #include <QMediaPlayer>
 #include <QAudioOutput>
@@ -47,18 +38,36 @@ public:
         setFixedHeight(44);
         setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     }
+    void setEnterSends(bool v) { m_enterSends = v; }
 signals:
     void enterPressed();
 protected:
     void keyPressEvent(QKeyEvent* e) override {
-        if (e->key() == Qt::Key_Return && !(e->modifiers() & Qt::ShiftModifier)) {
-            emit enterPressed();
-            return;
+        const bool isReturn = e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter;
+        const bool ctrl     = e->modifiers() & Qt::ControlModifier;
+        const bool shift    = e->modifiers() & Qt::ShiftModifier;
+
+        if (isReturn) {
+            if (m_enterSends) {
+                // Режим "Enter отправляет": Enter без Shift → отправить; Shift+Enter → новая строка
+                if (!shift) {
+                    emit enterPressed();
+                    return;
+                }
+            } else {
+                // Режим "Ctrl+Enter отправляет": Ctrl+Enter → отправить; Enter → новая строка
+                if (ctrl) {
+                    emit enterPressed();
+                    return;
+                }
+            }
         }
         QTextEdit::keyPressEvent(e);
         const int h = qBound(44, static_cast<int>(document()->size().height()) + 14, 120);
         setFixedHeight(h);
     }
+private:
+    bool m_enterSends{true};
 };
 #include "chatwidget.moc"
 
@@ -97,7 +106,7 @@ ChatWidget::ChatWidget(QWidget* parent) : QWidget(parent) {
     connect(m_player, &QMediaPlayer::playbackStateChanged,
             this, [this](QMediaPlayer::PlaybackState state) {
         if (state == QMediaPlayer::StoppedState && m_activePlayBtn) {
-            m_activePlayBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
+            m_activePlayBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_play.png")));
             m_activePlayBtn->setText({});
             m_activePlayBtn = nullptr;
         }
@@ -154,7 +163,7 @@ void ChatWidget::setupUi() {
 
         m_peerAvatar = new QLabel();
         m_peerAvatar->setObjectName("peerAvatar");
-        m_peerAvatar->setFixedSize(38, 38);
+        m_peerAvatar->setFixedSize(42, 42);
         m_peerAvatar->setAlignment(Qt::AlignCenter);
         // Клик по аватару → сигнал openProfileRequested
         m_peerAvatar->setCursor(Qt::PointingHandCursor);
@@ -173,18 +182,18 @@ void ChatWidget::setupUi() {
         infoLayout->addWidget(m_peerName);
         infoLayout->addWidget(m_peerStatus);
 
-        m_fileBtn = new QPushButton("⊕");
+        m_fileBtn = new QPushButton();
         m_fileBtn->setObjectName("iconBtn");
         m_fileBtn->setFixedSize(36, 36);
         m_fileBtn->setToolTip(tr("Send file"));
+        ThemeManager::applyIcon(m_fileBtn, QStringLiteral(":/icons/input_attach.png"), QSize(20, 20));
         connect(m_fileBtn, &QPushButton::clicked,
                 this, &ChatWidget::sendFileRequested);
 
         m_callBtn = new QPushButton();
         m_callBtn->setObjectName("iconBtn");
         m_callBtn->setFixedSize(36, 36);
-        m_callBtn->setIcon(whiteIcon(QStringLiteral(":/icons/call_answer.png")));
-        m_callBtn->setIconSize(QSize(20, 20));
+        ThemeManager::applyIcon(m_callBtn, QStringLiteral(":/icons/nav_call.png"), QSize(20, 20));
 #ifdef HAVE_OPUS
         m_callBtn->setToolTip(tr("Голосовой звонок"));
 #else
@@ -268,8 +277,7 @@ void ChatWidget::setupUi() {
         m_micBtn->setObjectName("iconBtn");
         m_micBtn->setFixedSize(36, 36);
         m_micBtn->setToolTip(tr("Записать голосовое сообщение"));
-        m_micBtn->setIcon(QIcon(QStringLiteral(":/icons/vol_unmute.png")));
-        m_micBtn->setIconSize(QSize(20, 20));
+        ThemeManager::applyIcon(m_micBtn, QStringLiteral(":/icons/input_voice.png"), QSize(20, 20));
         connect(m_micBtn, &QPushButton::clicked, this, &ChatWidget::onMicClicked);
 
         // Индикатор записи — скрыт по умолчанию
@@ -278,9 +286,10 @@ void ChatWidget::setupUi() {
             "font-size: 11px; color: #ff4d6d; font-weight: 600;");
         m_recIndicator->hide();
 
-        m_sendBtn = new QPushButton("↑");
+        m_sendBtn = new QPushButton();
         m_sendBtn->setObjectName("sendBtn");
         m_sendBtn->setFixedSize(44, 44);
+        ThemeManager::applyIcon(m_sendBtn, QStringLiteral(":/icons/input_send.png"), QSize(20, 20));
 
         connect(inp,      &MsgInput::enterPressed,    this, &ChatWidget::onSendClicked);
         connect(m_sendBtn, &QPushButton::clicked,     this, &ChatWidget::onSendClicked);
@@ -425,12 +434,26 @@ QWidget* ChatWidget::makeBubble(const QString& text, bool outgoing,
     );
     bubble->setTextFormat(Qt::RichText);
 
+    // Правый клик — копировать текст сообщения
+    bubble->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(bubble, &QWidget::customContextMenuRequested, bubble,
+            [bubble, text](const QPoint& pos) {
+        auto* m = new QMenu(bubble);
+        m->setAttribute(Qt::WA_DeleteOnClose);
+        auto* copyAct = m->addAction(
+            ThemeManager::tintedIcon(QStringLiteral(":/icons/ctx_copy.png")), QObject::tr("Копировать"));
+        QObject::connect(copyAct, &QAction::triggered, [text]() {
+            QApplication::clipboard()->setText(text);
+        });
+        m->popup(bubble->mapToGlobal(pos));
+    });
+
     if (outgoing) {
         bubble->setStyleSheet(QString(R"(
             QLabel {
                 background: %1;
-                border-radius: 16px;
-                border-bottom-right-radius: 4px;
+                border-radius: 18px;
+                border-bottom-right-radius: 6px;
                 padding: 9px 14px;
                 color: %2;
                 font-size: 14px;
@@ -450,10 +473,11 @@ QWidget* ChatWidget::makeBubble(const QString& text, bool outgoing,
         auto* delivRow = new QHBoxLayout();
         delivRow->setContentsMargins(0, 0, 4, 0);
         auto* delivIcon = new QLabel();
-        const QPixmap delivPix = QPixmap(QStringLiteral(":/icons/msg_delivered.png"))
-            .scaled(12, 12, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        delivIcon->setPixmap(delivPix);
-        delivIcon->hide();
+        delivIcon->setPixmap(
+            ThemeManager::tintedIcon(QStringLiteral(":/icons/msg_sent.png"))
+                .pixmap(12, 12));
+        // Показываем иконку «отправлено» только для новых сообщений (не из истории)
+        delivIcon->setVisible(!msgId.isEmpty());
         delivRow->addStretch();
         delivRow->addWidget(delivIcon);
         colLayout->addLayout(delivRow);
@@ -468,8 +492,8 @@ QWidget* ChatWidget::makeBubble(const QString& text, bool outgoing,
             QLabel {
                 background: %1;
                 border: 1px solid %2;
-                border-radius: 16px;
-                border-bottom-left-radius: 4px;
+                border-radius: 18px;
+                border-bottom-left-radius: 6px;
                 padding: 9px 14px;
                 color: %3;
                 font-size: 14px;
@@ -553,8 +577,9 @@ void ChatWidget::onMicClicked() {
         m_recIndicator->setText("🔴 0:00");
         m_recIndicator->show();
         m_recSecTimer->start();
-        m_micBtn->setIcon(QIcon());
-        m_micBtn->setText("⏹");
+        m_micBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/input_voice_active.png")));
+        m_micBtn->setIconSize(QSize(20, 20));
+        m_micBtn->setText({});
         m_micBtn->setToolTip(tr("Остановить запись"));
     } else {
         // Остановить запись → onRecordingDone вызовется через сигнал
@@ -568,7 +593,7 @@ void ChatWidget::onRecordingDone(const QString& filePath, int durationMs) {
     m_recSeconds = 0;
     m_recIndicator->hide();
     m_recIndicator->setText("🔴 0:00");
-    m_micBtn->setIcon(QIcon(QStringLiteral(":/icons/vol_unmute.png")));
+    m_micBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/input_voice.png")));
     m_micBtn->setIconSize(QSize(20, 20));
     m_micBtn->setText({});
     m_micBtn->setToolTip(tr("Записать голосовое сообщение"));
@@ -625,8 +650,7 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
     auto* playBtn = new QPushButton();
     playBtn->setFixedSize(32, 32);
     playBtn->setObjectName("voicePlayBtn");
-    playBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
-    playBtn->setIconSize(QSize(16, 16));
+    ThemeManager::applyIcon(playBtn, QStringLiteral(":/icons/media_play.png"), QSize(16, 16));
 
     // Форматируем длительность
     const int totalSec = durationMs / 1000;
@@ -656,8 +680,8 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
         bubble->setStyleSheet(QString(R"(
             QFrame {
                 background: %1;
-                border-radius: 16px;
-                border-bottom-right-radius: 4px;
+                border-radius: 18px;
+                border-bottom-right-radius: 6px;
             }
             QLabel { color: %2; font-size: 13px; background: transparent; }
         )").arg(p.bgBubbleOut, p.textPrimary));
@@ -668,8 +692,8 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
             QFrame {
                 background: %1;
                 border: 1px solid %2;
-                border-radius: 16px;
-                border-bottom-left-radius: 4px;
+                border-radius: 18px;
+                border-bottom-left-radius: 6px;
             }
             QLabel { color: %3; font-size: 13px; background: transparent; }
         )").arg(p.bgBubbleIn, p.border, p.textPrimary));
@@ -685,16 +709,16 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
             if (m_activePlayBtn == playBtn) {
                 // Повторное нажатие — стоп
                 m_player->stop();
-                playBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
+                playBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_play.png")));
                 m_activePlayBtn = nullptr;
             } else {
                 // Остановить предыдущий
                 if (m_activePlayBtn) {
-                    m_activePlayBtn->setIcon(QIcon(QStringLiteral(":/icons/media_play.png")));
+                    m_activePlayBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_play.png")));
                     m_player->stop();
                 }
                 m_activePlayBtn = playBtn;
-                playBtn->setIcon(QIcon(QStringLiteral(":/icons/media_pause.png")));
+                playBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_pause.png")));
                 m_player->setSource(QUrl::fromLocalFile(filePath));
                 m_player->play();
             }
@@ -731,6 +755,16 @@ void ChatWidget::hideTypingIndicator() {
 void ChatWidget::markDelivered(const QString& msgId) {
     if (msgId.isEmpty()) return;
     auto it = m_deliveryIcons.find(msgId);
-    if (it != m_deliveryIcons.end() && it.value())
+    if (it != m_deliveryIcons.end() && it.value()) {
+        it.value()->setPixmap(
+            ThemeManager::tintedIcon(QStringLiteral(":/icons/msg_delivered.png"))
+                .pixmap(12, 12));
         it.value()->show();
+    }
+}
+
+// ── Enter sends setting ───────────────────────────────────────────────────
+
+void ChatWidget::setEnterSends(bool on) {
+    static_cast<MsgInput*>(m_input)->setEnterSends(on);
 }

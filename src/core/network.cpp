@@ -1,5 +1,7 @@
 #include "network.h"
 #include "identity.h"
+#include "versionutils.h"
+#include <QCoreApplication>
 #include <QPointer>
 #include "upnp.h"
 #include "systeminfo.h"
@@ -432,6 +434,7 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
                 {"port",       static_cast<int>(m_localPort)},
                 {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
                 {"avatarHash", ownAvatarHash},
+                {"version",    QCoreApplication::applicationVersion()},
             };
             sendViaRelay(peer.uuid, hs);
             log(QString("Relay: HANDSHAKE отправлен → %1").arg(peer.name));
@@ -636,6 +639,22 @@ void NetworkManager::onSocketReadyRead() {
 }
 
 void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
+    // Rate limiting: скользящее окно 1 сек
+    if (!peer.rateWindow.isValid()) {
+        peer.rateWindow.start();
+        peer.rateCount = 0;
+    } else if (peer.rateWindow.elapsed() >= 1000) {
+        peer.rateWindow.restart();
+        peer.rateCount = 0;
+    }
+    if (++peer.rateCount > kMaxFramesPerSecond) {
+        log(QString("Rate limit: %1 превысил %2 фреймов/сек — разрываем соединение")
+                .arg(peer.name.isEmpty() ? peer.ip : peer.name)
+                .arg(kMaxFramesPerSecond), true);
+        peer.socket->abort();
+        return;
+    }
+
     const QString type = obj["type"].toString();
 
     // Обновляем время последней активности
@@ -653,6 +672,17 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
         // H-1: ограничиваем длину имени (256 символов), удаляем управляющие символы
         static const QRegularExpression kCtrlChars(QStringLiteral("[\\x00-\\x1F\\x7F]"));
         const QString rawName = obj["name"].toString();
+
+        // Проверяем минимальную версию пира
+        const QString peerVersion = obj["version"].toString();
+        if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
+            log(QString("HANDSHAKE отклонён от %1: версия %2 < минимальной %3")
+                    .arg(peer.ip)
+                    .arg(peerVersion.isEmpty() ? "<неизвестно>" : peerVersion)
+                    .arg(kMinPeerVersion), true);
+            peer.socket->abort();
+            return;
+        }
 
         peer.uuid       = parsedUuid;
         peer.name       = rawName.left(256).remove(kCtrlChars).trimmed();
@@ -697,6 +727,17 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
 
     if (type == "HANDSHAKE_ACK") {
         if (obj["accepted"].toBool()) {
+            // Проверяем минимальную версию пира
+            const QString peerVersionAck = obj["version"].toString();
+            if (VersionUtils::compare(peerVersionAck, kMinPeerVersion) < 0) {
+                log(QString("HANDSHAKE_ACK отклонён от %1: версия %2 < минимальной %3")
+                        .arg(peer.ip)
+                        .arg(peerVersionAck.isEmpty() ? "<неизвестно>" : peerVersionAck)
+                        .arg(kMinPeerVersion), true);
+                peer.socket->abort();
+                return;
+            }
+
             const QUuid confirmedUuid = QUuid(obj["uuid"].toString());
             const QString confirmedName = obj["name"].toString();
 
@@ -809,13 +850,10 @@ void NetworkManager::sendHandshake(QTcpSocket* socket) {
         {"type",       "HANDSHAKE"},
         {"uuid",       id.uuid().toString(QUuid::WithoutBraces)},
         {"name",       id.displayName()},
-        // Анонсируемый порт: в Manual-режиме это внешний порт (может отличаться от m_localPort),
-        // в остальных режимах совпадает с m_localPort. Нужен получателю для переподключения.
         {"port",       static_cast<int>(m_advertisedPort ? m_advertisedPort : m_localPort)},
-        // Системная информация и аватар — для диалога профиля
-        // (toJsonForHandshake активирует пасхалку при отсутствии внешнего IP)
         {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
         {"avatarHash", ownAvatarHash},
+        {"version",    QCoreApplication::applicationVersion()},
     };
     socket->write(QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n');
 }
@@ -937,6 +975,7 @@ void NetworkManager::acceptIncoming(const QUuid& peerUuid) {
                 {"name",       id.displayName()},
                 {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
                 {"avatarHash", ownAvatarHash},
+                {"version",    QCoreApplication::applicationVersion()},
             };
             // Отправляем HANDSHAKE_ACK (напрямую или через ретранслятор)
             if (conn.socket) {

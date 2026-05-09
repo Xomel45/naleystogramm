@@ -25,6 +25,7 @@ signals:
     void backRequested();  // нажали ← назад
     void verboseLoggingChanged(bool enabled);
     void avatarChanged(const QString& path);  // пользователь выбрал/сменил аватар
+    void enterSendsChanged(bool on);          // режим отправки по Enter изменён
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -78,6 +79,7 @@ private:
     QComboBox*   m_langCombo           {nullptr};
     QLabel*      m_customRestartHint   {nullptr};  // подсказка "требуется перезапуск"
     QPushButton* m_importThemeBtn      {nullptr};  // кнопка "Импортировать тему..."
+    class QCheckBox* m_enterSendsCheck {nullptr};  // Enter отправляет сообщение
 
     // Конфиденциальность
     QComboBox* m_privacyMessages {nullptr};

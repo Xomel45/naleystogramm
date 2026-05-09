@@ -50,6 +50,10 @@ public:
     // Пустой пиксмап → показать букву вместо изображения.
     void setAvatar(const QPixmap& pixmap);
 
+    // Переключает режим отправки: true = Enter отправляет (Shift+Enter — новая строка),
+    // false = Ctrl+Enter отправляет (Enter — новая строка).
+    void setEnterSends(bool on);
+
 signals:
     void sendMessage(const QString& text);
     void sendFileRequested();
