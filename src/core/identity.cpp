@@ -35,8 +35,7 @@ void Identity::setDisplayName(const QString& name) {
 }
 
 QString Identity::connectionString(const QString& ip, quint16 port) const {
-    return QString("%1@%2@%3:%4")
-        .arg(m_name)
+    return QString("%1@%2:%3")
         .arg(m_uuid.toString(QUuid::WithoutBraces))
         .arg(ip)
         .arg(port);
@@ -44,13 +43,12 @@ QString Identity::connectionString(const QString& ip, quint16 port) const {
 
 std::optional<PeerInfo> Identity::parseConnectionString(const QString& str) {
     const QStringList parts = str.trimmed().split('@');
-    if (parts.size() != 3) return std::nullopt;
+    if (parts.size() != 2) return std::nullopt;
 
-    const QString name    = parts[0].trimmed();
-    const QUuid   uuid    = QUuid(parts[1].trimmed());
-    const QString ipPort  = parts[2].trimmed();
+    const QUuid   uuid   = QUuid(parts[0].trimmed());
+    const QString ipPort = parts[1].trimmed();
 
-    if (name.isEmpty() || uuid.isNull()) return std::nullopt;
+    if (uuid.isNull()) return std::nullopt;
 
     const int colonIdx = ipPort.lastIndexOf(':');
     if (colonIdx < 0) return std::nullopt;
@@ -60,8 +58,9 @@ std::optional<PeerInfo> Identity::parseConnectionString(const QString& str) {
 
     if (ip.isEmpty() || port == 0) return std::nullopt;
 
+    // Name is intentionally empty — filled automatically via HANDSHAKE after connect
     return PeerInfo{
-        .name = name,
+        .name = QString(),
         .uuid = uuid,
         .ip   = ip,
         .port = port,

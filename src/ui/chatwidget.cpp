@@ -327,9 +327,8 @@ void ChatWidget::openConversation(const QString& peerName, bool isOnline) {
     m_loadingMore   = false;
 
     m_peerName->setText(peerName);
-    // Сбрасываем аватар до буквы — реальное изображение загрузит MainWindow если есть
-    m_peerAvatar->setPixmap({});
-    m_peerAvatar->setText(peerName.left(1).toUpper());
+    // Сбрасываем до заглушки — реальное изображение загрузит MainWindow если есть
+    setAvatar({});
     setPeerStatus(isOnline ? tr("online") : tr("offline"));
     m_input->setFocus();
 }
@@ -506,7 +505,9 @@ void ChatWidget::setPeerUuid(const QUuid& uuid) {
 
 void ChatWidget::setAvatar(const QPixmap& pixmap) {
     if (pixmap.isNull()) {
-        // Показываем букву имени
+        const QPixmap fallback(QStringLiteral(":/icons/not-avatar.png"));
+        if (!fallback.isNull()) { setAvatar(fallback); return; }
+        // Ресурс не найден — буква имени как последний вариант
         m_peerAvatar->setPixmap({});
         const QString name = m_peerName->text();
         m_peerAvatar->setText(name.isEmpty() ? "?" : name.left(1).toUpper());

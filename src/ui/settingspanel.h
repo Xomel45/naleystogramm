@@ -24,6 +24,7 @@ signals:
     void networkChanged(const QString& ip, quint16 port);
     void backRequested();  // нажали ← назад
     void verboseLoggingChanged(bool enabled);
+    void avatarChanged(const QString& path);  // пользователь выбрал/сменил аватар
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;

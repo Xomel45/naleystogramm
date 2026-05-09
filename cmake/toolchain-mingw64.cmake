@@ -76,12 +76,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 #   в нужном месте (WIN_STATIC=OFF) или -static (WIN_STATIC=ON).
 set(CMAKE_EXE_LINKER_FLAGS_INIT "-static-libgcc -static-libstdc++")
 
-# ── Оптимизации для Release сборки ────────────────────────────────────────────
-# -O2            : оптимизация скорости
-# -s             : стриппинг debug символов (уменьшает размер .exe)
-# -ffunction-sections -fdata-sections : секции на функцию/данные
-# -Wl,--gc-sections : удаляем неиспользуемые секции (уменьшает размер)
-set(CMAKE_EXE_LINKER_FLAGS_RELEASE_INIT
-    "-O2 -s -Wl,--gc-sections")
-set(CMAKE_CXX_FLAGS_RELEASE_INIT
-    "-O2 -ffunction-sections -fdata-sections")
+# Release-оптимизации управляются централизованно из CMakeLists.txt
+# через target_compile_options / target_link_options с генератор-выражением
+# $<$<CONFIG:Release>:...> — это распространяется на Linux и Windows одновременно.

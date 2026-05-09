@@ -38,7 +38,7 @@ bool KeyProtector::init() {
         f.close();
 
         if (data.size() != 32) {
-            qCritical("[KeyProtector] master.key повреждён (размер %d ≠ 32)", data.size());
+            qCritical("[KeyProtector] master.key повреждён (размер %lld ≠ 32)", static_cast<long long>(data.size()));
             return false;
         }
         m_masterKey = data;
@@ -177,7 +177,7 @@ QByteArray KeyProtector::decrypt(const QByteArray& blob) const {
     if (!isReady()) return {};
     // Минимальный размер: 12 (nonce) + 16 (tag) + 0 (пустое сообщение) = 28
     if (blob.size() < 28) {
-        qWarning("[KeyProtector] decrypt: блоб слишком мал (%d байт)", blob.size());
+        qWarning("[KeyProtector] decrypt: блоб слишком мал (%lld байт)", static_cast<long long>(blob.size()));
         return {};
     }
 

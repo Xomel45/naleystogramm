@@ -12,7 +12,7 @@
 
 static constexpr const char* kAppDirName  = "naleystogramm";
 static constexpr const char* kFileName    = "session.json";
-static constexpr const char* kVersion     = "0.7.0";
+static constexpr const char* kVersion     = "0.7.1";
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 

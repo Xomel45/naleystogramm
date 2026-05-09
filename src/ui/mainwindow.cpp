@@ -41,6 +41,8 @@
 #include <QFileInfo>
 #include <QBuffer>
 #include <QPixmap>
+#include <QPainter>
+#include <QPainterPath>
 #include <QHostAddress>
 #include <QMenu>
 #include <QCloseEvent>
@@ -407,11 +409,10 @@ void MainWindow::setupUi() {
     headerLayout->setContentsMargins(14, 0, 10, 0);
     headerLayout->setSpacing(8);
 
-    auto* myAvatar = new QLabel();
-    myAvatar->setObjectName("peerAvatar");
-    myAvatar->setFixedSize(36, 36);
-    myAvatar->setAlignment(Qt::AlignCenter);
-    myAvatar->setText(Identity::instance().displayName().left(1).toUpper());
+    m_myAvatar = new QLabel();
+    m_myAvatar->setObjectName("peerAvatar");
+    m_myAvatar->setFixedSize(36, 36);
+    m_myAvatar->setAlignment(Qt::AlignCenter);
 
     m_nameLabel = new QLabel(Identity::instance().displayName());
     m_nameLabel->setObjectName("myNameLabel");
@@ -429,7 +430,7 @@ void MainWindow::setupUi() {
     editBtn->setToolTip(tr("Edit name"));
     connect(editBtn, &QPushButton::clicked, this, &MainWindow::onEditName);
 
-    headerLayout->addWidget(myAvatar);
+    headerLayout->addWidget(m_myAvatar);
     headerLayout->addWidget(m_nameLabel, 1);
     headerLayout->addWidget(idBtn);
     headerLayout->addWidget(editBtn);
@@ -477,6 +478,8 @@ void MainWindow::setupUi() {
                 // Рассылаем PROFILE_UPDATE всем подключённым пирам сразу
                 if (m_network) m_network->broadcastProfileUpdate(name);
             });
+    connect(m_settings, &SettingsPanel::avatarChanged,
+            this, [this](const QString&) { loadOwnAvatar(); });
 
     m_leftStack->addWidget(chatsPage);   // index 0
     m_leftStack->addWidget(m_settings);  // index 1
@@ -538,6 +541,7 @@ void MainWindow::setupUi() {
     });
     statusBar()->addPermanentWidget(m_upnpBtn);
 
+    loadOwnAvatar();
     statusBar()->showMessage(tr("Инициализация..."));
 }
 
@@ -555,6 +559,34 @@ void MainWindow::closeSettings() {
         m_chat->openConversation(c.name, m_network->isOnline(m_activePeer));
         m_chat->loadHistory(m_storage->getMessages(m_activePeer, 50));
     }
+}
+
+void MainWindow::loadOwnAvatar() {
+    if (!m_myAvatar) return;
+
+    const QString ownPath = SessionManager::instance().avatarPath();
+    const QString path = (!ownPath.isEmpty() && QFile::exists(ownPath))
+        ? ownPath
+        : QStringLiteral(":/icons/not-avatar.png");
+
+    QPixmap src(path);
+    if (src.isNull()) return;
+
+    const int sz = m_myAvatar->width();
+    const QPixmap scaled = src.scaled(sz, sz,
+        Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
+    QPixmap rounded(sz, sz);
+    rounded.fill(Qt::transparent);
+    QPainter painter(&rounded);
+    painter.setRenderHint(QPainter::Antialiasing);
+    QPainterPath clipPath;
+    clipPath.addEllipse(0, 0, sz, sz);
+    painter.setClipPath(clipPath);
+    painter.drawPixmap(0, 0, scaled);
+
+    m_myAvatar->setText({});
+    m_myAvatar->setPixmap(rounded);
 }
 
 void MainWindow::applyTheme() {
@@ -957,13 +989,14 @@ void MainWindow::onAddContactClicked() {
     const auto peer = Identity::parseConnectionString(connStr);
     if (!peer) {
         QMessageBox::warning(this, tr("Invalid format"),
-            tr("Connection string is invalid.\nFormat: Name@UUID@IP:Port"));
+            tr("Connection string is invalid.\nFormat: UUID@IP:Port"));
         return;
     }
 
     if (m_storage->getContact(peer->uuid).uuid.isNull()) {
         Contact c;
-        c.uuid = peer->uuid; c.name = peer->name;
+        c.uuid = peer->uuid;
+        c.name = peer->uuid.toString(QUuid::WithoutBraces).left(8);
         c.ip = peer->ip;     c.port = peer->port;
         if (!m_storage->addContact(c))
             qWarning("[Main] Failed to save new contact");
@@ -971,7 +1004,7 @@ void MainWindow::onAddContactClicked() {
     }
 
     m_network->connectToPeer(*peer);
-    statusBar()->showMessage(tr("Connecting to %1...").arg(peer->name), 4000);
+    statusBar()->showMessage(tr("Connecting to %1:%2...").arg(peer->ip).arg(peer->port), 4000);
 }
 
 void MainWindow::onContactSelected(QUuid uuid) {

@@ -163,17 +163,14 @@ void ContactsWidget::rebuildList(const QString& filter) {
         if (c.isBlocked)
             item->setForeground(QColor("#e05555"));
 
-        // Загружаем аватар из кэша если он есть
+        // Аватар контакта — своё фото или заглушка
         const bool avatarExists = !c.avatarPath.isEmpty() && QFile::exists(c.avatarPath);
-        qDebug("[Contacts] Аватар для \"%s\": путь=%s  существует=%s",
-               qPrintable(c.name),
-               c.avatarPath.isEmpty() ? "(нет)" : qPrintable(c.avatarPath),
-               avatarExists ? "ДА" : "НЕТ");
-        if (avatarExists) {
-            const QIcon icon = makeRoundAvatar(c.avatarPath);
-            if (!icon.isNull())
-                item->setIcon(icon);
-        }
+        const QString iconPath = avatarExists
+            ? c.avatarPath
+            : QStringLiteral(":/icons/not-avatar.png");
+        const QIcon icon = makeRoundAvatar(iconPath);
+        if (!icon.isNull())
+            item->setIcon(icon);
 
         m_list->addItem(item);
     }

@@ -796,6 +796,7 @@ void SettingsPanel::onAvatarClicked() {
 
     SessionManager::instance().setAvatarPath(savePath);
     applyAvatarPixmap(savePath);
+    emit avatarChanged(savePath);
 }
 
 void SettingsPanel::applyAvatarPixmap(const QString& path) {

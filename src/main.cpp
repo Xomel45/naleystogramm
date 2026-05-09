@@ -11,6 +11,8 @@
 #include <QThread>
 #include <QThreadPool>
 #include <QTextStream>
+#include <QLocalServer>
+#include <QLocalSocket>
 #include "ui/mainwindow.h"
 #include "ui/splashscreen.h"
 #include "core/sessionmanager.h"
@@ -65,7 +67,7 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
 
     app.setApplicationName("naleystogramm");
-    app.setApplicationVersion("0.7.0");
+    app.setApplicationVersion("0.7.1");
     app.setOrganizationName("naleystogramm");
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/app_icon.png")));
 
@@ -82,6 +84,22 @@ int main(int argc, char* argv[]) {
                                "Запустите приложение без --theme-reload.\n";
         return 0;
     }
+
+    // ── Одиночный экземпляр ───────────────────────────────────────────────
+    // Если уже запущен — отправляем сигнал «поднять окно» и выходим.
+    static const QString kSingleInstSocket = QStringLiteral("naleystogramm-single-instance");
+    {
+        QLocalSocket probe;
+        probe.connectToServer(kSingleInstSocket);
+        if (probe.waitForConnected(300)) {
+            probe.write("raise\n");
+            probe.waitForBytesWritten(300);
+            return 0;
+        }
+    }
+    QLocalServer::removeServer(kSingleInstSocket); // убираем возможно зависший сокет
+    QLocalServer singleInstServer;
+    singleInstServer.listen(kSingleInstSocket);
 
     // ── Шрифт приложения ──────────────────────────────────────────────────
     QFont font;
@@ -154,6 +172,16 @@ int main(int argc, char* argv[]) {
     splash->updateStatus(95, QObject::tr("Загрузка интерфейса..."));
     splashDelay(60);
     MainWindow w;
+
+    // Когда другой процесс стучится в сокет — разворачиваем окно
+    QObject::connect(&singleInstServer, &QLocalServer::newConnection, &singleInstServer,
+        [&singleInstServer, &w]() {
+            while (singleInstServer.hasPendingConnections())
+                singleInstServer.nextPendingConnection()->deleteLater();
+            w.showNormal();
+            w.raise();
+            w.activateWindow();
+        });
 
     // Финальный шаг — всё готово
     splash->updateStatus(100, QObject::tr("Готово!"));

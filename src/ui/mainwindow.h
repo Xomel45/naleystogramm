@@ -93,6 +93,7 @@ private:
     void setupUi();
     void applyTheme();
     void updateStatusBar(const QString& ip, quint16 port, bool upnp);
+    void loadOwnAvatar();   // загружает/обновляет аватар в шапке левой панели
 
     // Проверяет уровень конфиденциальности — true если действие разрешено
     [[nodiscard]] bool checkPrivacy(PrivacyLevel level, const QUuid& from) const;
@@ -105,6 +106,7 @@ private:
     SettingsPanel*   m_settings     {nullptr};
     UpdateBanner*    m_updateBanner {nullptr};
     QLabel*          m_nameLabel    {nullptr};
+    QLabel*          m_myAvatar     {nullptr};
 
     NetworkManager*       m_network      {nullptr};
     StorageManager*       m_storage      {nullptr};

@@ -26,7 +26,7 @@ AddContactDialog::AddContactDialog(QWidget* parent) : QDialog(parent) {
 
     m_input = new QTextEdit();
     m_input->setObjectName("dlgInput");
-    m_input->setPlaceholderText(tr("Name@UUID@IP:Port"));
+    m_input->setPlaceholderText(tr("UUID@IP:Port"));
     m_input->setFixedHeight(72);
 
     m_error = new QLabel();

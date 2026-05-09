@@ -4,7 +4,7 @@
 
 **Зашифрованный P2P-мессенджер без серверов и слежки**
 
-[![Version](https://img.shields.io/badge/version-0.7.0-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
+[![Version](https://img.shields.io/badge/version-0.7.1-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4a4a7a?style=flat-square)](#установка)
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52?style=flat-square)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
@@ -88,8 +88,8 @@ Naleystogramm — десктопный мессенджер с прямым за
 Скачай AppImage из [Releases](https://github.com/Xomel45/naleystogramm/releases), дай права на запуск и запусти:
 
 ```bash
-chmod +x Naleystogramm-0.7.0-x86_64.AppImage
-./Naleystogramm-0.7.0-x86_64.AppImage
+chmod +x Naleystogramm-0.7.1-x86_64.AppImage
+./Naleystogramm-0.7.1-x86_64.AppImage
 ```
 
 ### Windows
@@ -139,7 +139,7 @@ cmake --build build-win -j$(nproc)
 
 ```bash
 ./deploy.sh release --build --clean
-# Артефакты: builds/releases/0.7.0-linux/ и builds/releases/0.7.0-windows/
+# Артефакты: builds/releases/0.7.1-linux/ и builds/releases/0.7.1-windows/
 ```
 
 ---
@@ -176,6 +176,6 @@ deploy.sh         — скрипт сборки релизов
 
 <div align="center">
 
-*v0.7.0 «Шлёпанец»*
+*v0.7.1 «Клутой ШлЕпка»*
 
 </div>

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.7.0 LANGUAGES CXX)
+project(naleystogramm VERSION 0.7.1 LANGUAGES CXX)
 
 # RC (Windows Resource Compiler) нужен только при сборке под Windows.
 # На Linux windres не установлен, поэтому включаем язык только там.
@@ -447,6 +447,40 @@ if(MSVC)
     target_compile_options(naleystogramm PRIVATE /W4)
 else()
     target_compile_options(naleystogramm PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+# ── Оптимизация Release ───────────────────────────────────────────────────────
+# Применяется только при -DCMAKE_BUILD_TYPE=Release. Debug не затрагивается.
+# Работает для GCC (Linux и MinGW-w64); MSVC управляется своими флагами.
+#
+# Компилятор:
+#   -O2                : оптимизация скорости без раздувания кода (-O3)
+#   -ffunction-sections: каждая функция в отдельной ELF-секции → ld может
+#   -fdata-sections    : аналогично для глобальных данных        ↓ выкинуть
+#   -fvisibility=hidden: незаэкспортированные символы скрыты → меньше PLT/GOT
+#   -flto=auto         : Link-Time Optimisation, параллельно по числу ядер
+#
+# Линкер:
+#   -Wl,--gc-sections  : удаляем секции без ссылок (требует -f*-sections выше)
+#   -Wl,-s             : стриппинг debug-символов из финального бинарника
+#   -flto=auto         : LTO-фаза линкера (должна совпадать с compile-флагом)
+if(NOT MSVC)
+    target_compile_options(naleystogramm PRIVATE
+        $<$<CONFIG:Release>:
+            -O2
+            -ffunction-sections
+            -fdata-sections
+            -fvisibility=hidden
+            -flto=auto
+        >
+    )
+    target_link_options(naleystogramm PRIVATE
+        $<$<CONFIG:Release>:
+            -Wl,--gc-sections
+            -Wl,-s
+            -flto=auto
+        >
+    )
 endif()
 
 # ── Build info ────────────────────────────────────────────────────────────────

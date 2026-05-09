@@ -28,7 +28,7 @@ public:
     QString     displayName() const { return m_name; }
     void        setDisplayName(const QString& name);
 
-    // "Name@UUID@IP:Port" — share this with contacts
+    // "UUID@IP:Port" — share this with contacts (name is fetched automatically via HANDSHAKE)
     QString     connectionString(const QString& externalIp, quint16 port) const;
 
     // Parse a connection string received from a contact
