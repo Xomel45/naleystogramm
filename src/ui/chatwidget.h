@@ -4,7 +4,7 @@
 #include <QUuid>
 #include <QPixmap>
 #include <QMap>
-#include "../core/storage.h"
+#include "../core/types.h"
 
 class QTextEdit;
 class QLineEdit;

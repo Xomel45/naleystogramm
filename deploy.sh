@@ -800,16 +800,29 @@ case "$MODE" in
                 deploy_release_rpm
                 ;;
             linux-all)
+                # Чистим общую linux-папку один раз, чтобы каждый формат
+                # не стирал артефакты предыдущего.
+                if $DO_CLEAN; then
+                    ensure_builds_tree
+                    safe_clean "${BUILDS_DIR}/releases/${VERSION}-linux"
+                    DO_CLEAN=false
+                fi
                 deploy_release_linux
                 deploy_release_pkg
                 deploy_release_deb
                 deploy_release_rpm
                 ;;
             all)
+                if $DO_CLEAN; then
+                    ensure_builds_tree
+                    safe_clean "${BUILDS_DIR}/releases/${VERSION}-linux"
+                    DO_CLEAN=false
+                fi
                 deploy_release_linux
                 deploy_release_pkg
                 deploy_release_deb
                 deploy_release_rpm
+                DO_CLEAN=false   # windows-папка уже чистая (новая версия)
                 deploy_release_windows
                 ;;
             both|--build|--clean|*)

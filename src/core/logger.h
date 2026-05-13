@@ -1,35 +1,8 @@
 #pragma once
 #include <QObject>
-#include <QString>
 #include <QFile>
 #include <QMutex>
-#include <QDateTime>
-
-// Уровни логирования
-enum class LogLevel {
-    Debug,    // Отладочная информация
-    Info,     // Информационные сообщения
-    Warning,  // Предупреждения
-    Error     // Ошибки
-};
-
-// Компоненты приложения для фильтрации логов
-enum class LogComponent {
-    Network,      // Сетевой слой
-    FileTransfer, // Передача файлов
-    Crypto,       // Шифрование
-    Storage,      // Хранение данных
-    UI,           // Интерфейс
-    General       // Общее
-};
-
-// Структура одной записи лога
-struct LogEntry {
-    QDateTime   timestamp;
-    LogLevel    level;
-    LogComponent component;
-    QString     message;
-};
+#include "types.h"
 
 // ── Logger ──────────────────────────────────────────────────────────────────
 // Централизованная система логирования с записью в файл и сигналами для UI.

@@ -1,6 +1,6 @@
 #pragma once
 #include <QWidget>
-#include "../core/logger.h"
+#include "../core/types.h"
 
 class QPlainTextEdit;
 class QPushButton;

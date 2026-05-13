@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QString>
+#include "types.h"
 
 // ── UpdateChecker ──────────────────────────────────────────────────────────
 // Проверяет новую версию через GitHub Releases API.
@@ -9,12 +10,7 @@
 //   uc->checkInBackground();  // тихая проверка при старте
 //   uc->checkNow();           // явная проверка из UI
 
-struct UpdateInfo {
-    QString version;    // "1.2.3"
-    QString url;        // страница релиза на GitHub
-    QString notes;      // release notes (первые ~300 символов)
-    bool    available{false};
-};
+// UpdateInfo перенесён в types.h
 
 class UpdateChecker : public QObject {
     Q_OBJECT

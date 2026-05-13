@@ -8,22 +8,10 @@
 #include <QTimer>
 #include <QFutureWatcher>
 #include "network.h"
+#include "types.h"
 
 // Forward declaration чтобы не тянуть весь e2e.h
 class E2EManager;
-
-// ── Структура прогресса передачи ─────────────────────────────────────────────
-// Используется для обновления UI в реальном времени
-struct TransferProgress {
-    QString  id;                   // ID передачи
-    QString  fileName;             // Имя файла
-    qint64   bytesTransferred;     // Переданные байты
-    qint64   totalBytes;           // Общий размер файла
-    double   speedBytesPerSec;     // Текущая скорость (байт/сек)
-    int      etaSeconds;           // Примерное время до завершения
-    int      percent;              // Процент выполнения (0-100)
-    bool     outgoing;             // true = отправка, false = получение
-};
 
 // ── Состояние передачи ───────────────────────────────────────────────────────
 enum class TransferState {

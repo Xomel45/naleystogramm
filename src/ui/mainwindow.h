@@ -8,19 +8,18 @@
 #include <QHash>
 #include <QSet>
 #include <QSystemTrayIcon>
-#include "../core/network.h"
-#include "../core/sessionmanager.h"
-#include "../core/storage.h"
-#include "../core/filetransfer.h"
-#include "../core/callmanager.h"
-#include "../core/remoteshellmanager.h"
-#include "../crypto/e2e.h"
-#include "thememanager.h"
-#include "../core/updatechecker.h"
-#include "callwindow.h"
+#include "../core/sessionmanager.h"  // нужен PrivacyLevel в сигнатуре checkPrivacy
 
 namespace Ui { class MainWindow; }
 
+class App;
+class NetworkManager;
+class StorageManager;
+class E2EManager;
+class FileTransfer;
+class CallManager;
+class RemoteShellManager;
+class CallWindow;
 class ContactsWidget;
 class ChatWidget;
 class SettingsPanel;
@@ -32,7 +31,7 @@ class ShellMonitor;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(QWidget* parent = nullptr);
+    explicit MainWindow(App& app, QWidget* parent = nullptr);
     ~MainWindow();
 
 private slots:
@@ -114,9 +113,9 @@ private:
     QLabel*          m_nameLabel    {nullptr};
     QLabel*          m_myAvatar     {nullptr};
 
-    NetworkManager*       m_network      {nullptr};
     StorageManager*       m_storage      {nullptr};
     E2EManager*           m_e2e          {nullptr};
+    NetworkManager*       m_network      {nullptr};
     FileTransfer*         m_fileTransfer {nullptr};
     CallManager*          m_callManager  {nullptr};
     CallWindow*           m_callWindow   {nullptr};  // nullptr когда нет активного звонка

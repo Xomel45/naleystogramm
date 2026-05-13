@@ -15,6 +15,7 @@
 #include <QLocalSocket>
 #include "ui/mainwindow.h"
 #include "ui/splashscreen.h"
+#include "core/app.h"
 #include "core/sessionmanager.h"
 #include "core/systeminfo.h"
 #include "core/logger.h"
@@ -164,14 +165,15 @@ int main(int argc, char* argv[]) {
         qDebug("[ThreadPool] Воркеров: %d (ядер CPU: %d)", workerThreads, cpuCores);
     }
 
-    // ── Шаг 6: Инициализация базы данных и сети (через MainWindow) ────────
+    // ── Шаг 6: Инициализация core-слоя (Identity, KeyProtector, Storage, E2E, Network) ──
     splash->updateStatus(85, QObject::tr("Запуск сетевого модуля..."));
     splashDelay(80);
+    App core;
 
     // ── Шаг 7: Создание главного окна ─────────────────────────────────────
     splash->updateStatus(95, QObject::tr("Загрузка интерфейса..."));
     splashDelay(60);
-    MainWindow w;
+    MainWindow w(core);
 
     // Когда другой процесс стучится в сокет — разворачиваем окно
     QObject::connect(&singleInstServer, &QLocalServer::newConnection, &singleInstServer,

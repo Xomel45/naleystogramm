@@ -1,4 +1,5 @@
 #include "logpanel.h"
+#include "../core/logger.h"
 #include "thememanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>

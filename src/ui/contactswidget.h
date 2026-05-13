@@ -2,7 +2,7 @@
 #include <QWidget>
 #include <QUuid>
 #include <QList>
-#include "../core/storage.h"
+#include "../core/types.h"
 
 class QListWidget;
 class QListWidgetItem;

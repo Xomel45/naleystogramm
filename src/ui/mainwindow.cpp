@@ -1,6 +1,13 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include "../crypto/keyprotector.h"
+#include "../core/app.h"
+#include "../core/network.h"
+#include "../core/storage.h"
+#include "../core/filetransfer.h"
+#include "../core/callmanager.h"
+#include "../core/remoteshellmanager.h"
+#include "../crypto/e2e.h"
+#include "callwindow.h"
 #ifdef Q_OS_WIN
 #include "../platform/windowsfirewall.h"
 #endif
@@ -49,9 +56,15 @@
 #include <QIcon>
 #include <QSize>
 
-MainWindow::MainWindow(QWidget* parent)
+MainWindow::MainWindow(App& app, QWidget* parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
+    , m_storage(&app.storage())
+    , m_e2e(&app.e2e())
+    , m_network(&app.network())
+    , m_fileTransfer(&app.fileTransfer())
+    , m_callManager(&app.callManager())
+    , m_shellManager(&app.shellManager())
 {
     ui->setupUi(this);
     setWindowTitle("Naleystogramm");
@@ -60,28 +73,6 @@ MainWindow::MainWindow(QWidget* parent)
 
     applyTheme();
     setupUi();
-
-    auto& id = Identity::instance();
-    id.load();
-
-    // Примечание: SystemInfo::collect() вызывается в main.cpp до создания этого окна
-
-    // Инициализируем мастер-ключ ПЕРВЫМ — до Storage и E2E.
-    // Оба используют его для шифрования данных at-rest.
-    if (!KeyProtector::instance().init()) {
-        qCritical("[Main] KeyProtector не инициализирован — данные будут незащищены");
-    }
-
-    m_storage = new StorageManager(this);
-    m_storage->open();
-
-    m_e2e = new E2EManager(this);
-    m_e2e->init(id.uuid());
-
-    m_network      = new NetworkManager(this);
-    m_fileTransfer = new FileTransfer(m_network, m_e2e, this);
-    m_callManager  = new CallManager(m_network, m_e2e, this);
-    m_shellManager = new RemoteShellManager(m_network, m_e2e, this);
 
     // ── Голосовые звонки ─────────────────────────────────────────────────────
     connect(m_chat, &ChatWidget::callRequested,

@@ -126,6 +126,9 @@ set(SOURCES
     src/core/sessionmanager.cpp
     src/core/logger.h
     src/core/logger.cpp
+    src/core/types.h
+    src/core/app.h
+    src/core/app.cpp
     src/ui/updatebanner.h
     src/ui/updatebanner.cpp
     src/ui/settingspanel.h

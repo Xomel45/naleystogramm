@@ -1,6 +1,6 @@
 #pragma once
 #include <QWidget>
-#include "../core/updatechecker.h"
+#include "../core/types.h"
 
 class QLabel;
 class QPushButton;

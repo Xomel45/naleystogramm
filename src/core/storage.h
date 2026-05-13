@@ -1,44 +1,9 @@
 #pragma once
 #include <QObject>
 #include <QSqlDatabase>
-#include <QUuid>
-#include <QDateTime>
 #include <QList>
 #include <QJsonObject>
-
-struct Contact {
-    QUuid      uuid;
-    QString    name;
-    QString    ip;
-    quint16    port{0};
-    QByteArray identityKey;   // открытый ключ пира для E2E
-    QString    avatarHash {};  // SHA-256 hex кэшированного аватара (пусто = нет)
-    QString    avatarPath {};  // абсолютный путь к файлу аватара в кэше
-    bool       isBlocked {false}; // контакт заблокирован — все сообщения игнорируются
-    bool       isMuted   {false}; // уведомления от контакта отключены
-    QDateTime  lastSeen  {};     // когда контакт последний раз был онлайн
-    QString    systemInfoJson {}; // JSON-снимок системной информации пира (CPU/RAM/OS)
-    // Версия приложения, создавшего/обновившего запись. Позволяет обнаружить
-    // несовместимость при запуске более старой версии на той же базе данных.
-    // Для устаревших записей (до v0.5.1) устанавливается "0.1.0" по умолчанию.
-    QString    versionCreated {"0.1.0"};
-};
-
-struct Message {
-    qint64   id{0};
-    QUuid    peerUuid;
-    bool     outgoing{false};
-    QString  text;
-    QString  fileName;
-    qint64   fileSize{0};
-    QByteArray ciphertext;
-    QDateTime  timestamp;
-    bool     delivered{false};
-    bool     isVoice{false};        // true = голосовое сообщение
-    int      voiceDurationMs{0};    // длительность голосового в миллисекундах
-    // Версия приложения, сохранившего сообщение. Для устаревших записей — "0.1.0".
-    QString  versionCreated {"0.1.0"};
-};
+#include "types.h"
 
 class StorageManager : public QObject {
     Q_OBJECT
