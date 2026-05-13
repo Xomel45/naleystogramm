@@ -34,6 +34,7 @@ ThemeManager::ThemeManager() {
     else if   (saved == "cyberpunk") m_theme = Theme::Cyberpunk;
     else if   (saved == "nordic")    m_theme = Theme::Nordic;
     else if   (saved == "sunset")    m_theme = Theme::Sunset;
+    else if   (saved == "legacy")    m_theme = Theme::Legacy;
     else                             m_theme = Theme::Dark;
     applyPalette();
 }
@@ -51,6 +52,7 @@ void ThemeManager::setTheme(Theme t) {
         case Theme::Cyberpunk: name = "cyberpunk";                         break;
         case Theme::Nordic:    name = "nordic";                            break;
         case Theme::Sunset:    name = "sunset";                            break;
+        case Theme::Legacy:    name = "legacy";                            break;
         case Theme::Custom:    name = "custom:" + m_customFolderName;      break;
     }
     SessionManager::instance().setTheme(name);
@@ -70,6 +72,7 @@ QString ThemeManager::currentThemeName() const {
         case Cyberpunk: return "Киберпанк";
         case Nordic:    return "Нордик";
         case Sunset:    return "Закат";
+        case Legacy:    return "Легаси";
         case Custom:    return m_customDisplayName.isEmpty() ? "Пользовательская" : m_customDisplayName;
     }
     return {};
@@ -85,6 +88,7 @@ void ThemeManager::applyPalette() {
         case Cyberpunk: m_palette = cyberpunkPalette(); break;
         case Nordic:    m_palette = nordicPalette();    break;
         case Sunset:    m_palette = sunsetPalette();    break;
+        case Legacy:    m_palette = legacyPalette();    break;
         case Custom:    break; // палитра уже загружена через loadCustomTheme()
     }
 }
@@ -402,6 +406,42 @@ ThemePalette ThemeManager::sunsetPalette() {
     p.bannerBorder   = "#ff6b9d";
     p.bannerText     = "#fce4f0";
     p.bannerBtnHover = "#ff8fb3";
+    return p;
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// ЛЕГАСИ — тёмная палитра эпохи 0.1.0–0.5.0, хардкод из старого сплеша
+// ═════════════════════════════════════════════════════════════════════════
+
+ThemePalette ThemeManager::legacyPalette() {
+    ThemePalette p;
+    p.bg           = "#0e0e1a";
+    p.bgSurface    = "#131322";
+    p.bgElevated   = "#1e1e36";
+    p.bgInput      = "#18182e";
+    p.bgBubbleOut  = "#2a1f5e";
+    p.bgBubbleIn   = "#161628";
+
+    p.border       = "#2a2a4a";
+    p.borderFocus  = "#7c6aff";
+
+    p.textPrimary   = "#e0deff";
+    p.textSecondary = "#a0a0c0";
+    p.textMuted     = "#4a4a7a";
+    p.textOnAccent  = "#ffffff";
+
+    p.accent        = "#7c6aff";
+    p.accentHover   = "#9a8aff";
+    p.accentPressed = "#6050cc";
+
+    p.online  = "#00cba9";
+    p.offline = "#3a3a5c";
+    p.danger  = "#ff4d6d";
+    p.success = "#00cba9";
+    p.bannerBg       = "#1a1830";
+    p.bannerBorder   = "#7c6aff";
+    p.bannerText     = "#e0deff";
+    p.bannerBtnHover = "#9a8aff";
     return p;
 }
 

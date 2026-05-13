@@ -1,4 +1,5 @@
 #include "splashscreen.h"
+#include "thememanager.h"
 #include "../core/systeminfo.h"
 #include <QVBoxLayout>
 #include <QLabel>
@@ -19,46 +20,77 @@ SplashScreen::SplashScreen(QWidget* parent)
     setFixedSize(480, 300);
     setObjectName("splashScreen");
 
-    // Тёмный стиль — не зависит от темы приложения, всегда тёмный
-    setStyleSheet(R"(
+    // Legacy-тема: оригинальный хардкод эпохи 0.1.0–0.5.0.
+    // Все остальные темы — берём цвета из активной палитры ThemeManager.
+    const bool isLegacy = ThemeManager::instance().currentTheme() == Theme::Legacy;
+
+    QString bgColor, borderColor, logoColor, mutedColor, statusColor, pbBgColor, pbChunkColor;
+    if (isLegacy) {
+        bgColor      = "#0e0e1a";
+        borderColor  = "#2a2a4a";
+        logoColor    = "#7c6aff";
+        mutedColor   = "#4a4a7a";
+        statusColor  = "#a0a0c0";
+        pbBgColor    = "#1e1e36";
+        pbChunkColor = "#7c6aff";
+    } else {
+        const ThemePalette& p = ThemeManager::instance().palette();
+        bgColor      = p.bg;
+        borderColor  = p.border;
+        logoColor    = p.accent;
+        mutedColor   = p.textMuted;
+        statusColor  = p.textSecondary;
+        pbBgColor    = p.bgElevated;
+        pbChunkColor = p.accent;
+    }
+
+    setStyleSheet(QString(R"(
         QDialog#splashScreen {
-            background-color: #0e0e1a;
-            border: 1px solid #2a2a4a;
+            background-color: %1;
+            border: 1px solid %2;
             border-radius: 14px;
         }
         QLabel {
             background: transparent;
         }
         QLabel#splashLogo {
-            color: #7c6aff;
+            color: %3;
             font-size: 34px;
             font-weight: bold;
             letter-spacing: 2px;
         }
         QLabel#splashVersion {
-            color: #4a4a7a;
+            color: %4;
             font-size: 12px;
             letter-spacing: 1px;
         }
         QLabel#splashStatus {
-            color: #a0a0c0;
+            color: %5;
             font-size: 12px;
         }
         QLabel#splashPhrase {
-            color: #4a4a7a;
+            color: %4;
             font-size: 11px;
             font-style: italic;
         }
         QProgressBar {
-            background-color: #1e1e36;
+            background-color: %6;
             border: none;
             border-radius: 3px;
         }
         QProgressBar::chunk {
-            background-color: #7c6aff;
+            background-color: %7;
             border-radius: 3px;
         }
-    )");
+    )")
+    .arg(bgColor)       // %1
+    .arg(borderColor)   // %2
+    .arg(logoColor)     // %3
+    .arg(mutedColor)    // %4
+    .arg(statusColor)   // %5
+    .arg(pbBgColor)     // %6
+    .arg(pbChunkColor)  // %7
+    );
 
     auto* root = new QVBoxLayout(this);
     root->setContentsMargins(48, 40, 48, 32);

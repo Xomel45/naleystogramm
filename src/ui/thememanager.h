@@ -14,6 +14,7 @@ enum class Theme {
     Cyberpunk, // Киберпанк — неоновый фиолетовый, тёмный фон
     Nordic,    // Нордик — холодный синий/серый, скандинавский минимализм
     Sunset,    // Закат — тёплый розово-оранжевый, уютная атмосфера
+    Legacy,    // Легаси — тёмная палитра эпохи 0.1.0–0.5.0
     Custom     // Пользовательская тема из ~/.cache/.../themes/<folder>/
 };
 
@@ -104,6 +105,7 @@ private:
     static ThemePalette cyberpunkPalette();
     static ThemePalette nordicPalette();
     static ThemePalette sunsetPalette();
+    static ThemePalette legacyPalette();
 
     Theme        m_theme{Theme::Dark};
     ThemePalette m_palette;

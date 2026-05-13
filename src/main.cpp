@@ -109,19 +109,21 @@ int main(int argc, char* argv[]) {
     font.setStyleHint(QFont::SansSerif);
     app.setFont(font);
 
+    // ── Предзагрузка сессии ───────────────────────────────────────────────
+    // Читаем session.json до показа сплеша — SplashScreen читает тему из
+    // ThemeManager, который инициализируется от SessionManager::theme().
+    SessionManager::instance().load();
+
     // ── Экран загрузки ────────────────────────────────────────────────────
     // Создаём и показываем сразу — до любой тяжёлой работы
     auto* splash = new SplashScreen();
     splash->show();
     QApplication::processEvents();
 
-    // ── Шаг 1: Загрузка пользовательской сессии ──────────────────────────
-    splash->updateStatus(10, QObject::tr("Загрузка настроек..."));
+    // ── Шаг 1: Подготовка рабочих директорий ─────────────────────────────
+    // Logger, Storage и KeyProtector ожидают что папки уже есть.
+    splash->updateStatus(10, QObject::tr("Подготовка директорий..."));
     splashDelay(80);
-    SessionManager::instance().load();
-
-    // Создаём все рабочие директории сразу после загрузки сессии.
-    // Это критично: Logger, Storage и KeyProtector ожидают что папки уже есть.
     SessionManager::ensureDirectories();
 
     // ── Шаг 2: Инициализация логгера ─────────────────────────────────────
