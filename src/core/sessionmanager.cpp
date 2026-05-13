@@ -1,6 +1,6 @@
 #include "sessionmanager.h"
-#include "../ui/thememanager.h"  // для Theme enum если нужен
 #include <QStandardPaths>
+#include <QTimer>
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -12,7 +12,6 @@
 
 static constexpr const char* kAppDirName  = "naleystogramm";
 static constexpr const char* kFileName    = "session.json";
-static constexpr const char* kVersion     = "0.7.2";
 
 // ── Singleton ─────────────────────────────────────────────────────────────
 
@@ -133,7 +132,7 @@ QJsonObject SessionManager::toJson() const {
     updates["lastChecked"] = m_lastUpdateCheck;
 
     QJsonObject meta;
-    meta["version"] = kVersion;
+    meta["version"] = APP_VERSION;
     meta["savedAt"] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
     QJsonObject security;
@@ -193,7 +192,7 @@ void SessionManager::fromJson(const QJsonObject& obj) {
 
     // Security
     const auto sec = obj["security"].toObject();
-    m_remoteShellEnabled = sec["remoteShell"].toBool(true);
+    m_remoteShellEnabled = sec["remoteShell"].toBool(false);
 
     // Privacy
     const auto prv = obj["privacy"].toObject();
@@ -217,57 +216,54 @@ void SessionManager::generateIdentityIfNeeded() {
         m_displayName = "User";
 }
 
-// ── Setters (автосохранение) ──────────────────────────────────────────────
+// ── Отложенное сохранение ─────────────────────────────────────────────────
+// Сбрасывает таймер при каждом вызове; реальный save() происходит один раз
+// через 500 мс после последнего изменения настроек.
 
-void SessionManager::setUuid(const QUuid& uuid)         { m_uuid = uuid;         save(); }
-void SessionManager::setDisplayName(const QString& name) { m_displayName = name; save(); }
-void SessionManager::setPort(quint16 port)               { m_port = port;         save(); }
-void SessionManager::setBindIp(const QString& ip)        { m_bindIp = ip;         save(); }
-void SessionManager::setTheme(const QString& theme)      { m_theme = theme;       save(); }
-void SessionManager::setLanguage(const QString& lang)    { m_language = lang;     save(); }
-void SessionManager::setDemoMode(bool on)                { m_demoMode = on;       save(); }
-void SessionManager::setLeftPanelWidth(int w)            { m_leftPanelWidth = w;  save(); }
-void SessionManager::setEnterSends(bool on)              { m_enterSends = on;     save(); }
-void SessionManager::setLastUpdateCheck(const QString& iso) {
-    m_lastUpdateCheck = iso;
-    save();
+void SessionManager::scheduleSave() {
+    if (!m_saveTimer) {
+        m_saveTimer = new QTimer(this);
+        m_saveTimer->setSingleShot(true);
+        m_saveTimer->setInterval(500);
+        connect(m_saveTimer, &QTimer::timeout, this, &SessionManager::save);
+    }
+    m_saveTimer->start();
 }
+
+// ── Setters ───────────────────────────────────────────────────────────────
+
+void SessionManager::setUuid(const QUuid& uuid)          { m_uuid = uuid;              scheduleSave(); }
+void SessionManager::setDisplayName(const QString& name)  { m_displayName = name;       scheduleSave(); }
+void SessionManager::setPort(quint16 port)                { m_port = port;              scheduleSave(); }
+void SessionManager::setBindIp(const QString& ip)         { m_bindIp = ip;              scheduleSave(); }
+void SessionManager::setTheme(const QString& theme)       { m_theme = theme;            scheduleSave(); }
+void SessionManager::setLanguage(const QString& lang)     { m_language = lang;          scheduleSave(); }
+void SessionManager::setDemoMode(bool on)                 { m_demoMode = on;            scheduleSave(); }
+void SessionManager::setLeftPanelWidth(int w)             { m_leftPanelWidth = w;       scheduleSave(); }
+void SessionManager::setEnterSends(bool on)               { m_enterSends = on;          scheduleSave(); }
+void SessionManager::setLastUpdateCheck(const QString& iso){ m_lastUpdateCheck = iso;   scheduleSave(); }
 
 void SessionManager::setPortForwardingMode(PortForwardingMode mode) {
     m_portForwardingMode = mode;
-    save();
+    scheduleSave();
 }
 
-void SessionManager::setManualPublicIp(const QString& ip) {
-    m_manualPublicIp = ip;
-    save();
-}
+void SessionManager::setManualPublicIp(const QString& ip)  { m_manualPublicIp = ip;     scheduleSave(); }
+void SessionManager::setManualPublicPort(quint16 port)     { m_manualPublicPort = port;  scheduleSave(); }
+void SessionManager::setRelayServerIp(const QString& ip)   { m_relayServerIp = ip;      scheduleSave(); }
+void SessionManager::setRelayTcpPort(quint16 port)         { m_relayTcpPort = port;      scheduleSave(); }
+void SessionManager::setRelayUdpPort(quint16 port)         { m_relayUdpPort = port;      scheduleSave(); }
 
-void SessionManager::setManualPublicPort(quint16 port) {
-    m_manualPublicPort = port;
-    save();
-}
+void SessionManager::setRemoteShellEnabled(bool on)        { m_remoteShellEnabled = on;  scheduleSave(); }
 
-void SessionManager::setRelayServerIp(const QString& ip) { m_relayServerIp = ip;   save(); }
-void SessionManager::setRelayTcpPort(quint16 port)        { m_relayTcpPort = port;  save(); }
-void SessionManager::setRelayUdpPort(quint16 port)        { m_relayUdpPort = port;  save(); }
+void SessionManager::setPrivacyMessages(PrivacyLevel v) { m_privacyMessages = v; scheduleSave(); }
+void SessionManager::setPrivacyFiles   (PrivacyLevel v) { m_privacyFiles    = v; scheduleSave(); }
+void SessionManager::setPrivacyCalls   (PrivacyLevel v) { m_privacyCalls    = v; scheduleSave(); }
+void SessionManager::setPrivacyVoice   (PrivacyLevel v) { m_privacyVoice    = v; scheduleSave(); }
+void SessionManager::setPrivacyAvatar  (PrivacyLevel v) { m_privacyAvatar   = v; scheduleSave(); }
+void SessionManager::setPrivacyShell   (PrivacyLevel v) { m_privacyShell    = v; scheduleSave(); }
 
-void SessionManager::setRemoteShellEnabled(bool on) {
-    m_remoteShellEnabled = on;
-    save();
-}
-
-void SessionManager::setPrivacyMessages(PrivacyLevel v) { m_privacyMessages = v; save(); }
-void SessionManager::setPrivacyFiles   (PrivacyLevel v) { m_privacyFiles    = v; save(); }
-void SessionManager::setPrivacyCalls   (PrivacyLevel v) { m_privacyCalls    = v; save(); }
-void SessionManager::setPrivacyVoice   (PrivacyLevel v) { m_privacyVoice    = v; save(); }
-void SessionManager::setPrivacyAvatar  (PrivacyLevel v) { m_privacyAvatar   = v; save(); }
-void SessionManager::setPrivacyShell   (PrivacyLevel v) { m_privacyShell    = v; save(); }
-
-void SessionManager::setAvatarPath(const QString& path) {
-    m_avatarPath = path;
-    save();
-}
+void SessionManager::setAvatarPath(const QString& path)    { m_avatarPath = path;        scheduleSave(); }
 
 QByteArray SessionManager::computeAvatarHash(const QString& filePath) {
     QFile f(filePath);

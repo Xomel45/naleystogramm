@@ -217,5 +217,5 @@ private:
     // Легитимные сообщения (JSON) никогда не достигают этого размера.
     static constexpr int     kMaxBufferSize        = 16 * 1024 * 1024; // 16 МБ
     static constexpr quint32 kMaxFramesPerSecond   = 200;              // Макс. фреймов в секунду от пира
-    static constexpr const char* kMinPeerVersion   = "0.7.2";         // Минимальная версия пира для соединения
+    static constexpr const char* kMinPeerVersion   = "0.7.3";         // Минимальная версия пира для соединения
 };

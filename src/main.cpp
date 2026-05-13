@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
 
     app.setApplicationName("naleystogramm");
-    app.setApplicationVersion("0.7.2");
+    app.setApplicationVersion("0.7.3");
     app.setOrganizationName("naleystogramm");
     app.setWindowIcon(QIcon(QStringLiteral(":/icons/app_icon.png")));
 

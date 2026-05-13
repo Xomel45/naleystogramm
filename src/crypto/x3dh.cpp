@@ -86,7 +86,11 @@ QByteArray X3DH::kdf(const QByteArray& ikm, const QByteArray& info) {
     }
 
     size_t outSize = static_cast<size_t>(outLen);
-    EVP_PKEY_derive(ctx.get(), reinterpret_cast<unsigned char*>(out.data()), &outSize);
+    if (EVP_PKEY_derive(ctx.get(),
+            reinterpret_cast<unsigned char*>(out.data()), &outSize) <= 0) {
+        qCritical("[X3DH] kdf: EVP_PKEY_derive провалился");
+        return {};
+    }
     return out;
 }
 
@@ -176,17 +180,14 @@ bool X3DH::generateBundle(
         static_cast<size_t>(outIKPriv.size())));
 
     if (!edKey) {
-        // Ed25519 требует 32-байтный ключ — IK подходит
-        // Если не поддерживается — fallback HMAC-SHA256
-        outSPKSig = QByteArray(32, '\0');
-        return true;
+        qCritical("[X3DH] generateBundle: не удалось создать Ed25519 ключ для подписи SPK");
+        return false;
     }
 
     EvpMdCtxPtr mdCtx(EVP_MD_CTX_new());
     if (!mdCtx) {
-        // Сбой аллокации — fallback нулевая подпись
-        outSPKSig = QByteArray(32, '\0');
-        return true;
+        qCritical("[X3DH] generateBundle: EVP_MD_CTX_new провалился");
+        return false;
     }
 
     outSPKSig.resize(64);
@@ -237,20 +238,23 @@ std::optional<QByteArray> X3DH::initiatorAgreement(
     outEphemeralPub = ekPub;
 
     // DH1 = DH(IK_A, SPK_B)
-    QByteArray dh1 = dh(aliceIKPriv, bobBundle.signedPreKey);
+    const QByteArray dh1 = dh(aliceIKPriv, bobBundle.signedPreKey);
+    if (dh1.isEmpty()) { qCritical("[X3DH] initiator: DH1 провалился"); return std::nullopt; }
     // DH2 = DH(EK_A, IK_B)
-    QByteArray dh2 = dh(ekPriv, bobBundle.identityKey);
+    const QByteArray dh2 = dh(ekPriv, bobBundle.identityKey);
+    if (dh2.isEmpty()) { qCritical("[X3DH] initiator: DH2 провалился"); return std::nullopt; }
     // DH3 = DH(EK_A, SPK_B)
-    QByteArray dh3 = dh(ekPriv, bobBundle.signedPreKey);
+    const QByteArray dh3 = dh(ekPriv, bobBundle.signedPreKey);
+    if (dh3.isEmpty()) { qCritical("[X3DH] initiator: DH3 провалился"); return std::nullopt; }
 
     QByteArray ikm = dh1 + dh2 + dh3;
 
     // DH4 = DH(EK_A, OPK_B)  — if OPK provided
     if (!bobBundle.oneTimePreKey.isEmpty()) {
-        ikm += dh(ekPriv, bobBundle.oneTimePreKey);
+        const QByteArray dh4 = dh(ekPriv, bobBundle.oneTimePreKey);
+        if (dh4.isEmpty()) { qCritical("[X3DH] initiator: DH4 провалился"); return std::nullopt; }
+        ikm += dh4;
     }
-
-    if (ikm.isEmpty() || dh1.isEmpty()) return std::nullopt;
 
     return kdf(ikm, QByteArray("naleystogramm_X3DH_v1"));
 }
@@ -264,20 +268,23 @@ std::optional<QByteArray> X3DH::responderAgreement(
     const X3DHInitMessage& aliceMsg)
 {
     // DH1 = DH(SPK_B, IK_A)
-    QByteArray dh1 = dh(bobSPKPriv, aliceMsg.identityKey);
+    const QByteArray dh1 = dh(bobSPKPriv, aliceMsg.identityKey);
+    if (dh1.isEmpty()) { qCritical("[X3DH] responder: DH1 провалился"); return std::nullopt; }
     // DH2 = DH(IK_B, EK_A)
-    QByteArray dh2 = dh(bobIKPriv, aliceMsg.ephemeralKey);
+    const QByteArray dh2 = dh(bobIKPriv, aliceMsg.ephemeralKey);
+    if (dh2.isEmpty()) { qCritical("[X3DH] responder: DH2 провалился"); return std::nullopt; }
     // DH3 = DH(SPK_B, EK_A)
-    QByteArray dh3 = dh(bobSPKPriv, aliceMsg.ephemeralKey);
+    const QByteArray dh3 = dh(bobSPKPriv, aliceMsg.ephemeralKey);
+    if (dh3.isEmpty()) { qCritical("[X3DH] responder: DH3 провалился"); return std::nullopt; }
 
     QByteArray ikm = dh1 + dh2 + dh3;
 
     // DH4 = DH(OPK_B, EK_A)
     if (!bobOTPKPriv.isEmpty()) {
-        ikm += dh(bobOTPKPriv, aliceMsg.ephemeralKey);
+        const QByteArray dh4 = dh(bobOTPKPriv, aliceMsg.ephemeralKey);
+        if (dh4.isEmpty()) { qCritical("[X3DH] responder: DH4 провалился"); return std::nullopt; }
+        ikm += dh4;
     }
-
-    if (ikm.isEmpty() || dh1.isEmpty()) return std::nullopt;
 
     return kdf(ikm, QByteArray("naleystogramm_X3DH_v1"));
 }

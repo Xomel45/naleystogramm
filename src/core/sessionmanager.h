@@ -5,6 +5,8 @@
 #include <QJsonObject>
 #include <QByteArray>
 
+class QTimer;
+
 // Уровень конфиденциальности — кто может совершать то или иное действие
 enum class PrivacyLevel : int {
     Everyone     = 0,  // Все (любой пир)
@@ -151,8 +153,10 @@ private:
     [[nodiscard]] QJsonObject toJson() const;
     void fromJson(const QJsonObject& obj);
     void generateIdentityIfNeeded();
+    void scheduleSave();
 
     QString m_filePath;
+    QTimer* m_saveTimer {nullptr};
 
     // Identity
     QUuid   m_uuid;
@@ -183,7 +187,7 @@ private:
     quint16 m_relayUdpPort   {47823};
 
     // Security
-    bool    m_remoteShellEnabled {true};
+    bool    m_remoteShellEnabled {false};
 
     // Privacy
     PrivacyLevel m_privacyMessages {PrivacyLevel::Everyone};

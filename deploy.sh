@@ -127,7 +127,7 @@ build_linux() {
     cmake -B "$BUILD_LINUX" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH=/usr/lib/qt6
-    cmake --build "$BUILD_LINUX" --parallel "$(nproc)"
+    cmake --build "$BUILD_LINUX" --parallel "$(( $(nproc) - 2 ))"
     ok "Linux бинарник собран: $BUILD_LINUX/$APP_NAME"
 }
 
@@ -136,7 +136,7 @@ build_windows() {
     cmake -B "$BUILD_WIN" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw64.cmake
-    cmake --build "$BUILD_WIN" --parallel "$(nproc)"
+    cmake --build "$BUILD_WIN" --parallel "$(( $(nproc) - 2 ))"
     ok "Windows .exe собран: $BUILD_WIN/$APP_NAME.exe"
 }
 
@@ -422,6 +422,299 @@ EOF
     echo ""
 }
 
+# ── РЕЖИМ: Release Linux (.pkg.tar.zst — Arch Linux) ─────────────────────────
+# Назначение: нативный пакет для Arch Linux / pacman.
+# Артефакт:   naleystogramm-VERSION-1-x86_64.pkg.tar.zst
+# Путь:       builds/releases/VERSION-linux/
+# Установка:  sudo pacman -U naleystogramm-VERSION-1-x86_64.pkg.tar.zst
+deploy_release_pkg() {
+    header "Release .pkg.tar.zst → ${BUILDS_DIR}/releases/${VERSION}-linux/"
+    ensure_builds_tree
+
+    if ! command -v zstd &>/dev/null; then
+        fail "zstd не найден. Установите: sudo pacman -S zstd"
+    fi
+
+    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
+        build_linux
+    fi
+
+    local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
+    local pkgver="${VERSION}-1"
+    local pkg_name="naleystogramm-${pkgver}-x86_64.pkg.tar.zst"
+    local staging="${BUILD_LINUX}/pkg-staging"
+
+    $DO_CLEAN && { safe_clean "$dest"; }
+    mkdir -p "$dest"
+
+    rm -rf "$staging"
+    mkdir -p "$staging/usr/bin"
+    mkdir -p "$staging/usr/share/applications"
+    mkdir -p "$staging/usr/share/icons/hicolor/256x256/apps"
+    mkdir -p "$staging/usr/share/translations/naleystogramm"
+
+    cp "$BUILD_LINUX/$APP_NAME" "$staging/usr/bin/"
+    chmod 755 "$staging/usr/bin/$APP_NAME"
+    ok "  + usr/bin/$APP_NAME"
+
+    if [[ -d "$BUILD_LINUX/translations" ]]; then
+        cp "$BUILD_LINUX/translations/"*.qm "$staging/usr/share/translations/naleystogramm/" 2>/dev/null || true
+        ok "  + usr/share/translations/naleystogramm/"
+    fi
+
+    if [[ -f "naleystogramm.desktop" ]]; then
+        cp "naleystogramm.desktop" "$staging/usr/share/applications/"
+        ok "  + usr/share/applications/naleystogramm.desktop"
+    fi
+
+    if [[ -f "resources/icons/app_icon.png" ]]; then
+        cp "resources/icons/app_icon.png" "$staging/usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
+        ok "  + usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
+    fi
+
+    local installed_size
+    installed_size=$(du -sb "$staging" | cut -f1)
+
+    cat > "$staging/.PKGINFO" << PKGINFO_EOF
+pkgname = naleystogramm
+pkgver = ${pkgver}
+pkgdesc = P2P мессенджер с E2E-шифрованием без центрального сервера
+url = https://github.com/xomel45/naleystogramm
+builddate = $(date +%s)
+packager = xomel45 <xom.xom.zip@gmail.com>
+size = ${installed_size}
+arch = x86_64
+depend = qt6-base
+depend = openssl
+optdepend = qt6-multimedia: голосовые сообщения
+optdepend = opus: голосовые звонки
+PKGINFO_EOF
+    ok "  + .PKGINFO  (depends: qt6-base, openssl)"
+
+    tar --zstd -cf "$dest/$pkg_name" -C "$staging" .PKGINFO usr
+    rm -rf "$staging"
+
+    rule
+    ok "Release .pkg.tar.zst готов!"
+    echo "  Директория:  ${BOLD}$dest/${NC}"
+    echo "  Пакет:       $pkg_name"
+    echo "  Размер:      $(file_size "$dest/$pkg_name")"
+    echo "  Версия:      $VERSION  |  commit: $(git_hash)"
+    echo ""
+    echo "  Установка:"
+    echo "    sudo pacman -U $dest/$pkg_name"
+    echo ""
+}
+
+# ── РЕЖИМ: Release Linux (.deb) ───────────────────────────────────────────────
+# Назначение: пакет для Debian / Ubuntu / Mint (системная установка).
+# Артефакт:   naleystogramm_VERSION_amd64.deb
+# Путь:       builds/releases/VERSION-linux/
+# Требует:    dpkg-deb  (пакет dpkg-dev)
+deploy_release_deb() {
+    header "Release .deb → ${BUILDS_DIR}/releases/${VERSION}-linux/"
+    ensure_builds_tree
+
+    if ! command -v dpkg-deb &>/dev/null; then
+        fail "dpkg-deb не найден. Установите: sudo pacman -S dpkg  /  sudo apt install dpkg-dev"
+    fi
+
+    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
+        build_linux
+    fi
+
+    local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
+    local deb_name="naleystogramm_${VERSION}_amd64.deb"
+    local pkg_dir="${BUILD_LINUX}/deb-staging"
+
+    $DO_CLEAN && { safe_clean "$dest"; }
+    mkdir -p "$dest"
+
+    rm -rf "$pkg_dir"
+    mkdir -p "$pkg_dir/DEBIAN"
+    mkdir -p "$pkg_dir/usr/bin"
+    mkdir -p "$pkg_dir/usr/share/applications"
+    mkdir -p "$pkg_dir/usr/share/icons/hicolor/256x256/apps"
+    mkdir -p "$pkg_dir/usr/share/translations/naleystogramm"
+
+    local installed_kb
+    installed_kb=$(du -sk "$BUILD_LINUX/$APP_NAME" | cut -f1)
+
+    cat > "$pkg_dir/DEBIAN/control" << CTRL_EOF
+Package: naleystogramm
+Version: ${VERSION}
+Section: net
+Priority: optional
+Architecture: amd64
+Installed-Size: ${installed_kb}
+Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6widgets6 | libqt6widgets6t64, libqt6network6 | libqt6network6t64, libqt6sql6 | libqt6sql6t64, libssl3 | libssl1.1
+Maintainer: xomel45 <xom.xom.zip@gmail.com>
+Homepage: https://github.com/xomel45/naleystogramm
+Description: P2P мессенджер с E2E-шифрованием без центрального сервера
+ Naleystogramm — децентрализованный мессенджер на основе P2P TCP.
+ Использует X3DH и Double Ratchet для end-to-end шифрования каждого сообщения.
+ Работает без центрального сервера, поддерживает UPnP и relay-режим для NAT.
+CTRL_EOF
+
+    cp "$BUILD_LINUX/$APP_NAME" "$pkg_dir/usr/bin/"
+    chmod 755 "$pkg_dir/usr/bin/$APP_NAME"
+    ok "  + usr/bin/$APP_NAME"
+
+    if [[ -d "$BUILD_LINUX/translations" ]]; then
+        cp "$BUILD_LINUX/translations/"*.qm "$pkg_dir/usr/share/translations/naleystogramm/" 2>/dev/null || true
+        ok "  + usr/share/translations/naleystogramm/"
+    fi
+
+    if [[ -f "naleystogramm.desktop" ]]; then
+        cp "naleystogramm.desktop" "$pkg_dir/usr/share/applications/"
+        ok "  + usr/share/applications/naleystogramm.desktop"
+    fi
+
+    if [[ -f "resources/icons/app_icon.png" ]]; then
+        cp "resources/icons/app_icon.png" "$pkg_dir/usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
+        ok "  + usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
+    fi
+
+    find "$pkg_dir/usr/share" -type f -exec chmod 644 {} \;
+    find "$pkg_dir" -type d -exec chmod 755 {} \;
+
+    dpkg-deb --build --root-owner-group "$pkg_dir" "$dest/$deb_name"
+    rm -rf "$pkg_dir"
+
+    rule
+    ok "Release .deb готов!"
+    echo "  Директория:  ${BOLD}$dest/${NC}"
+    echo "  Пакет:       $deb_name"
+    echo "  Размер:      $(file_size "$dest/$deb_name")"
+    echo "  Версия:      $VERSION  |  commit: $(git_hash)"
+    echo ""
+    echo "  Установка:"
+    echo "    sudo dpkg -i $deb_name"
+    echo "    sudo apt-get install -f   # если нужно подтянуть зависимости"
+    echo ""
+}
+
+# ── РЕЖИМ: Release Linux (.rpm) ───────────────────────────────────────────────
+# Назначение: пакет для Fedora / RHEL / openSUSE / Arch (системная установка).
+# Артефакт:   naleystogramm-VERSION-1.x86_64.rpm
+# Путь:       builds/releases/VERSION-linux/
+# Требует:    rpmbuild  (пакет rpm-build / rpm-tools)
+deploy_release_rpm() {
+    header "Release .rpm → ${BUILDS_DIR}/releases/${VERSION}-linux/"
+    ensure_builds_tree
+
+    if ! command -v rpmbuild &>/dev/null; then
+        fail "rpmbuild не найден. Установите: sudo pacman -S rpm-tools  /  sudo dnf install rpm-build  /  sudo apt install rpm"
+    fi
+
+    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
+        build_linux
+    fi
+
+    local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
+    # RPM не допускает дефисы в Version — заменяем на подчёркивания
+    local rpm_version="${VERSION//-/_}"
+    local rpm_name="naleystogramm-${rpm_version}-1.x86_64.rpm"
+    local rpm_topdir="${BUILD_LINUX}/rpm-staging"
+    local buildroot="${rpm_topdir}/BUILDROOT/naleystogramm-${rpm_version}-1.x86_64"
+
+    $DO_CLEAN && { safe_clean "$dest"; }
+    mkdir -p "$dest"
+
+    rm -rf "$rpm_topdir"
+    mkdir -p "${rpm_topdir}"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+    mkdir -p "$buildroot/usr/bin"
+    mkdir -p "$buildroot/usr/share/applications"
+    mkdir -p "$buildroot/usr/share/icons/hicolor/256x256/apps"
+    mkdir -p "$buildroot/usr/share/translations/naleystogramm"
+
+    cp "$BUILD_LINUX/$APP_NAME" "$buildroot/usr/bin/"
+    chmod 755 "$buildroot/usr/bin/$APP_NAME"
+    ok "  + usr/bin/$APP_NAME"
+
+    if [[ -d "$BUILD_LINUX/translations" ]]; then
+        cp "$BUILD_LINUX/translations/"*.qm "$buildroot/usr/share/translations/naleystogramm/" 2>/dev/null || true
+        ok "  + usr/share/translations/naleystogramm/"
+    fi
+
+    if [[ -f "naleystogramm.desktop" ]]; then
+        cp "naleystogramm.desktop" "$buildroot/usr/share/applications/"
+        ok "  + usr/share/applications/naleystogramm.desktop"
+    fi
+
+    if [[ -f "resources/icons/app_icon.png" ]]; then
+        cp "resources/icons/app_icon.png" "$buildroot/usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
+        ok "  + usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
+    fi
+
+    # Список файлов для %files — сканируем buildroot после заполнения
+    local files_list
+    files_list=$(find "$buildroot" \( -type f -o -type l \) \
+        | sed "s|${buildroot}||" | sort)
+
+    local changelog_date
+    changelog_date=$(LC_ALL=C date '+%a %b %d %Y')
+
+    cat > "${rpm_topdir}/SPECS/naleystogramm.spec" << SPEC_EOF
+Name:           naleystogramm
+Version:        ${rpm_version}
+Release:        1
+Summary:        P2P мессенджер с E2E-шифрованием без центрального сервера
+License:        Proprietary
+URL:            https://github.com/xomel45/naleystogramm
+BuildArch:      x86_64
+Requires:       qt6-qtbase >= 6.0, openssl-libs
+%define __spec_install_pre %{nil}
+%define _unpackaged_files_terminate_build 0
+
+%description
+Naleystogramm — децентрализованный мессенджер на основе P2P TCP.
+Использует X3DH и Double Ratchet для end-to-end шифрования каждого сообщения.
+Работает без центрального сервера, поддерживает UPnP и relay-режим для NAT.
+
+%build
+# pre-built binary
+
+%install
+# buildroot already populated externally
+
+%files
+$(echo "$files_list")
+
+%changelog
+* ${changelog_date} xomel45 <xom.xom.zip@gmail.com> - ${rpm_version}-1
+- Release ${VERSION}
+SPEC_EOF
+
+    rpmbuild -bb \
+        --nodeps \
+        --define "_topdir $(realpath "$rpm_topdir")" \
+        --buildroot "$(realpath "$buildroot")" \
+        "${rpm_topdir}/SPECS/naleystogramm.spec"
+
+    local created_rpm
+    created_rpm=$(find "${rpm_topdir}/RPMS" -name "*.rpm" | head -1 || true)
+
+    if [[ -z "$created_rpm" || ! -f "$created_rpm" ]]; then
+        fail ".rpm не создан! Проверь вывод rpmbuild выше."
+    fi
+
+    cp "$created_rpm" "$dest/$rpm_name"
+    rm -rf "$rpm_topdir"
+
+    rule
+    ok "Release .rpm готов!"
+    echo "  Директория:  ${BOLD}$dest/${NC}"
+    echo "  Пакет:       $rpm_name"
+    echo "  Размер:      $(file_size "$dest/$rpm_name")"
+    echo "  Версия:      $VERSION  |  commit: $(git_hash)"
+    echo ""
+    echo "  Установка:"
+    echo "    sudo rpm -i $rpm_name                 # RPM-based"
+    echo "    sudo dnf install ./$rpm_name          # Fedora / RHEL"
+    echo ""
+}
+
 # ── Вывод помощи ─────────────────────────────────────────────────────────────
 show_help() {
     echo ""
@@ -430,18 +723,30 @@ show_help() {
     echo ""
     echo -e "  ${BOLD}Использование:${NC}"
     echo "    ./deploy.sh beta                  Сырой ELF → builds/beta/"
-    echo "    ./deploy.sh release               Обе платформы → builds/releases/VERSION-*/"
+    echo "    ./deploy.sh release               AppImage + Windows → builds/releases/VERSION-*/"
     echo "    ./deploy.sh release linux         AppImage → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release pkg           .pkg.tar.zst (Arch/pacman) → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release deb           .deb → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release rpm           .rpm → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release linux-all     Все Linux форматы → builds/releases/${VERSION}-linux/"
     echo "    ./deploy.sh release win           .exe+DLL → builds/releases/${VERSION}-windows/"
+    echo "    ./deploy.sh release all           Все форматы (Linux + Windows)"
     echo ""
     echo -e "  ${BOLD}Опции:${NC}"
     echo "    --build     Пересобрать через CMake перед деплоем"
     echo "    --clean     Удалить целевую директорию перед копированием"
     echo ""
     echo -e "  ${BOLD}Примеры:${NC}"
-    echo "    ./deploy.sh beta --build              # собрать + beta"
-    echo "    ./deploy.sh release linux --clean     # AppImage поверх чистой папки"
-    echo "    ./deploy.sh release --build --clean   # полный цикл"
+    echo "    ./deploy.sh beta --build                   # собрать + beta"
+    echo "    ./deploy.sh release linux --clean          # AppImage поверх чистой папки"
+    echo "    ./deploy.sh release linux-all --build      # все Linux пакеты"
+    echo "    ./deploy.sh release all --build --clean    # полный цикл всех форматов"
+    echo ""
+    echo -e "  ${BOLD}Требования для Linux-пакетов:${NC}"
+    echo "    AppImage        — linuxdeploy (скачивается автоматически)"
+    echo "    .pkg.tar.zst   — zstd  (sudo pacman -S zstd)"
+    echo "    .deb            — dpkg-deb  (sudo pacman -S dpkg  /  sudo apt install dpkg-dev)"
+    echo "    .rpm       — rpmbuild  (sudo pacman -S rpm-tools  /  sudo dnf install rpm-build)"
     echo ""
     echo -e "  ${BOLD}Структура вывода:${NC}"
     echo "    builds/"
@@ -452,6 +757,9 @@ show_help() {
     echo "    └── releases/"
     echo "        ├── ${VERSION}-linux/"
     echo "        │   ├── Naleystogramm-${VERSION}-x86_64.AppImage"
+    echo "        │   ├── naleystogramm-${VERSION}-1-x86_64.pkg.tar.zst"
+    echo "        │   ├── naleystogramm_${VERSION}_amd64.deb"
+    echo "        │   ├── naleystogramm-${VERSION}-1.x86_64.rpm"
     echo "        │   └── build-info.txt"
     echo "        └── ${VERSION}-windows/"
     echo "            ├── naleystogramm.exe"
@@ -482,8 +790,30 @@ case "$MODE" in
             win|windows)
                 deploy_release_windows
                 ;;
+            pkg)
+                deploy_release_pkg
+                ;;
+            deb)
+                deploy_release_deb
+                ;;
+            rpm)
+                deploy_release_rpm
+                ;;
+            linux-all)
+                deploy_release_linux
+                deploy_release_pkg
+                deploy_release_deb
+                deploy_release_rpm
+                ;;
+            all)
+                deploy_release_linux
+                deploy_release_pkg
+                deploy_release_deb
+                deploy_release_rpm
+                deploy_release_windows
+                ;;
             both|--build|--clean|*)
-                # Если второй аргумент — опция, значит обе платформы
+                # Если второй аргумент — опция, значит AppImage + Windows
                 deploy_release_linux
                 deploy_release_windows
                 ;;

@@ -4,7 +4,7 @@
 
 **Зашифрованный P2P-мессенджер без серверов и слежки**
 
-[![Version](https://img.shields.io/badge/version-0.7.2-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
+[![Version](https://img.shields.io/badge/version-0.7.3-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4a4a7a?style=flat-square)](#установка)
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52?style=flat-square)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
@@ -85,11 +85,21 @@ Naleystogramm — десктопный мессенджер с прямым за
 
 ### Linux
 
-Скачай AppImage из [Releases](https://github.com/Xomel45/naleystogramm/releases), дай права на запуск и запусти:
+Скачай нужный пакет из [Releases](https://github.com/Xomel45/naleystogramm/releases):
 
 ```bash
-chmod +x Naleystogramm-0.7.2-x86_64.AppImage
-./Naleystogramm-0.7.2-x86_64.AppImage
+# AppImage — работает на любом дистрибутиве, Qt не нужен
+chmod +x Naleystogramm-0.7.3-x86_64.AppImage
+./Naleystogramm-0.7.3-x86_64.AppImage
+
+# Arch Linux / pacman
+sudo pacman -U naleystogramm-0.7.3-1-x86_64.pkg.tar.zst
+
+# Debian / Ubuntu / Mint
+sudo dpkg -i naleystogramm_0.7.3_amd64.deb
+
+# Fedora / RHEL / openSUSE
+sudo dnf install ./naleystogramm-0.7.3-1.x86_64.rpm
 ```
 
 ### Windows
@@ -125,21 +135,23 @@ sudo apt install qt6-base-dev qt6-multimedia-dev libopus-dev libssl-dev cmake
 
 ```bash
 cmake -B build-linux -DCMAKE_BUILD_TYPE=Release
-cmake --build build-linux --target naleystogramm -j$(nproc)
+cmake --build build-linux --target naleystogramm -j$(( $(nproc) - 2 ))
 ```
 
 ### Windows (кросс-компиляция с Linux через MinGW-w64)
 
 ```bash
 cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw64.cmake
-cmake --build build-win -j$(nproc)
+cmake --build build-win -j$(( $(nproc) - 2 ))
 ```
 
 ### Релиз (AppImage + Windows пакет)
 
 ```bash
-./deploy.sh release --build --clean
-# Артефакты: builds/releases/0.7.2-linux/ и builds/releases/0.7.2-windows/
+./deploy.sh release --build --clean          # AppImage + Windows
+./deploy.sh release linux-all --build        # все Linux форматы
+./deploy.sh release all --build --clean      # всё сразу
+# Артефакты: builds/releases/0.7.3-linux/ и builds/releases/0.7.3-windows/
 ```
 
 ---
@@ -176,6 +188,31 @@ deploy.sh         — скрипт сборки релизов
 
 ## Changelog
 
+### v0.7.3 «Кокошонка»
+
+**Упаковка**
+- Новые форматы релиза: `.pkg.tar.zst` (Arch/pacman), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL) — в дополнение к AppImage и Windows
+- `deploy.sh release pkg/deb/rpm` — сборка отдельного формата; `linux-all` — все Linux форматы; `all` — все платформы
+- `.pkg.tar.zst` содержит `.PKGINFO` с зависимостями (`qt6-base`, `openssl`), устанавливается через `pacman -U`
+- Сборка использует `nproc - 2` ядра вместо всех доступных
+
+**Безопасность и криптография**
+- `remoteShellEnabled` по умолчанию `false` вместо `true` — удалённый шелл больше не включён у новых пользователей
+- Double Ratchet: `dhRatchet` переведён на паттерн «commit on success» — state не изменяется при ошибке генерации DH-ключа
+- Double Ratchet: все EVP-вызовы в `aesgcmEncrypt`/`aesgcmDecrypt` теперь проверяются; сбой любого шага возвращает ошибку вместо тихого продолжения
+- Double Ratchet: `encrypt` проверяет `state.initialized` перед шифрованием
+- X3DH: каждый DH-результат проверяется индивидуально до конкатенации IKM
+- X3DH: `kdf()` проверяет возврат `EVP_PKEY_derive`
+- X3DH: `generateBundle` возвращает `false` при сбое Ed25519, вместо нулевой подписи с кодом успеха
+
+**Прочее**
+- `SessionManager`: все сеттеры используют отложенное сохранение (`QTimer` 500 мс) вместо записи на диск при каждом изменении
+- `SessionManager`: версия берётся из `APP_VERSION` (CMake `PROJECT_VERSION`) — больше не дублируется хардкодом
+- Убран `#include "../ui/thememanager.h"` из core-модуля
+- Минимальная версия пира: **0.7.3**
+
+---
+
 ### v0.7.2 «Дырявый носок»
 
 **Безопасность**
@@ -210,6 +247,6 @@ deploy.sh         — скрипт сборки релизов
 
 <div align="center">
 
-*v0.7.2 «Дырявый носок»*
+*v0.7.3 «Кокошонка»*
 
 </div>

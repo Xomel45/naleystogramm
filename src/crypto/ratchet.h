@@ -76,8 +76,8 @@ public:
 
 private:
     [[nodiscard]] static QByteArray chainStep(QByteArray& chainKey);
-    [[nodiscard]] static QByteArray dhRatchet(RatchetState& state,
-                                               const QByteArray& peerDHPub);
+    [[nodiscard]] static std::expected<QByteArray, QString> dhRatchet(
+        RatchetState& state, const QByteArray& peerDHPub);
 
     // Сохраняет ключи сообщений с номерами [msgNum, until) в skippedKeys.
     // Продвигает chainKey и msgNum до until (или до достижения лимита).
