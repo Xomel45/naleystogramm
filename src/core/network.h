@@ -83,6 +83,9 @@ public:
     // Повторная попытка пробросить порты через UPnP
     void        retryUpnp();
 
+    // Проверить доступность открытого порта (режим OpenPort)
+    void        checkOpenPort();
+
     // Разослать всем подключённым пирам обновлённое имя пользователя
     void        broadcastProfileUpdate(const QString& name);
 
@@ -109,6 +112,7 @@ signals:
     void        ready(const QString& externalIp, quint16 port, bool upnpOk);
     void        externalIpDiscovered(const QString& ip);
     void        upnpMappingResult(bool ok);  // Результат UPnP (асинхронный)
+    void        openPortCheckResult(bool open); // Результат проверки открытого порта
     void        relayConnected();            // Ретранслятор: соединение установлено
     void        relayDisconnected();         // Ретранслятор: соединение разорвано
 
@@ -217,5 +221,5 @@ private:
     // Легитимные сообщения (JSON) никогда не достигают этого размера.
     static constexpr int     kMaxBufferSize        = 16 * 1024 * 1024; // 16 МБ
     static constexpr quint32 kMaxFramesPerSecond   = 200;              // Макс. фреймов в секунду от пира
-    static constexpr const char* kMinPeerVersion   = "0.7.3";         // Минимальная версия пира для соединения
+    static constexpr const char* kMinPeerVersion   = "0.7.4";         // Минимальная версия пира для соединения
 };

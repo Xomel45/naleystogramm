@@ -8,11 +8,12 @@ class QLineEdit;
 class QSpinBox;
 class QComboBox;
 class QLabel;
+class QWidget;
 
 // ── SettingsDialog ─────────────────────────────────────────────────────────
 // Три секции:
 //   • Профиль  — имя пользователя
-//   • Сеть     — IP/порт, прямое подключение по умолчанию
+//   • Сеть     — IP/порт, тип подключения
 //   • Интерфейс — тема, язык
 
 class SettingsDialog : public QDialog {
@@ -34,18 +35,24 @@ private:
     void buildNetworkPage(QWidget* page);
     void buildInterfacePage(QWidget* page);
     void loadCurrentValues();
+    void onConnTypeChanged(int index);  // показывает/скрывает панель OpenPort
 
     QStackedWidget* m_stack   {nullptr};
     QListWidget*    m_nav     {nullptr};
 
     // Профиль
-    QLineEdit*  m_nameEdit    {nullptr};
+    QLineEdit*  m_nameEdit       {nullptr};
 
-    // Сеть
-    QLineEdit*  m_ipEdit      {nullptr};
-    QSpinBox*   m_portSpin    {nullptr};
-    QLabel*     m_proxyStatus {nullptr};
+    // Сеть — общие
+    QLineEdit*  m_ipEdit         {nullptr};
+    QSpinBox*   m_portSpin       {nullptr};
+    QLabel*     m_proxyStatus    {nullptr};
+
+    // Сеть — тип подключения
+    QComboBox*  m_connTypeCombo  {nullptr};
+    QWidget*    m_openPortGroup  {nullptr};  // группа, скрытая в UPnP-режиме
+    QSpinBox*   m_openPortSpin   {nullptr};
 
     // Интерфейс
-    QComboBox*  m_langCombo   {nullptr};
+    QComboBox*  m_langCombo      {nullptr};
 };

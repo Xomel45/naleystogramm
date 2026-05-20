@@ -57,15 +57,18 @@ private:
     QLineEdit* m_uuidEdit     {nullptr};  // обновляется в reload()
 
     // Сеть
+    QWidget*   m_portGroup    {nullptr};  // скрывается в режиме OpenPort
     QSpinBox*  m_portSpin     {nullptr};
     QLineEdit* m_ipEdit       {nullptr};
     QLabel*    m_proxyStatus  {nullptr};
 
     // Режим проброса портов
-    QComboBox* m_pfModeCombo    {nullptr};  // UPnP / Manual / Disabled / Client-Server
-    QWidget*   m_manualFields   {nullptr};  // контейнер IP+порт (скрыт если не Manual)
-    QLineEdit* m_manualIpEdit   {nullptr};
-    QSpinBox*  m_manualPortSpin {nullptr};
+    QComboBox* m_pfModeCombo     {nullptr};  // UPnP / Manual / Disabled / OpenPort / Client-Server
+    QWidget*   m_manualFields    {nullptr};  // контейнер IP+порт (скрыт если не Manual)
+    QLineEdit* m_manualIpEdit    {nullptr};
+    QSpinBox*  m_manualPortSpin  {nullptr};
+    QWidget*   m_openPortFields  {nullptr};  // контейнер порта (скрыт если не OpenPort)
+    QSpinBox*  m_openPortSpin    {nullptr};
 
     // Relay (Client-Server)
     QWidget*   m_relayFields      {nullptr};  // контейнер настроек ретранслятора

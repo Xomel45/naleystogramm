@@ -4,7 +4,7 @@
 
 **Зашифрованный P2P-мессенджер без серверов и слежки**
 
-[![Version](https://img.shields.io/badge/version-0.7.3-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
+[![Version](https://img.shields.io/badge/version-0.7.4-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4a4a7a?style=flat-square)](#установка)
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52?style=flat-square)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
@@ -89,17 +89,17 @@ Naleystogramm — десктопный мессенджер с прямым за
 
 ```bash
 # AppImage — работает на любом дистрибутиве, Qt не нужен
-chmod +x Naleystogramm-0.7.3-x86_64.AppImage
-./Naleystogramm-0.7.3-x86_64.AppImage
+chmod +x Naleystogramm-0.7.4-x86_64.AppImage
+./Naleystogramm-0.7.4-x86_64.AppImage
 
 # Arch Linux / pacman
-sudo pacman -U naleystogramm-0.7.3-1-x86_64.pkg.tar.zst
+sudo pacman -U naleystogramm-0.7.4-1-x86_64.pkg.tar.zst
 
 # Debian / Ubuntu / Mint
-sudo dpkg -i naleystogramm_0.7.3_amd64.deb
+sudo dpkg -i naleystogramm_0.7.4_amd64.deb
 
 # Fedora / RHEL / openSUSE
-sudo dnf install ./naleystogramm-0.7.3-1.x86_64.rpm
+sudo dnf install ./naleystogramm-0.7.4-1.x86_64.rpm
 ```
 
 ### Windows
@@ -151,7 +151,7 @@ cmake --build build-win -j$(( $(nproc) - 2 ))
 ./deploy.sh release --build --clean          # AppImage + Windows
 ./deploy.sh release linux-all --build        # все Linux форматы
 ./deploy.sh release all --build --clean      # всё сразу
-# Артефакты: builds/releases/0.7.3-linux/ и builds/releases/0.7.3-windows/
+# Артефакты: builds/releases/0.7.4-linux/ и builds/releases/0.7.4-windows/
 ```
 
 ---
@@ -187,6 +187,16 @@ deploy.sh         — скрипт сборки релизов
 ---
 
 ## Changelog
+
+### v0.7.4 «ыЪы»
+
+**Сеть**
+- Новый тип подключения «Разблокированный порт» в настройках сети — для случаев когда порт пробит вручную на роутере без UPnP
+- `PortForwardingMode::OpenPort`: внешний IP определяется автоматически (как в UPnP-режиме), анонсируемый порт задаётся вручную
+- Индикатор в статус-баре: в режиме Open Port вместо «UPnP ✓/✗» отображается «Open Port: XXXXX ✓/✗» с проверкой доступности через TCP self-connect
+- `NetworkManager::checkOpenPort()` — асинхронная проверка достижимости порта с таймаутом 5 сек
+
+---
 
 ### v0.7.3 «Кокошонка»
 
@@ -247,6 +257,6 @@ deploy.sh         — скрипт сборки релизов
 
 <div align="center">
 
-*v0.7.3 «Кокошонка»*
+*v0.7.4 «ыЪы»*
 
 </div>

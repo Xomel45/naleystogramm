@@ -142,6 +142,14 @@ void NetworkManager::init() {
         connectToRelay();
         emit ready(m_externalIp, m_advertisedPort, false);
 
+    } else if (mode == PortForwardingMode::OpenPort) {
+        // Режим OpenPort: пользователь вручную пробросил порт.
+        // IP определяем автоматически, UPnP не запускаем.
+        const quint16 manPort = SessionManager::instance().manualPublicPort();
+        m_advertisedPort = (manPort > 0) ? manPort : m_localPort;
+        qDebug("[Network] Режим OpenPort: анонсируем порт %d, ищем внешний IP", m_advertisedPort);
+        discoverExternalIp();
+
     } else {
         // Режим UpnpAuto (по умолчанию): запускаем UPnP + discovery внешнего IP.
         tryUpnp();
@@ -211,6 +219,42 @@ void NetworkManager::tryUpnp() {
         emit upnpMappingResult(ok);
     });
     upnp->mapPort(m_localPort);
+}
+
+void NetworkManager::checkOpenPort() {
+    // Проверяем доступность m_advertisedPort через TCP self-connect к внешнему IP.
+    // Работает если роутер поддерживает hairpin NAT; при неудаче тоже эмитим сигнал.
+    if (m_externalIp.isEmpty() || m_advertisedPort == 0) {
+        emit openPortCheckResult(false);
+        return;
+    }
+    auto* sock = new QTcpSocket(this);
+    auto* timer = new QTimer(this);
+    timer->setSingleShot(true);
+    timer->setInterval(5000);
+
+    connect(sock, &QTcpSocket::connected, this, [this, sock, timer]() {
+        timer->stop();
+        sock->disconnectFromHost();
+        sock->deleteLater();
+        timer->deleteLater();
+        emit openPortCheckResult(true);
+    });
+    connect(sock, &QTcpSocket::errorOccurred, this, [this, sock, timer](QAbstractSocket::SocketError) {
+        timer->stop();
+        sock->deleteLater();
+        timer->deleteLater();
+        emit openPortCheckResult(false);
+    });
+    connect(timer, &QTimer::timeout, this, [this, sock, timer]() {
+        sock->abort();
+        sock->deleteLater();
+        timer->deleteLater();
+        emit openPortCheckResult(false);
+    });
+
+    timer->start();
+    sock->connectToHost(m_externalIp, m_advertisedPort);
 }
 
 void NetworkManager::retryUpnp() {

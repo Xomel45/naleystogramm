@@ -139,7 +139,9 @@ private:
     QSet<QUuid> m_shownCompatWarnings;
 
     // Кнопка статуса UPnP в статус-баре (постоянный виджет)
-    QPushButton*     m_upnpBtn  {nullptr};
+    QPushButton*     m_upnpBtn     {nullptr};
+    // Индикатор открытого порта (режим OpenPort)
+    QPushButton*     m_openPortBtn {nullptr};
 
     // System tray
     QSystemTrayIcon* m_tray {nullptr};

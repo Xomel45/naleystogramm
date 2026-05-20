@@ -103,7 +103,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
 
     auto* saveBtn = new QPushButton(tr("Save"));
     saveBtn->setObjectName("dlgOkBtn");
-    saveBtn->setFixedHeight(30);
+    saveBtn->setMinimumWidth(100);
     connect(saveBtn, &QPushButton::clicked, this, &SettingsPanel::onSave);
 
     hl->addWidget(backBtn);
@@ -227,13 +227,20 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addWidget(sectionTitle(tr("Network"), QStringLiteral(":/icons/settings_network.png")));
     contentLayout->addSpacing(8);
 
-    contentLayout->addWidget(fieldLabel(tr("Port")));
-    m_portSpin = new QSpinBox();
-    m_portSpin->setObjectName("settingsInput");
-    m_portSpin->setRange(1024, 65535);
-    noScrollWheel(m_portSpin);
-    contentLayout->addWidget(m_portSpin);
-    contentLayout->addWidget(hint(tr("Requires restart to take effect")));
+    m_portGroup = new QWidget();
+    {
+        auto* g = new QVBoxLayout(m_portGroup);
+        g->setContentsMargins(0, 0, 0, 0);
+        g->setSpacing(4);
+        g->addWidget(fieldLabel(tr("Port")));
+        m_portSpin = new QSpinBox();
+        m_portSpin->setObjectName("settingsInput");
+        m_portSpin->setRange(1024, 65535);
+        noScrollWheel(m_portSpin);
+        g->addWidget(m_portSpin);
+        g->addWidget(hint(tr("Requires restart to take effect")));
+    }
+    contentLayout->addWidget(m_portGroup);
     contentLayout->addSpacing(8);
 
     contentLayout->addWidget(fieldLabel(tr("Bind IP")));
@@ -275,6 +282,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_pfModeCombo->setObjectName("settingsInput");
     noScrollWheel(m_pfModeCombo);
     m_pfModeCombo->addItem(tr("UPnP (автоматически)"),  static_cast<int>(PortForwardingMode::UpnpAuto));
+    m_pfModeCombo->addItem(tr("Разблокированный порт (ручной проброс)"), static_cast<int>(PortForwardingMode::OpenPort));
     m_pfModeCombo->addItem(tr("Вручную (VPN / статический IP)"), static_cast<int>(PortForwardingMode::Manual));
     m_pfModeCombo->addItem(tr("Отключено (только локальная сеть)"), static_cast<int>(PortForwardingMode::Disabled));
     m_pfModeCombo->addItem(tr("🖥 Client-Server (ретранслятор)"), static_cast<int>(PortForwardingMode::ClientServer));
@@ -304,8 +312,28 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
         tr("Укажите порт, пробрасываемый роутером на ваше устройство.\n"
            "Требуется перезапуск для применения изменений.")));
 
-    m_manualFields->hide();  // скрыт по умолчанию (UPnP режим)
+    m_manualFields->hide();
     contentLayout->addWidget(m_manualFields);
+
+    // ── Контейнер полей OpenPort (разблокированный порт) ─────────────────
+    m_openPortFields = new QWidget();
+    auto* openPortLayout = new QVBoxLayout(m_openPortFields);
+    openPortLayout->setContentsMargins(0, 6, 0, 0);
+    openPortLayout->setSpacing(4);
+
+    openPortLayout->addWidget(fieldLabel(tr("Открытый (пробитый на роутере) порт")));
+    m_openPortSpin = new QSpinBox();
+    m_openPortSpin->setObjectName("settingsInput");
+    m_openPortSpin->setRange(1024, 65535);
+    m_openPortSpin->setValue(47821);
+    noScrollWheel(m_openPortSpin);
+    openPortLayout->addWidget(m_openPortSpin);
+    openPortLayout->addWidget(hint(
+        tr("⚠ Убедитесь что этот порт реально открыт и пробит в настройках роутера.\n"
+           "Требуется перезапуск для применения изменений.")));
+
+    m_openPortFields->hide();
+    contentLayout->addWidget(m_openPortFields);
 
     // ── Контейнер полей Client-Server (ретранслятор) ──────────────────────
     m_relayFields = new QWidget();
@@ -348,15 +376,19 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     // Подсказки для каждого режима (показываем одну активную)
     contentLayout->addWidget(hint(
         tr("UPnP — автоматический проброс портов через роутер.\n"
-           "Manual — задайте IP и порт вручную (для VPN, static IP, ручного NAT).\n"
-           "Disabled — только LAN, пиры подключаются напрямую по локальному IP.\n"
+           "Разблокированный порт — вы пробросили порт вручную, IP определяется автоматически.\n"
+           "Вручную — задайте IP и порт вручную (для VPN, static IP, ручного NAT).\n"
+           "Отключено — только LAN, пиры подключаются напрямую по локальному IP.\n"
            "Client-Server — все соединения через ваш relay-сервер (белый IP / VPS).")));
 
     // Показываем/скрываем поля при смене режима
     connect(m_pfModeCombo, &QComboBox::currentIndexChanged, this, [this](int) {
         const auto mode = static_cast<PortForwardingMode>(
             m_pfModeCombo->currentData().toInt());
+        // В режиме OpenPort один порт = и локальный, и внешний — скрываем дублирующее поле
+        m_portGroup->setVisible(mode != PortForwardingMode::OpenPort);
         m_manualFields->setVisible(mode == PortForwardingMode::Manual);
+        m_openPortFields->setVisible(mode == PortForwardingMode::OpenPort);
         m_relayFields->setVisible(mode == PortForwardingMode::ClientServer);
     });
 
@@ -697,6 +729,11 @@ void SettingsPanel::reload() {
                                    ? sm.manualPublicPort() : 47821);
         m_manualFields->setVisible(sm.portForwardingMode() == PortForwardingMode::Manual);
 
+        m_openPortSpin->setValue(sm.manualPublicPort() > 0
+                                 ? sm.manualPublicPort() : 47821);
+        m_openPortFields->setVisible(sm.portForwardingMode() == PortForwardingMode::OpenPort);
+        m_portGroup->setVisible(sm.portForwardingMode() != PortForwardingMode::OpenPort);
+
         m_relayIpEdit->setText(sm.relayServerIp());
         m_relayTcpPortSpin->setValue(sm.relayTcpPort() > 0 ? sm.relayTcpPort() : 47822);
         m_relayUdpPortSpin->setValue(sm.relayUdpPort() > 0 ? sm.relayUdpPort() : 47823);
@@ -788,6 +825,11 @@ void SettingsPanel::onSave() {
     }
 
     sm.setPortForwardingMode(pfMode);
+    if (pfMode == PortForwardingMode::OpenPort) {
+        const quint16 openPort = static_cast<quint16>(m_openPortSpin->value());
+        sm.setManualPublicPort(openPort);
+        sm.setPort(openPort);  // локальный порт = внешний порт, один на всё
+    }
 
     // Настройки конфиденциальности — применяются немедленно
     sm.setPrivacyMessages(static_cast<PrivacyLevel>(m_privacyMessages->currentData().toInt()));

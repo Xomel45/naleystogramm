@@ -8,6 +8,7 @@
 #include <QScreen>
 #include <QTime>
 #include <QRandomGenerator>
+#include <QGraphicsOpacityEffect>
 
 // ── SplashScreen ──────────────────────────────────────────────────────────────
 
@@ -101,7 +102,7 @@ SplashScreen::SplashScreen(QWidget* parent)
     m_logoLabel->setObjectName("splashLogo");
     m_logoLabel->setAlignment(Qt::AlignCenter);
 
-    m_versionLabel = new QLabel("v0.7.3  \"Кокошонка\"");
+    m_versionLabel = new QLabel("v0.7.4  \"ыЪы\"");
     m_versionLabel->setObjectName("splashVersion");
     m_versionLabel->setAlignment(Qt::AlignCenter);
 
@@ -124,15 +125,25 @@ SplashScreen::SplashScreen(QWidget* parent)
     m_statusLabel->setObjectName("splashStatus");
     m_statusLabel->setAlignment(Qt::AlignCenter);
     root->addWidget(m_statusLabel);
-    root->addSpacing(10);
+    root->addSpacing(8);
 
     // ── Прогресс-бар ─────────────────────────────────────────────────────────
     m_progress = new QProgressBar();
     m_progress->setRange(0, 100);
     m_progress->setValue(0);
     m_progress->setTextVisible(false);
-    m_progress->setFixedHeight(5);
+    m_progress->setFixedHeight(10);
     root->addWidget(m_progress);
+    root->addSpacing(8);
+
+    // ── Подпись авторов — появляется постепенно по мере загрузки ─────────────
+    m_creditsLabel = new QLabel("Made by Xomelz & Claude");
+    m_creditsLabel->setObjectName("splashVersion");
+    m_creditsLabel->setAlignment(Qt::AlignCenter);
+    m_creditsOpacity = new QGraphicsOpacityEffect(m_creditsLabel);
+    m_creditsOpacity->setOpacity(0.0);
+    m_creditsLabel->setGraphicsEffect(m_creditsOpacity);
+    root->addWidget(m_creditsLabel);
 
     // Центрируем окно на экране
     if (const QScreen* screen = QApplication::primaryScreen()) {
@@ -146,6 +157,10 @@ SplashScreen::SplashScreen(QWidget* parent)
 void SplashScreen::updateStatus(int progress, const QString& status) {
     m_progress->setValue(progress);
     m_statusLabel->setText(status);
+
+    // Подпись авторов: плавно проявляется по мере заполнения прогресс-бара
+    if (m_creditsOpacity)
+        m_creditsOpacity->setOpacity(qBound(0.0, progress / 100.0, 1.0));
 
     // Меняем фразу в контрольных точках чтобы разнообразить экран
     if (progress == 0 || progress % 25 == 0 || progress >= 100)

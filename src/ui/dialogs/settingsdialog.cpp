@@ -2,6 +2,7 @@
 #include "../thememanager.h"
 #include "../../core/identity.h"
 #include "../../core/network.h"
+#include "../../core/sessionmanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>
@@ -167,7 +168,62 @@ void SettingsDialog::buildNetworkPage(QWidget* page) {
     auto* title = new QLabel("Сеть");
     title->setObjectName("settingsPageTitle");
 
-    // Порт
+    // ── Тип подключения ───────────────────────────────────────────────────
+    auto* connTypeLabel = new QLabel("Тип подключения");
+    connTypeLabel->setObjectName("settingsFieldLabel");
+    m_connTypeCombo = new QComboBox();
+    m_connTypeCombo->setObjectName("settingsInput");
+    m_connTypeCombo->addItem("UPnP — автоматически",
+                             static_cast<int>(PortForwardingMode::UpnpAuto));
+    m_connTypeCombo->addItem("Прямое подключение — только локальная сеть",
+                             static_cast<int>(PortForwardingMode::Disabled));
+    m_connTypeCombo->addItem("Разблокированный порт — вручную",
+                             static_cast<int>(PortForwardingMode::OpenPort));
+
+    auto* connTypeHint = new QLabel(
+        "UPnP: мессенджер сам пробрасывает порт через роутер.\n"
+        "Прямое: только устройства в одной сети (LAN), без проброса портов.\n"
+        "Разблокированный порт: вы пробросили порт вручную в настройках роутера.");
+    connTypeHint->setObjectName("settingsHint");
+    connTypeHint->setWordWrap(true);
+
+    // ── Группа «Разблокированный порт» (скрыта в UPnP-режиме) ─────────────
+    m_openPortGroup = new QWidget();
+    auto* openPortLayout = new QVBoxLayout(m_openPortGroup);
+    openPortLayout->setContentsMargins(0, 0, 0, 0);
+    openPortLayout->setSpacing(8);
+
+    auto* openPortLabel = new QLabel("Открытый (пробитый) порт");
+    openPortLabel->setObjectName("settingsFieldLabel");
+    m_openPortSpin = new QSpinBox();
+    m_openPortSpin->setObjectName("settingsInput");
+    m_openPortSpin->setRange(1024, 65535);
+    m_openPortSpin->setValue(47821);
+
+    auto* openPortWarnBox = new QWidget();
+    openPortWarnBox->setObjectName("settingsInfoBox");
+    auto* openPortWarnLayout = new QHBoxLayout(openPortWarnBox);
+    openPortWarnLayout->setContentsMargins(14, 10, 14, 10);
+    openPortWarnLayout->setSpacing(10);
+    auto* warnIcon = new QLabel("⚠");
+    warnIcon->setObjectName("settingsWarn");
+    auto* warnText = new QLabel(
+        "Убедитесь, что этот порт реально открыт и пробит на роутере.\n"
+        "Если порт недоступен — собеседники не смогут подключиться.\n"
+        "Изменения вступят в силу после перезапуска.");
+    warnText->setObjectName("settingsHint");
+    warnText->setWordWrap(true);
+    openPortWarnLayout->addWidget(warnIcon);
+    openPortWarnLayout->addWidget(warnText, 1);
+
+    openPortLayout->addWidget(openPortLabel);
+    openPortLayout->addWidget(m_openPortSpin);
+    openPortLayout->addWidget(openPortWarnBox);
+
+    connect(m_connTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &SettingsDialog::onConnTypeChanged);
+
+    // ── Порт прослушивания ─────────────────────────────────────────────────
     auto* portLabel = new QLabel("Порт прослушивания");
     portLabel->setObjectName("settingsFieldLabel");
     m_portSpin = new QSpinBox();
@@ -181,7 +237,7 @@ void SettingsDialog::buildNetworkPage(QWidget* page) {
     portHint->setObjectName("settingsHint");
     portHint->setWordWrap(true);
 
-    // Привязка IP
+    // ── Привязка IP ────────────────────────────────────────────────────────
     auto* ipLabel = new QLabel("IP для привязки (необязательно)");
     ipLabel->setObjectName("settingsFieldLabel");
     m_ipEdit = new QLineEdit();
@@ -194,7 +250,7 @@ void SettingsDialog::buildNetworkPage(QWidget* page) {
     ipHint->setObjectName("settingsHint");
     ipHint->setWordWrap(true);
 
-    // Статус прокси
+    // ── Статус прокси ──────────────────────────────────────────────────────
     auto* proxyBox = new QWidget();
     proxyBox->setObjectName("settingsInfoBox");
     auto* proxyLayout = new QHBoxLayout(proxyBox);
@@ -217,6 +273,10 @@ void SettingsDialog::buildNetworkPage(QWidget* page) {
     proxyLayout->addWidget(m_proxyStatus, 1);
 
     layout->addWidget(title);
+    layout->addWidget(connTypeLabel);
+    layout->addWidget(m_connTypeCombo);
+    layout->addWidget(connTypeHint);
+    layout->addWidget(m_openPortGroup);
     layout->addWidget(portLabel);
     layout->addWidget(m_portSpin);
     layout->addWidget(portHint);
@@ -225,6 +285,13 @@ void SettingsDialog::buildNetworkPage(QWidget* page) {
     layout->addWidget(ipHint);
     layout->addWidget(proxyBox);
     layout->addStretch();
+}
+
+void SettingsDialog::onConnTypeChanged(int /*index*/) {
+    if (!m_connTypeCombo || !m_openPortGroup) return;
+    const auto mode = static_cast<PortForwardingMode>(
+        m_connTypeCombo->currentData().toInt());
+    m_openPortGroup->setVisible(mode == PortForwardingMode::OpenPort);
 }
 
 // ── Страница: Интерфейс ───────────────────────────────────────────────────
@@ -301,13 +368,22 @@ void SettingsDialog::buildInterfacePage(QWidget* page) {
 
 void SettingsDialog::loadCurrentValues() {
     QSettings s;
+    auto& sm = SessionManager::instance();
 
     // Профиль
     m_nameEdit->setText(Identity::instance().displayName());
 
-    // Сеть
-    m_portSpin->setValue(s.value("network/port", 47821).toInt());
-    m_ipEdit->setText(s.value("network/bindIp", "").toString());
+    // Сеть — тип подключения
+    const auto mode = sm.portForwardingMode();
+    const int modeIdx = m_connTypeCombo->findData(static_cast<int>(mode));
+    m_connTypeCombo->setCurrentIndex(modeIdx >= 0 ? modeIdx : 0);
+    m_openPortSpin->setValue(
+        sm.manualPublicPort() > 0 ? sm.manualPublicPort() : 47821);
+    onConnTypeChanged(m_connTypeCombo->currentIndex());
+
+    // Сеть — порт и IP
+    m_portSpin->setValue(sm.port());
+    m_ipEdit->setText(sm.bindIp());
 
     // Язык
     const QString lang = s.value("ui/language", "ru").toString();
@@ -319,6 +395,7 @@ void SettingsDialog::loadCurrentValues() {
 
 void SettingsDialog::onSave() {
     QSettings s;
+    auto& sm = SessionManager::instance();
 
     // Профиль
     const QString name = m_nameEdit->text().trimmed();
@@ -327,9 +404,19 @@ void SettingsDialog::onSave() {
         emit nameChanged(name);
     }
 
-    // Сеть
+    // Сеть — тип подключения
+    const auto mode = static_cast<PortForwardingMode>(
+        m_connTypeCombo->currentData().toInt());
+    sm.setPortForwardingMode(mode);
+    if (mode == PortForwardingMode::OpenPort) {
+        sm.setManualPublicPort(static_cast<quint16>(m_openPortSpin->value()));
+    }
+
+    // Сеть — порт и IP
     const quint16 port = static_cast<quint16>(m_portSpin->value());
     const QString ip   = m_ipEdit->text().trimmed();
+    sm.setPort(port);
+    sm.setBindIp(ip);
     s.setValue("network/port",   port);
     s.setValue("network/bindIp", ip);
     emit networkChanged(ip, port);
@@ -343,8 +430,6 @@ void SettingsDialog::onSave() {
 }
 
 void SettingsDialog::onReset() {
-    QSettings s;
     m_nameEdit->setText(Identity::instance().displayName());
-    m_portSpin->setValue(s.value("network/port", 47821).toInt());
-    m_ipEdit->setText(s.value("network/bindIp", "").toString());
+    loadCurrentValues();
 }

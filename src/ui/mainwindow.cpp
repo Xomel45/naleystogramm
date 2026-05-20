@@ -279,6 +279,20 @@ MainWindow::MainWindow(App& app, QWidget* parent)
                      "или включите DMZ.\n\nНажмите для повторной попытки."));
         }
     });
+
+    // Open Port: запускаем проверку доступности после обнаружения внешнего IP
+    connect(m_network, &NetworkManager::openPortCheckResult, this, [this](bool open) {
+        if (!m_openPortBtn) return;
+        const quint16 port = SessionManager::instance().manualPublicPort();
+        m_openPortBtn->setText(
+            open ? tr("Open Port: %1 ✓").arg(port)
+                 : tr("Open Port: %1 ✗").arg(port));
+        m_openPortBtn->setToolTip(
+            open ? tr("Порт %1 доступен снаружи").arg(port)
+                 : tr("Порт %1 недоступен или роутер не поддерживает hairpin NAT.\n"
+                      "Попробуйте подключиться с другого устройства чтобы убедиться\n"
+                      "что порт реально открыт в роутере.").arg(port));
+    });
     connect(m_e2e,     &E2EManager::sessionEstablished,    this, &MainWindow::onSessionEstablished);
     connect(m_contacts, &ContactsWidget::contactSelected,  this, &MainWindow::onContactSelected);
 
@@ -534,24 +548,41 @@ void MainWindow::setupUi() {
 
     mainLayout->addWidget(splitter);
 
-    // UPnP индикатор — постоянный виджет в статус-баре
-    // При неудаче: кликабельная кнопка с подсказкой и повтором
-    m_upnpBtn = new QPushButton(tr("UPnP ..."));
-    m_upnpBtn->setObjectName("upnpStatusBtn");
-    m_upnpBtn->setFlat(true);
-    m_upnpBtn->setFixedHeight(20);
-    m_upnpBtn->setCursor(Qt::ArrowCursor);
-    m_upnpBtn->setEnabled(false);
-    m_upnpBtn->setToolTip(tr("Проверяем UPnP..."));
-    connect(m_upnpBtn, &QPushButton::clicked, this, [this]() {
-        if (!m_network) return;
-        statusBar()->showMessage(tr("Повторяем пробрасывание портов..."), 3000);
+    // Индикатор подключения в статус-баре — UPnP или Open Port в зависимости от режима
+    const bool isOpenPortMode =
+        (SessionManager::instance().portForwardingMode() == PortForwardingMode::OpenPort);
+
+    if (isOpenPortMode) {
+        // Режим «Разблокированный порт»: показываем порт и результат проверки
+        const quint16 openPort = SessionManager::instance().manualPublicPort();
+        m_openPortBtn = new QPushButton(
+            tr("Open Port: %1 ...").arg(openPort));
+        m_openPortBtn->setObjectName("upnpStatusBtn");
+        m_openPortBtn->setFlat(true);
+        m_openPortBtn->setFixedHeight(20);
+        m_openPortBtn->setCursor(Qt::ArrowCursor);
+        m_openPortBtn->setEnabled(false);
+        m_openPortBtn->setToolTip(tr("Проверяем доступность порта %1...").arg(openPort));
+        statusBar()->addPermanentWidget(m_openPortBtn);
+    } else {
+        // Режим UPnP (по умолчанию)
+        m_upnpBtn = new QPushButton(tr("UPnP ..."));
+        m_upnpBtn->setObjectName("upnpStatusBtn");
+        m_upnpBtn->setFlat(true);
+        m_upnpBtn->setFixedHeight(20);
+        m_upnpBtn->setCursor(Qt::ArrowCursor);
         m_upnpBtn->setEnabled(false);
-        m_upnpBtn->setText(tr("UPnP ..."));
-        m_upnpBtn->setToolTip(tr("Проверяем..."));
-        m_network->retryUpnp();
-    });
-    statusBar()->addPermanentWidget(m_upnpBtn);
+        m_upnpBtn->setToolTip(tr("Проверяем UPnP..."));
+        connect(m_upnpBtn, &QPushButton::clicked, this, [this]() {
+            if (!m_network) return;
+            statusBar()->showMessage(tr("Повторяем пробрасывание портов..."), 3000);
+            m_upnpBtn->setEnabled(false);
+            m_upnpBtn->setText(tr("UPnP ..."));
+            m_upnpBtn->setToolTip(tr("Проверяем..."));
+            m_network->retryUpnp();
+        });
+        statusBar()->addPermanentWidget(m_upnpBtn);
+    }
 
     loadOwnAvatar();
     statusBar()->showMessage(tr("Инициализация..."));
@@ -688,6 +719,13 @@ void MainWindow::onAppReady(const QString& ip, quint16 port, bool upnp) {
     m_lastPort = port;
     m_lastUpnp = upnp;
     refreshOwnDisplay();
+
+    // В режиме OpenPort запускаем проверку доступности порта
+    if (m_openPortBtn && m_network &&
+        SessionManager::instance().portForwardingMode() == PortForwardingMode::OpenPort)
+    {
+        m_network->checkOpenPort();
+    }
 }
 
 void MainWindow::onIncomingRequest(QUuid uuid, QString name, QString ip) {

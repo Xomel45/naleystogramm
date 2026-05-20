@@ -540,6 +540,12 @@ QWidget#headerBar {
 QWidget#headerBar QWidget {
     background: transparent;
 }
+QWidget#headerBar QPushButton#dlgOkBtn {
+    background: %15;
+    color: %16;
+}
+QWidget#headerBar QPushButton#dlgOkBtn:hover   { background: %17; }
+QWidget#headerBar QPushButton#dlgOkBtn:pressed { background: %18; }
 
 QLabel#myNameLabel {
     color: %11;

@@ -3,6 +3,7 @@
 
 class QProgressBar;
 class QLabel;
+class QGraphicsOpacityEffect;
 
 // ── SplashScreen ───────────────────────────────────────────────────────────────
 // Экран загрузки приложения. Показывается до создания главного окна.
@@ -19,12 +20,14 @@ public:
     void updateStatus(int progress, const QString& status);
 
 private:
-    // Возвращает случайную фразу с учётом времени суток и вероятностей.
     [[nodiscard]] QString getRandomPhrase() const;
 
-    QLabel*       m_logoLabel    {nullptr};  // "Naleystogramm"
-    QLabel*       m_versionLabel {nullptr};  // "v0.2.1 ..."
-    QLabel*       m_phraseLabel  {nullptr};  // забавная фраза
-    QLabel*       m_statusLabel  {nullptr};  // текущий шаг загрузки
-    QProgressBar* m_progress     {nullptr};  // полоса прогресса
+    QLabel*       m_logoLabel    {nullptr};
+    QLabel*       m_versionLabel {nullptr};
+    QLabel*       m_phraseLabel  {nullptr};
+    QLabel*       m_statusLabel  {nullptr};
+    QLabel*       m_creditsLabel {nullptr};  // "Made by Xomelz & Claude" — появляется постепенно
+    QProgressBar* m_progress     {nullptr};
+
+    QGraphicsOpacityEffect* m_creditsOpacity {nullptr};
 };
