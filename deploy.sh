@@ -126,14 +126,16 @@ detect_pkg_format() {
 # Если src — файл, упаковывает сам файл.
 make_zip() {
     local src="$1" zip_out="$2"
-    log "ZIP: $(basename "$zip_out")..."
-    rm -f "$zip_out"
+    local abs_zip
+    abs_zip="$(realpath -m "$zip_out")"
+    log "ZIP: $(basename "$abs_zip")..."
+    rm -f "$abs_zip"
     if [[ -d "$src" ]]; then
-        (cd "$(dirname "$src")" && zip -9 -r "$zip_out" "$(basename "$src")")
+        (cd "$(dirname "$src")" && zip -9 -r "$abs_zip" "$(basename "$src")")
     else
-        (cd "$(dirname "$src")" && zip -9 "$zip_out" "$(basename "$src")")
+        (cd "$(dirname "$src")" && zip -9 "$abs_zip" "$(basename "$src")")
     fi
-    ok "  + $(basename "$zip_out")  ($(file_size "$zip_out"))"
+    ok "  + $(basename "$abs_zip")  ($(file_size "$abs_zip"))"
 }
 
 # Копируем файл с логированием; при отсутствии — warn, не fail
