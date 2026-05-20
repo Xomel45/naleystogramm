@@ -48,13 +48,11 @@ void LogPanel::setupUi() {
     // Кнопки
     m_clearBtn = new QPushButton(tr("Clear"));
     m_clearBtn->setObjectName("dlgCancelBtn");
-    m_clearBtn->setFixedHeight(28);
     connect(m_clearBtn, &QPushButton::clicked,
             this, &LogPanel::onClearClicked);
 
     m_exportBtn = new QPushButton(tr("Export"));
     m_exportBtn->setObjectName("dlgCancelBtn");
-    m_exportBtn->setFixedHeight(28);
     connect(m_exportBtn, &QPushButton::clicked,
             this, &LogPanel::onExportClicked);
 

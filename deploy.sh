@@ -84,6 +84,22 @@ write_build_info() {
         > "$dir/build-info.txt"
 }
 
+# Упаковываем файл или директорию в ZIP с максимальным сжатием (-9).
+# make_zip <src> <out.zip>
+# Если src — директория, упаковывает её содержимое (пути относительны родителю).
+# Если src — файл, упаковывает сам файл.
+make_zip() {
+    local src="$1" zip_out="$2"
+    log "ZIP: $(basename "$zip_out")..."
+    rm -f "$zip_out"
+    if [[ -d "$src" ]]; then
+        (cd "$(dirname "$src")" && zip -9 -r "$zip_out" "$(basename "$src")")
+    else
+        (cd "$(dirname "$src")" && zip -9 "$zip_out" "$(basename "$src")")
+    fi
+    ok "  + $(basename "$zip_out")  ($(file_size "$zip_out"))"
+}
+
 # Копируем файл с логированием; при отсутствии — warn, не fail
 copy_file() {
     local src="$1" dst="$2" label="$3"
@@ -251,10 +267,7 @@ deploy_release_windows() {
     header "Release Windows → ${BUILDS_DIR}/releases/${VERSION}-windows/"
     ensure_builds_tree
 
-    # Сборка если запрошена или .exe нет
-    if $DO_BUILD || [[ ! -f "$BUILD_WIN/$APP_NAME.exe" ]]; then
-        build_windows
-    fi
+    build_windows
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-windows"
 
@@ -406,9 +419,12 @@ Naleystogramm v${VERSION} — Windows Release
 EOF
     ok "  + README.txt"
 
+    make_zip "$dest" "${BUILDS_DIR}/releases/${VERSION}-windows.zip"
+
     rule
     ok "Release Windows готов!"
     echo "  Директория:  ${BOLD}$dest/${NC}"
+    echo "  ZIP:         ${VERSION}-windows.zip  ($(file_size "${BUILDS_DIR}/releases/${VERSION}-windows.zip"))"
     echo "  .exe:        $APP_NAME.exe  ($(file_size "$dest/$APP_NAME.exe"))"
     echo "  Скопировано: $ok_count  |  Пропущено: $warn_count"
     echo ""
@@ -729,12 +745,11 @@ show_help() {
     echo "    ./deploy.sh release deb           .deb → builds/releases/${VERSION}-linux/"
     echo "    ./deploy.sh release rpm           .rpm → builds/releases/${VERSION}-linux/"
     echo "    ./deploy.sh release linux-all     Все Linux форматы → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release win           .exe+DLL → builds/releases/${VERSION}-windows/"
-    echo "    ./deploy.sh release all           Все форматы (Linux + Windows)"
+    echo "    ./deploy.sh release win           Собрать + .exe+DLL+zip → builds/releases/${VERSION}-windows/"
+    echo "    ./deploy.sh release all           Всё: AppImage+pkg+deb+rpm + Windows+zip"
     echo ""
     echo -e "  ${BOLD}Опции:${NC}"
-    echo "    --build     Пересобрать через CMake перед деплоем"
-    echo "    --clean     Удалить целевую директорию перед копированием"
+    echo "    --clean     Удалить целевые директории перед сборкой"
     echo ""
     echo -e "  ${BOLD}Примеры:${NC}"
     echo "    ./deploy.sh beta --build                   # собрать + beta"
@@ -816,13 +831,14 @@ case "$MODE" in
                 if $DO_CLEAN; then
                     ensure_builds_tree
                     safe_clean "${BUILDS_DIR}/releases/${VERSION}-linux"
+                    safe_clean "${BUILDS_DIR}/releases/${VERSION}-windows"
+                    rm -f "${BUILDS_DIR}/releases/${VERSION}-windows.zip"
                     DO_CLEAN=false
                 fi
                 deploy_release_linux
                 deploy_release_pkg
                 deploy_release_deb
                 deploy_release_rpm
-                DO_CLEAN=false   # windows-папка уже чистая (новая версия)
                 deploy_release_windows
                 ;;
             both|--build|--clean|*)

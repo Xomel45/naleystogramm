@@ -141,18 +141,31 @@ cmake --build build-linux --target naleystogramm -j$(( $(nproc) - 2 ))
 ### Windows (кросс-компиляция с Linux через MinGW-w64)
 
 ```bash
+# Только dev-сборка бинаря (без упаковки)
 cmake -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw64.cmake
 cmake --build build-win -j$(( $(nproc) - 2 ))
 ```
 
-### Релиз (AppImage + Windows пакет)
+### Релизная сборка
 
 ```bash
-./deploy.sh release --build --clean          # AppImage + Windows
-./deploy.sh release linux-all --build        # все Linux форматы
-./deploy.sh release all --build --clean      # всё сразу
-# Артефакты: builds/releases/0.7.4-linux/ и builds/releases/0.7.4-windows/
+# Все платформы одной командой (рекомендуется)
+./deploy.sh release all
+
+# Только Windows: cmake + DLL + zip → builds/releases/0.7.4-windows/
+./deploy.sh release win
+
+# Только Linux AppImage → builds/releases/0.7.4-linux/
+./deploy.sh release linux
+
+# Все Linux форматы: AppImage + .pkg.tar.zst + .deb + .rpm
+./deploy.sh release linux-all
+
+# Очистить перед сборкой
+./deploy.sh release all --clean
 ```
+
+Артефакты: `builds/releases/0.7.4-linux/` и `builds/releases/0.7.4-windows/` (+ `.zip`)
 
 ---
 
@@ -195,6 +208,21 @@ deploy.sh         — скрипт сборки релизов
 - `PortForwardingMode::OpenPort`: внешний IP определяется автоматически (как в UPnP-режиме), анонсируемый порт задаётся вручную
 - Индикатор в статус-баре: в режиме Open Port вместо «UPnP ✓/✗» отображается «Open Port: XXXXX ✓/✗» с проверкой доступности через TCP self-connect
 - `NetworkManager::checkOpenPort()` — асинхронная проверка достижимости порта с таймаутом 5 сек
+
+**Сплеш-экран**
+- Тема сплеш-экрана берётся из настроек пользователя (раньше была фиксирована)
+- Прогресс-бар стал вдвое толще (10 px)
+- Надпись «Made by Xomelz & Claude» плавно появляется по мере заполнения прогресс-бара (opacity 0 → 1)
+
+**Сборка и упаковка**
+- Windows релиз полностью перенесён в `deploy.sh`: одна команда `./deploy.sh release win` выполняет cmake configure → сборку → копирование DLL → создание zip-архива с максимальным сжатием
+- `./deploy.sh release all` — все платформы одной командой: AppImage + `.pkg.tar.zst` + `.deb` + `.rpm` + Windows + zip
+- CMake-таргет `release-windows` удалён (был тонкой обёрткой над deploy.sh)
+- `--build` флаг больше не нужен для Windows: сборка всегда запускается инкрементально
+
+**Исправления**
+- Кнопка «Сохранить» в панели настроек отображалась чёрной без наведения — исправлено (конфликт CSS-селекторов `QWidget#headerBar QWidget`)
+- Текст кнопок «Очистить» и «Экспорт» в панели логов обрезался — исправлено (убран `setFixedHeight`)
 
 ---
 

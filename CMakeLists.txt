@@ -594,21 +594,6 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
-# ── Release Windows: .exe + Qt DLL ──────────────────────────────────────────
-# Запуск: cmake --build build-win --target release-windows
-# Делегирует deploy.sh который копирует .exe, Qt DLL и плагины.
-# Выход: builds/releases/VERSION-windows/
-# OpenSSL и MinGW runtime встроены статически — DLL не нужны.
-if(WIN32)
-    add_custom_target(release-windows
-        COMMAND bash "${DEPLOY_SCRIPT}" release win
-        DEPENDS naleystogramm translations
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        COMMENT "Деплой release Windows → builds/releases/${APP_VERSION}-windows/"
-        VERBATIM
-    )
-endif()
-
 # ── Справка о deploy-целях ────────────────────────────────────────────────────
 message(STATUS "")
 message(STATUS "Deploy targets:")
@@ -616,8 +601,6 @@ if(UNIX AND NOT APPLE)
     message(STATUS "  make beta             → builds/beta/naleystogramm (сырой ELF)")
     message(STATUS "  make release-linux    → builds/releases/${APP_VERSION}-linux/ (AppImage)")
 endif()
-if(WIN32)
-    message(STATUS "  make release-windows  → builds/releases/${APP_VERSION}-windows/ (.exe+DLL)")
-endif()
-message(STATUS "  ./deploy.sh --help    → полная документация скрипта")
+message(STATUS "  ./deploy.sh release win  → builds/releases/${APP_VERSION}-windows/ (.exe+DLL+zip)")
+message(STATUS "  ./deploy.sh --help       → полная документация скрипта")
 message(STATUS "")

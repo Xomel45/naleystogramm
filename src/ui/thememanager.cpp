@@ -537,7 +537,7 @@ QWidget#headerBar {
     background: %2;
     border-bottom: 1px solid %5;
 }
-QWidget#headerBar QWidget {
+QWidget#headerBar QLabel {
     background: transparent;
 }
 QWidget#headerBar QPushButton#dlgOkBtn {
