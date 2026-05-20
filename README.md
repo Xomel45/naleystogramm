@@ -155,13 +155,21 @@ cmake --build build-win -j$(( $(nproc) - 2 ))
 # Только Windows: cmake + DLL + zip → builds/releases/0.7.4-windows/
 ./deploy.sh release win
 
-# Только Linux AppImage → builds/releases/0.7.4-linux/
+# Linux AppImage → builds/releases/0.7.4-linux/
 ./deploy.sh release linux
 
 # Все Linux форматы: AppImage + .pkg.tar.zst + .deb + .rpm
 ./deploy.sh release linux-all
 
-# Очистить перед сборкой
+# Пакет для конкретного дистрибутива
+./deploy.sh release arch      # или pkg  → .pkg.tar.zst (Arch, Manjaro, Garuda, CachyOS...)
+./deploy.sh release debian    # или deb  → .deb         (Ubuntu, Mint, Kali, Pop!_OS...)
+./deploy.sh release rh        # или rpm  → .rpm         (Fedora, RHEL, openSUSE, Nobara...)
+
+# Авто-определение дистрибутива — соберёт нужный пакет сам
+./deploy.sh release my
+
+# Очистить директории перед сборкой
 ./deploy.sh release all --clean
 ```
 

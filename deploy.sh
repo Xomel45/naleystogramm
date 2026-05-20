@@ -84,6 +84,42 @@ write_build_info() {
         > "$dir/build-info.txt"
 }
 
+# Определяет семейство дистрибутива по /etc/os-release.
+# Возвращает: pkg | deb | rpm | unknown
+detect_pkg_format() {
+    local id="" id_like=""
+    if [[ -f /etc/os-release ]]; then
+        id=$(. /etc/os-release && echo "${ID:-}")
+        id_like=$(. /etc/os-release && echo "${ID_LIKE:-}")
+    fi
+    local combined="${id} ${id_like}"
+
+    # ── Arch и производные ──────────────────────────────────────────────────
+    local arch_re='arch|manjaro|endeavouros|garuda|artix|parabola|cachyos|blackarch'
+    arch_re+='|archlabs|archcraft|arcolinux|archman|archstrike|bluestar|crystal'
+    arch_re+='|ctlos|hyperbola|kaos|librewish|obarun|rebornos|anarchy|axyl|snal'
+    arch_re+='|steamos'
+
+    # ── Debian / Ubuntu и производные ───────────────────────────────────────
+    local deb_re='debian|ubuntu|linuxmint|raspbian|raspios|kali|elementary|zorin'
+    deb_re+='|popos|pop_os|backbox|parrot|tails|deepin|mx|antix|devuan|pureos'
+    deb_re+='|sparky|lmde|bunsenlabs|crunchbang|bodhi|mobian|armbian|siduction'
+    deb_re+='|solydxk|trisquel|netrunner|nitrux|regolith|q4os|peppermint|lite'
+    deb_re+='|neon|kubuntu|lubuntu|xubuntu|endless|astra|knoppix|wubuntu'
+
+    # ── RPM (Fedora / RHEL / SUSE / Mageia) и производные ──────────────────
+    local rpm_re='fedora|rhel|centos|rocky|almalinux|opensuse|suse|oracle|scientific'
+    rpm_re+='|springdale|eurolinux|clearos|cloudlinux|mageia|pclinuxos|openmandriva'
+    rpm_re+='|rosa|nobara|ultramarine|bazzite|aurora|bluefin|coreos|qubes|asahi'
+    rpm_re+='|turbolinux|vine|alt|mandriva|centos-stream|circle'
+
+    if   echo "$combined" | grep -qiE "$arch_re"; then echo "pkg"
+    elif echo "$combined" | grep -qiE "$deb_re";  then echo "deb"
+    elif echo "$combined" | grep -qiE "$rpm_re";  then echo "rpm"
+    else echo "unknown"
+    fi
+}
+
 # Упаковываем файл или директорию в ZIP с максимальным сжатием (-9).
 # make_zip <src> <out.zip>
 # Если src — директория, упаковывает её содержимое (пути относительны родителю).
@@ -741,9 +777,10 @@ show_help() {
     echo "    ./deploy.sh beta                  Сырой ELF → builds/beta/"
     echo "    ./deploy.sh release               AppImage + Windows → builds/releases/VERSION-*/"
     echo "    ./deploy.sh release linux         AppImage → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release pkg           .pkg.tar.zst (Arch/pacman) → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release deb           .deb → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release rpm           .rpm → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release pkg/arch      .pkg.tar.zst (Arch/pacman) → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release deb/debian    .deb → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release rpm/rh        .rpm → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release my            Авто: собирает пакет для текущего дистрибутива"
     echo "    ./deploy.sh release linux-all     Все Linux форматы → builds/releases/${VERSION}-linux/"
     echo "    ./deploy.sh release win           Собрать + .exe+DLL+zip → builds/releases/${VERSION}-windows/"
     echo "    ./deploy.sh release all           Всё: AppImage+pkg+deb+rpm + Windows+zip"
@@ -805,14 +842,24 @@ case "$MODE" in
             win|windows)
                 deploy_release_windows
                 ;;
-            pkg)
+            pkg|arch|Arch)
                 deploy_release_pkg
                 ;;
-            deb)
+            deb|debian|Debian)
                 deploy_release_deb
                 ;;
-            rpm)
+            rpm|rh|RH|red-hat|Red-Hat|red_hat|Red_Hat)
                 deploy_release_rpm
+                ;;
+            my)
+                local fmt
+                fmt=$(detect_pkg_format)
+                case "$fmt" in
+                    pkg) log "Определён дистрибутив: Arch-семейство → .pkg.tar.zst"; deploy_release_pkg ;;
+                    deb) log "Определён дистрибутив: Debian-семейство → .deb";        deploy_release_deb ;;
+                    rpm) log "Определён дистрибутив: RPM-семейство → .rpm";           deploy_release_rpm ;;
+                    *)   fail "Не удалось определить семейство дистрибутива. Укажи формат вручную: pkg / deb / rpm" ;;
+                esac
                 ;;
             linux-all)
                 # Чистим общую linux-папку один раз, чтобы каждый формат
