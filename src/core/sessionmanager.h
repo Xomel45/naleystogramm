@@ -1,5 +1,7 @@
 #pragma once
+#include "device_pairing.h"
 #include <QObject>
+#include <optional>
 #include <QString>
 #include <QUuid>
 #include <QJsonObject>
@@ -200,4 +202,14 @@ private:
 
     // Avatar
     QString m_avatarPath {};
+
+    // Linked devices (multi-device)
+    QList<LinkedDevice> m_linkedDevices {};
+
+public:
+    [[nodiscard]] QList<LinkedDevice> linkedDevices() const { return m_linkedDevices; }
+    void addLinkedDevice(const LinkedDevice& dev);
+    void removeLinkedDevice(const QUuid& uuid);
+    [[nodiscard]] bool isLinkedDevice(const QUuid& uuid) const;
+    [[nodiscard]] std::optional<LinkedDevice> linkedDevice(const QUuid& uuid) const;
 };

@@ -146,14 +146,19 @@ QJsonObject SessionManager::toJson() const {
     privacy["avatar"]   = static_cast<int>(m_privacyAvatar);
     privacy["shell"]    = static_cast<int>(m_privacyShell);
 
+    QJsonArray devices;
+    for (const auto& d : m_linkedDevices)
+        devices.append(d.toJson());
+
     QJsonObject root;
-    root["identity"] = identity;
-    root["network"]  = network;
-    root["ui"]       = ui;
-    root["updates"]  = updates;
-    root["security"] = security;
-    root["privacy"]  = privacy;
-    root["meta"]     = meta;
+    root["identity"]      = identity;
+    root["network"]       = network;
+    root["ui"]            = ui;
+    root["updates"]       = updates;
+    root["security"]      = security;
+    root["privacy"]       = privacy;
+    root["meta"]          = meta;
+    root["linkedDevices"] = devices;
 
     return root;
 }
@@ -205,6 +210,11 @@ void SessionManager::fromJson(const QJsonObject& obj) {
     m_privacyVoice    = privLevel("voice",    PrivacyLevel::Everyone);
     m_privacyAvatar   = privLevel("avatar",   PrivacyLevel::Everyone);
     m_privacyShell    = privLevel("shell",    PrivacyLevel::ContactsOnly);
+
+    // Linked devices
+    m_linkedDevices.clear();
+    for (const auto& v : obj["linkedDevices"].toArray())
+        m_linkedDevices.append(LinkedDevice::fromJson(v.toObject()));
 }
 
 void SessionManager::generateIdentityIfNeeded() {
@@ -295,4 +305,32 @@ void SessionManager::ensureDirectories() {
             qWarning("[Session] Directory Creation Failed: %s", d.label);
         }
     }
+}
+
+// ── Linked devices ────────────────────────────────────────────────────────────
+
+void SessionManager::addLinkedDevice(const LinkedDevice& dev) {
+    // Обновляем если уже есть, иначе добавляем
+    for (auto& d : m_linkedDevices) {
+        if (d.uuid == dev.uuid) { d = dev; scheduleSave(); return; }
+    }
+    m_linkedDevices.append(dev);
+    scheduleSave();
+}
+
+void SessionManager::removeLinkedDevice(const QUuid& uuid) {
+    const int before = m_linkedDevices.size();
+    m_linkedDevices.removeIf([&](const LinkedDevice& d){ return d.uuid == uuid; });
+    if (m_linkedDevices.size() != before) scheduleSave();
+}
+
+bool SessionManager::isLinkedDevice(const QUuid& uuid) const {
+    return std::any_of(m_linkedDevices.cbegin(), m_linkedDevices.cend(),
+                       [&](const LinkedDevice& d){ return d.uuid == uuid; });
+}
+
+std::optional<LinkedDevice> SessionManager::linkedDevice(const QUuid& uuid) const {
+    for (const auto& d : m_linkedDevices)
+        if (d.uuid == uuid) return d;
+    return std::nullopt;
 }

@@ -81,6 +81,8 @@ set(SOURCES
     # Core
     src/core/identity.h
     src/core/identity.cpp
+    src/core/device_pairing.h
+    src/core/device_pairing.cpp
     src/core/network.h
     src/core/network.cpp
     src/core/storage.h

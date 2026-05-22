@@ -1,6 +1,7 @@
 #include "network.h"
 #include "identity.h"
 #include "versionutils.h"
+#include "device_pairing.h"
 #include <QCoreApplication>
 #include <QPointer>
 #include "upnp.h"
@@ -752,8 +753,13 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
                 .arg(peer.ip, peerName.isEmpty() ? QStringLiteral("?") : peerName,
                      peerVersion.isEmpty() ? QStringLiteral("?") : peerVersion), true);
 
-        peer.helloName    = peerName;
-        peer.helloVersion = peerVersion;
+        peer.helloName        = peerName;
+        peer.helloVersion     = peerVersion;
+        peer.isLinkedDevice   = (obj["role"].toString() == "DEVICE");
+
+        if (peer.isLinkedDevice)
+            log(QString("CLIENT_HELLO от %1 «%2»: роль DEVICE (привязанный девайс)")
+                    .arg(peer.ip, peerName));
 
         if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
             log(QString("CLIENT_HELLO отклонён от %1: версия %2 < минимальной %3 — "
@@ -819,6 +825,97 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
                      minVer, theirVer), true);
         emit error(tr("Несовместимая версия: требуется ≥ %1").arg(minVer));
         peer.socket->abort();
+        return;
+    }
+
+    // ── Device pairing ────────────────────────────────────────────────────────
+    // Вторичный → главный: запрос привязки с одноразовым кодом
+    if (type == "DEVICE_PAIR_REQUEST") {
+        const QString code    = obj["code"].toString();
+        const QUuid   devUuid = QUuid(obj["uuid"].toString());
+        const QString devName = obj["name"].toString().left(256)
+                                    .remove(kCtrlCharsHello).trimmed();
+
+        log(QString("DEVICE_PAIR_REQUEST от %1 «%2»: проверяем код...")
+                .arg(peer.ip, devName), true);
+
+        if (devUuid.isNull()) {
+            log(QString("DEVICE_PAIR_REQUEST: невалидный UUID от %1 — отклоняем").arg(peer.ip), true);
+            peer.socket->write(QJsonDocument(
+                DevicePairing::makePairReject("invalid_uuid")).toJson(QJsonDocument::Compact) + '\n');
+            peer.socket->flush();
+            return;
+        }
+
+        if (!DevicePairing::validateAndConsume(code)) {
+            const QString reason = DevicePairing::currentCode().isEmpty()
+                ? "expired" : "invalid_code";
+            log(QString("DEVICE_PAIR_REQUEST: неверный/просроченный код от %1 «%2» — %3")
+                    .arg(peer.ip, devName, reason), true);
+            peer.socket->write(QJsonDocument(
+                DevicePairing::makePairReject(reason)).toJson(QJsonDocument::Compact) + '\n');
+            peer.socket->flush();
+            return;
+        }
+
+        // Код верный — сохраняем вторичный девайс
+        LinkedDevice dev;
+        dev.uuid      = devUuid;
+        dev.name      = devName;
+        dev.isPrimary = false;
+        dev.linkedAt  = QDateTime::currentMSecsSinceEpoch();
+        SessionManager::instance().addLinkedDevice(dev);
+        peer.isLinkedDevice = true;
+
+        log(QString("DEVICE_PAIR_REQUEST: привязан девайс «%1» (%2)")
+                .arg(devName, devUuid.toString(QUuid::WithoutBraces)), true);
+
+        peer.socket->write(QJsonDocument(
+            DevicePairing::makePairAccept(
+                Identity::instance().uuid(),
+                Identity::instance().displayName())
+        ).toJson(QJsonDocument::Compact) + '\n');
+        peer.socket->flush();
+
+        emit deviceLinked(devUuid, devName, false /*isPrimary*/);
+        return;
+    }
+
+    // Главный → вторичный: подтверждение привязки
+    if (type == "DEVICE_PAIR_ACCEPT") {
+        const QUuid   primUuid = QUuid(obj["uuid"].toString());
+        const QString primName = obj["name"].toString().left(256)
+                                     .remove(kCtrlCharsHello).trimmed();
+
+        if (primUuid.isNull()) {
+            log(QString("DEVICE_PAIR_ACCEPT: невалидный UUID от %1").arg(peer.ip), true);
+            return;
+        }
+
+        LinkedDevice dev;
+        dev.uuid      = primUuid;
+        dev.name      = primName;
+        dev.isPrimary = true;
+        dev.linkedAt  = QDateTime::currentMSecsSinceEpoch();
+        SessionManager::instance().addLinkedDevice(dev);
+        peer.isLinkedDevice = true;
+
+        log(QString("DEVICE_PAIR_ACCEPT: привязан главный девайс «%1» (%2)")
+                .arg(primName, primUuid.toString(QUuid::WithoutBraces)), true);
+
+        emit deviceLinked(primUuid, primName, true /*isPrimary*/);
+        return;
+    }
+
+    // Главный → вторичный: отказ привязки
+    if (type == "DEVICE_PAIR_REJECT") {
+        const QString reason = obj["reason"].toString();
+        log(QString("DEVICE_PAIR_REJECT от %1: %2").arg(peer.ip, reason), true);
+        emit error(tr("Привязка отклонена: %1").arg(
+            reason == "invalid_code" ? tr("неверный код")  :
+            reason == "expired"      ? tr("код устарел")   :
+            reason == "invalid_uuid" ? tr("невалидный UUID") : reason));
+        peer.socket->disconnectFromHost();
         return;
     }
 
@@ -1015,11 +1112,20 @@ void NetworkManager::onSocketDisconnected() {
 // ── Send ──────────────────────────────────────────────────────────────────
 
 void NetworkManager::sendClientHello(QTcpSocket* socket) {
-    const QJsonObject obj{
+    // role=DEVICE если у нас есть запись о главном (мы вторичный девайс).
+    // При первом подключении (до паринга) роль не выставляем.
+    const auto& devices = SessionManager::instance().linkedDevices();
+    const bool actingAsDevice = std::any_of(devices.cbegin(), devices.cend(),
+        [](const LinkedDevice& d){ return d.isPrimary; });
+
+    QJsonObject obj{
         {"type",    "CLIENT_HELLO"},
         {"version", QCoreApplication::applicationVersion()},
         {"name",    Identity::instance().displayName()},
     };
+    if (actingAsDevice)
+        obj["role"] = QStringLiteral("DEVICE");
+
     socket->write(QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n');
 }
 

@@ -53,6 +53,7 @@ struct PeerConnection {
     // Заполняется из CLIENT_HELLO / SERVER_HELLO (до HANDSHAKE)
     QString          helloName        {};          // Имя пира из приветствия
     QString          helloVersion     {};          // Версия пира из приветствия
+    bool             isLinkedDevice   {false};     // true = привязанный девайс, не контакт
 };
 
 // Публичная информация о пире — безопасная копия для UI и диалогов
@@ -131,6 +132,11 @@ signals:
 
     // Пир прислал PROFILE_UPDATE с новым именем
     void        contactNameUpdated(QUuid uuid, QString name);
+
+    // Паринг девайсов: успешная привязка
+    // isPrimary=true  — мы вторичный, привязали главный
+    // isPrimary=false — мы главный, привязали вторичный
+    void        deviceLinked(QUuid uuid, QString name, bool isPrimary);
 
     // Системная информация / хэш аватара пира обновлены (из HANDSHAKE)
     void        peerInfoUpdated(QUuid uuid);
