@@ -211,12 +211,43 @@ void NetworkManager::discoverExternalIp() {
 }
 
 void NetworkManager::tryUpnp() {
+    qDebug("[Network] [UPnP] Запускаем UPnP маппинг порта %d...", m_localPort);
     auto* upnp = new UpnpMapper(this);
     connect(upnp, &UpnpMapper::mapped, this, [this, upnp](bool ok) {
         m_upnpMapped = ok;
         upnp->deleteLater();
-        qDebug("[Network] UPnP: %s", ok ? "OK" : "failed");
+
+        if (ok) {
+            qDebug("[Network] [4/4 Result] UPnP маппинг УСПЕШЕН — "
+                   "порт %d доступен снаружи, внешний IP: %s",
+                   m_localPort, qPrintable(m_externalIp));
+        } else {
+            qWarning("[Network] [4/4 Result] UPnP маппинг ПРОВАЛИЛСЯ — "
+                     "порт %d НЕ доступен снаружи.\n"
+                     "  Альтернативы: ручной проброс порта в роутере (режим "
+                     "«Разблокированный порт») или режим «Ретранслятор».",
+                     m_localPort);
+        }
+
         emit upnpMappingResult(ok);
+
+        // Перепробрасываем lease до его истечения. Запускаем таймер только
+        // при первом успешном маппинге; повторные tryUpnp() рестартуют его.
+        if (ok) {
+            if (!m_upnpRefreshTimer) {
+                m_upnpRefreshTimer = new QTimer(this);
+                connect(m_upnpRefreshTimer, &QTimer::timeout, this, [this]() {
+                    if (SessionManager::instance().portForwardingMode()
+                            != PortForwardingMode::UpnpAuto) return;
+                    qDebug("[Network] [UPnP] Refresh: обновляем lease (порт %d)",
+                           m_localPort);
+                    tryUpnp();
+                });
+            }
+            m_upnpRefreshTimer->start(kUpnpRefreshIntervalMs);
+            qDebug("[Network] [UPnP] Refresh-таймер запущен, следующее обновление "
+                   "через %d мс", kUpnpRefreshIntervalMs);
+        }
     });
     upnp->mapPort(m_localPort);
 }
@@ -258,12 +289,14 @@ void NetworkManager::checkOpenPort() {
 }
 
 void NetworkManager::retryUpnp() {
-    // Повторная попытка имеет смысл только в режиме UPnP Auto
-    if (SessionManager::instance().portForwardingMode() != PortForwardingMode::UpnpAuto) {
-        log("retryUpnp: активен не UPnP-режим — пропускаем", true);
+    const auto mode = SessionManager::instance().portForwardingMode();
+    if (mode != PortForwardingMode::UpnpAuto) {
+        qDebug("[Network] retryUpnp: пропускаем (режим=%d, нужен UpnpAuto=0)",
+               static_cast<int>(mode));
         return;
     }
-    log("Повторная попытка UPnP маппинга...", true);
+    qDebug("[Network] retryUpnp: запускаем повторный UPnP маппинг порта %d",
+           m_localPort);
     m_upnpMapped = false;
     tryUpnp();
 }
@@ -559,8 +592,9 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
         connect(socket, &QTcpSocket::disconnected,
                 this, &NetworkManager::onSocketDisconnected);
 
-        sendHandshake(socket);
-        log(QString("Handshake sent to %1").arg(peer.name));
+        sendClientHello(socket);
+        log(QString("CLIENT_HELLO отправлен → %1 (%2:%3)")
+            .arg(peer.name, peer.ip).arg(peer.port));
 
         // Запускаем keepalive
         startKeepalive(peer.uuid);
@@ -704,6 +738,90 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
     // Обновляем время последней активности
     peer.lastActivity = QDateTime::currentDateTime();
 
+    // ── Общий regex для фильтрации управляющих символов (переиспользуется ниже) ───
+    static const QRegularExpression kCtrlCharsHello(QStringLiteral("[\\x00-\\x1F\\x7F]"));
+
+    if (type == "CLIENT_HELLO") {
+        const QString peerVersion = obj["version"].toString();
+        const QString peerName    = obj["name"].toString()
+                                        .left(256)
+                                        .remove(kCtrlCharsHello)
+                                        .trimmed();
+
+        log(QString("CLIENT_HELLO от %1: имя «%2», версия %3")
+                .arg(peer.ip, peerName.isEmpty() ? QStringLiteral("?") : peerName,
+                     peerVersion.isEmpty() ? QStringLiteral("?") : peerVersion), true);
+
+        peer.helloName    = peerName;
+        peer.helloVersion = peerVersion;
+
+        if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
+            log(QString("CLIENT_HELLO отклонён от %1: версия %2 < минимальной %3 — "
+                        "отправляем VERSION_REJECT и разрываем соединение")
+                    .arg(peer.ip, peerVersion, kMinPeerVersion), true);
+            const QJsonObject reject{
+                {"type",       "VERSION_REJECT"},
+                {"minVersion", kMinPeerVersion},
+                {"ourVersion", QCoreApplication::applicationVersion()},
+            };
+            peer.socket->write(QJsonDocument(reject).toJson(QJsonDocument::Compact) + '\n');
+            peer.socket->flush();
+            QTimer::singleShot(200, peer.socket, &QTcpSocket::abort);
+            return;
+        }
+
+        const QJsonObject hello{
+            {"type",    "SERVER_HELLO"},
+            {"version", QCoreApplication::applicationVersion()},
+            {"name",    Identity::instance().displayName()},
+        };
+        peer.socket->write(QJsonDocument(hello).toJson(QJsonDocument::Compact) + '\n');
+        log(QString("SERVER_HELLO отправлен → %1 «%2» (версия %3)")
+                .arg(peer.ip, peerName, peerVersion));
+        return;
+    }
+
+    if (type == "SERVER_HELLO") {
+        const QString peerVersion = obj["version"].toString();
+        const QString peerName    = obj["name"].toString()
+                                        .left(256)
+                                        .remove(kCtrlCharsHello)
+                                        .trimmed();
+
+        log(QString("SERVER_HELLO от %1: имя «%2», версия %3")
+                .arg(peer.ip, peerName.isEmpty() ? QStringLiteral("?") : peerName,
+                     peerVersion.isEmpty() ? QStringLiteral("?") : peerVersion), true);
+
+        peer.helloName    = peerName;
+        peer.helloVersion = peerVersion;
+
+        if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
+            log(QString("SERVER_HELLO: версия %1 < минимальной %2 — разрываем соединение")
+                    .arg(peerVersion, kMinPeerVersion), true);
+            peer.socket->abort();
+            return;
+        }
+
+        log(QString("SERVER_HELLO OK — версии совместимы, отправляем HANDSHAKE → «%1» (%2)")
+                .arg(peerName, peerVersion));
+        sendHandshake(peer.socket);
+        return;
+    }
+
+    if (type == "VERSION_REJECT") {
+        const QString minVer   = obj["minVersion"].toString();
+        const QString theirVer = obj["ourVersion"].toString();
+        log(QString("VERSION_REJECT от %1 «%2»: наша версия %3 не поддерживается, "
+                    "требуется ≥ %4 (их версия: %5)")
+                .arg(peer.ip,
+                     peer.helloName.isEmpty() ? peer.ip : peer.helloName,
+                     QCoreApplication::applicationVersion(),
+                     minVer, theirVer), true);
+        emit error(tr("Несовместимая версия: требуется ≥ %1").arg(minVer));
+        peer.socket->abort();
+        return;
+    }
+
     if (type == "HANDSHAKE") {
         // M-4: валидируем UUID до сохранения — нулевой UUID недопустим
         const QUuid parsedUuid = QUuid(obj["uuid"].toString());
@@ -714,22 +832,27 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
         }
 
         // H-1: ограничиваем длину имени (256 символов), удаляем управляющие символы
-        static const QRegularExpression kCtrlChars(QStringLiteral("[\\x00-\\x1F\\x7F]"));
         const QString rawName = obj["name"].toString();
 
         // Проверяем минимальную версию пира
         const QString peerVersion = obj["version"].toString();
+        const QString peerVersionDisplay = peerVersion.isEmpty() ? QStringLiteral("<неизвестно>") : peerVersion;
+        log(QString("HANDSHAKE от %1: версия пира %2 (наша %3, минимум %4)")
+                .arg(peer.ip)
+                .arg(peerVersionDisplay)
+                .arg(QCoreApplication::applicationVersion())
+                .arg(kMinPeerVersion), true);
         if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
-            log(QString("HANDSHAKE отклонён от %1: версия %2 < минимальной %3")
+            log(QString("HANDSHAKE отклонён от %1: версия %2 < минимальной %3 — разрываем соединение")
                     .arg(peer.ip)
-                    .arg(peerVersion.isEmpty() ? "<неизвестно>" : peerVersion)
+                    .arg(peerVersionDisplay)
                     .arg(kMinPeerVersion), true);
             peer.socket->abort();
             return;
         }
 
         peer.uuid       = parsedUuid;
-        peer.name       = rawName.left(256).remove(kCtrlChars).trimmed();
+        peer.name       = rawName.left(256).remove(kCtrlCharsHello).trimmed();
         peer.serverPort = static_cast<quint16>(obj["port"].toInt(0));
         peer.avatarHash = obj["avatarHash"].toString();
 
@@ -773,10 +896,17 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
         if (obj["accepted"].toBool()) {
             // Проверяем минимальную версию пира
             const QString peerVersionAck = obj["version"].toString();
+            const QString peerVersionAckDisplay = peerVersionAck.isEmpty()
+                ? QStringLiteral("<неизвестно>") : peerVersionAck;
+            log(QString("HANDSHAKE_ACK от %1: версия пира %2 (наша %3, минимум %4)")
+                    .arg(peer.ip)
+                    .arg(peerVersionAckDisplay)
+                    .arg(QCoreApplication::applicationVersion())
+                    .arg(kMinPeerVersion), true);
             if (VersionUtils::compare(peerVersionAck, kMinPeerVersion) < 0) {
-                log(QString("HANDSHAKE_ACK отклонён от %1: версия %2 < минимальной %3")
+                log(QString("HANDSHAKE_ACK отклонён от %1: версия %2 < минимальной %3 — разрываем соединение")
                         .arg(peer.ip)
-                        .arg(peerVersionAck.isEmpty() ? "<неизвестно>" : peerVersionAck)
+                        .arg(peerVersionAckDisplay)
                         .arg(kMinPeerVersion), true);
                 peer.socket->abort();
                 return;
@@ -883,6 +1013,15 @@ void NetworkManager::onSocketDisconnected() {
 }
 
 // ── Send ──────────────────────────────────────────────────────────────────
+
+void NetworkManager::sendClientHello(QTcpSocket* socket) {
+    const QJsonObject obj{
+        {"type",    "CLIENT_HELLO"},
+        {"version", QCoreApplication::applicationVersion()},
+        {"name",    Identity::instance().displayName()},
+    };
+    socket->write(QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n');
+}
 
 void NetworkManager::sendHandshake(QTcpSocket* socket) {
     const auto& id = Identity::instance();

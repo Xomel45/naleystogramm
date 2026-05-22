@@ -18,6 +18,12 @@ static const QStringList kRequiredPaletteFields = {
     "bannerBg", "bannerBorder", "bannerText", "bannerBtnHover"
 };
 
+// #rrggbb или #rrggbbaa
+static bool isValidHexColor(const QString& s) {
+    static const QRegularExpression kRe(R"(^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$)");
+    return kRe.match(s).hasMatch();
+}
+
 QString CustomThemeManager::themesDir() {
     return QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/themes";
 }
@@ -56,15 +62,22 @@ bool CustomThemeManager::validateThemeDir(const QString& dirPath, QString& outEr
     }
     const QJsonObject pal = obj.value("palette").toObject();
     for (const QString& field : kRequiredPaletteFields) {
-        if (!pal.contains(field)) {
-            outError = QString("theme.json: palette.%1 отсутствует").arg(field);
+        const QString val = pal.value(field).toString();
+        if (val.isEmpty()) {
+            outError = QString("theme.json: palette.%1 отсутствует или пустой").arg(field);
+            return false;
+        }
+        if (!isValidHexColor(val)) {
+            outError = QString("theme.json: palette.%1: некорректный цвет \"%2\" (ожидается #rrggbb)")
+                           .arg(field, val);
             return false;
         }
     }
     return true;
 }
 
-bool CustomThemeManager::importArchive(const QString& archivePath, QString& outError) {
+bool CustomThemeManager::importArchive(const QString& archivePath, QString& outError,
+                                       QString* outFolderName) {
     // Создаём папку тем если нет
     QDir destBase(themesDir());
     if (!destBase.exists()) destBase.mkpath(".");
@@ -177,6 +190,7 @@ bool CustomThemeManager::importArchive(const QString& archivePath, QString& outE
     }
 
     tmp.removeRecursively();
+    if (outFolderName) *outFolderName = folderName;
     return true;
 }
 

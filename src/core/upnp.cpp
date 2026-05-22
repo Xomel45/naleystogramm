@@ -78,13 +78,33 @@ void UpnpMapper::discover() {
     // а не через VPN или loopback при наличии нескольких интерфейсов.
     if (!m_localIp.isEmpty()) {
         if (!udp->bind(QHostAddress(m_localIp), 0, QUdpSocket::ShareAddress)) {
-            qWarning("[UPnP] Не удалось привязать UDP к %s: %s",
+            qWarning("[UPnP] [1/4 SSDP] Не удалось привязать UDP к %s: %s — "
+                     "пробуем Any",
                      qPrintable(m_localIp), qPrintable(udp->errorString()));
-            // Запасной вариант — привязываемся к Any
-            udp->bind(QHostAddress::Any, 0, QUdpSocket::ShareAddress);
+            if (!udp->bind(QHostAddress::Any, 0, QUdpSocket::ShareAddress)) {
+                qWarning("[UPnP] [1/4 SSDP] Привязка к Any тоже провалилась: %s — "
+                         "SSDP невозможен",
+                         qPrintable(udp->errorString()));
+                udp->deleteLater();
+                emit mapped(false);
+                return;
+            }
+            qDebug("[UPnP] [1/4 SSDP] Привязан к Any:%d (fallback)",
+                   udp->localPort());
+        } else {
+            qDebug("[UPnP] [1/4 SSDP] Привязан к %s:%d",
+                   qPrintable(m_localIp), udp->localPort());
         }
     } else {
-        udp->bind(QHostAddress::Any, 0, QUdpSocket::ShareAddress);
+        if (!udp->bind(QHostAddress::Any, 0, QUdpSocket::ShareAddress)) {
+            qWarning("[UPnP] [1/4 SSDP] Привязка к Any провалилась: %s",
+                     qPrintable(udp->errorString()));
+            udp->deleteLater();
+            emit mapped(false);
+            return;
+        }
+        qDebug("[UPnP] [1/4 SSDP] Привязан к Any:%d (localIp не определён)",
+               udp->localPort());
     }
 
     const QByteArray ssdp =
@@ -97,11 +117,14 @@ void UpnpMapper::discover() {
 
     const qint64 sent = udp->writeDatagram(ssdp,
                                            QHostAddress("239.255.255.250"), 1900);
-    if (sent != ssdp.size())
-        qWarning("[UPnP] SSDP пакет отправлен частично (%lld из %d байт)",
-                 sent, ssdp.size());
-    else
-        qDebug("[UPnP] SSDP M-SEARCH отправлен на 239.255.255.250:1900");
+    if (sent != ssdp.size()) {
+        qWarning("[UPnP] [1/4 SSDP] Пакет отправлен частично (%lld из %lld байт): %s",
+                 sent, static_cast<qint64>(ssdp.size()), qPrintable(udp->errorString()));
+    } else {
+        qDebug("[UPnP] [1/4 SSDP] M-SEARCH отправлен на 239.255.255.250:1900 "
+               "(%lld байт), ожидаем ответ %d мс...",
+               static_cast<qint64>(ssdp.size()), kUpnpTimeoutMs);
+    }
 
     auto* timer = new QTimer(this);
     timer->setSingleShot(true);
@@ -109,12 +132,17 @@ void UpnpMapper::discover() {
     connect(udp, &QUdpSocket::readyRead, this, [this, udp, timer]() {
         timer->stop();
         timer->deleteLater();
+
+        QHostAddress senderAddr;
+        quint16 senderPort = 0;
         QByteArray data;
         data.resize(static_cast<int>(udp->pendingDatagramSize()));
-        udp->readDatagram(data.data(), data.size());
+        udp->readDatagram(data.data(), data.size(), &senderAddr, &senderPort);
         udp->deleteLater();
 
-        qDebug("[UPnP] SSDP ответ получен (%d байт)", data.size());
+        qDebug("[UPnP] [1/4 SSDP] Ответ получен от %s:%d (%lld байт)",
+               qPrintable(senderAddr.toString()), senderPort,
+               static_cast<qint64>(data.size()));
 
         // Извлекаем LOCATION: заголовок из SSDP ответа
         static const QRegularExpression re(
@@ -122,14 +150,17 @@ void UpnpMapper::discover() {
             QRegularExpression::CaseInsensitiveOption);
         auto match = re.match(QString::fromLatin1(data));
         if (!match.hasMatch()) {
-            qWarning("[UPnP] LOCATION заголовок не найден в SSDP ответе — "
-                     "IGD не поддерживает стандартный UPnP");
+            qWarning("[UPnP] [1/4 SSDP] LOCATION заголовок не найден.\n"
+                     "  Ответ роутера:\n%s\n"
+                     "  Вероятная причина: роутер ответил, но не является IGD "
+                     "(нет WANIPConnection/WANPPPConnection).",
+                     data.constData());
             emit mapped(false);
             return;
         }
 
         const QString location = match.captured(1).trimmed();
-        qDebug("[UPnP] IGD найден: %s", qPrintable(location));
+        qDebug("[UPnP] [1/4 SSDP] IGD обнаружен: %s", qPrintable(location));
         fetchControlUrl(location);
     });
 
@@ -138,13 +169,22 @@ void UpnpMapper::discover() {
 
         if (m_retryCount + 1 < kMaxRetries) {
             ++m_retryCount;
-            qWarning("[UPnP] Таймаут обнаружения IGD — повтор через %d мс "
-                     "(попытка %d/%d)",
-                     kRetryDelayMs, m_retryCount + 1, kMaxRetries);
+            qWarning("[UPnP] [1/4 SSDP] Таймаут (%d мс) — роутер не ответил на "
+                     "M-SEARCH. Повтор через %d мс (попытка %d/%d).\n"
+                     "  Возможные причины: UPnP отключён на роутере, мультикаст "
+                     "239.255.255.250 блокируется, интерфейс %s не видит роутер.",
+                     kUpnpTimeoutMs, kRetryDelayMs,
+                     m_retryCount + 1, kMaxRetries,
+                     qPrintable(m_localIp));
             QTimer::singleShot(kRetryDelayMs, this, &UpnpMapper::discover);
         } else {
-            qWarning("[UPnP] IGD устройство не найдено после %d попыток — "
-                     "UPnP недоступен (нет ответа на SSDP)", kMaxRetries);
+            qWarning("[UPnP] [1/4 SSDP] IGD не найден после %d попыток.\n"
+                     "  Что делать:\n"
+                     "  1. Зайти в панель роутера → включить UPnP/IGD\n"
+                     "  2. Или переключить режим на «Разблокированный порт» "
+                     "и пробросить порт вручную\n"
+                     "  3. Или использовать режим «Ретранслятор»",
+                     kMaxRetries);
             emit mapped(false);
         }
     });
@@ -154,7 +194,7 @@ void UpnpMapper::discover() {
 
 // Загружаем XML-описание IGD для поиска controlURL WANIPConnection/WANPPPConnection
 void UpnpMapper::fetchControlUrl(const QString& location) {
-    qDebug("[UPnP] Загружаем описание IGD: %s", qPrintable(location));
+    qDebug("[UPnP] [2/4 Describe] Загружаем описание IGD: %s", qPrintable(location));
 
     auto* nam = new QNetworkAccessManager(this);
     auto* reply = nam->get(QNetworkRequest(QUrl(location)));
@@ -164,14 +204,19 @@ void UpnpMapper::fetchControlUrl(const QString& location) {
         nam->deleteLater();
 
         if (reply->error() != QNetworkReply::NoError) {
-            qWarning("[UPnP] Ошибка загрузки описания IGD: %s",
-                     qPrintable(reply->errorString()));
+            qWarning("[UPnP] [2/4 Describe] Ошибка загрузки XML-описания IGD:\n"
+                     "  URL: %s\n"
+                     "  Ошибка: %s (HTTP %d)",
+                     qPrintable(location),
+                     qPrintable(reply->errorString()),
+                     reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt());
             emit mapped(false);
             return;
         }
 
         const QString xml = QString::fromUtf8(reply->readAll());
-        qDebug("[UPnP] Описание IGD получено (%d байт)", xml.size());
+        qDebug("[UPnP] [2/4 Describe] XML получен (%lld байт)",
+               static_cast<qint64>(xml.size()));
 
         // Ищем controlURL для WANIPConnection или WANPPPConnection
         static const QRegularExpression re(
@@ -180,8 +225,20 @@ void UpnpMapper::fetchControlUrl(const QString& location) {
             QRegularExpression::DotMatchesEverythingOption);
         auto match = re.match(xml);
         if (!match.hasMatch()) {
-            qWarning("[UPnP] controlURL для WANIPConnection/WANPPPConnection не найден "
-                     "в описании IGD — роутер может не поддерживать UPnP IGD v1");
+            // Показываем доступные serviceType чтобы понять что поддерживает роутер
+            static const QRegularExpression reServices(
+                "<serviceType>([^<]+)</serviceType>",
+                QRegularExpression::DotMatchesEverythingOption);
+            QStringList services;
+            auto it = reServices.globalMatch(xml);
+            while (it.hasNext())
+                services << it.next().captured(1).trimmed();
+            qWarning("[UPnP] [2/4 Describe] controlURL не найден.\n"
+                     "  Нужен: WANIPConnection:1 или WANPPPConnection:1\n"
+                     "  Найдено в XML (%lld сервисов): %s\n"
+                     "  Вероятно, роутер не поддерживает UPnP IGD v1.",
+                     static_cast<qint64>(services.size()),
+                     qPrintable(services.join(", ")));
             emit mapped(false);
             return;
         }
@@ -195,7 +252,7 @@ void UpnpMapper::fetchControlUrl(const QString& location) {
                 .arg(base.port(80))
                 .arg(ctrl);
 
-        qDebug("[UPnP] Control URL: %s", qPrintable(ctrl));
+        qDebug("[UPnP] [2/4 Describe] Control URL: %s", qPrintable(ctrl));
         addPortMapping(ctrl, m_port);
     });
 }
@@ -216,6 +273,10 @@ void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port) {
 
     const QByteArray soap = soapRequest("AddPortMapping", body).toUtf8();
 
+    qDebug("[UPnP] [3/4 SOAP] AddPortMapping: порт %d → %s\n"
+           "  Control URL: %s",
+           port, qPrintable(m_localIp), qPrintable(controlUrl));
+
     // C++20: используем brace-init чтобы избежать most vexing parse
     // QNetworkRequest req(QUrl(controlUrl)) компилятор трактует как объявление функции
     QNetworkRequest req{QUrl{controlUrl}};
@@ -227,13 +288,50 @@ void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port) {
     auto* nam = new QNetworkAccessManager(this);
     auto* reply = nam->post(req, soap);
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam]() {
-        const bool ok = (reply->error() == QNetworkReply::NoError);
-        if (ok) qDebug("[UPnP] Port mapped successfully");
-        else qWarning("[UPnP] SOAP error: %s", qPrintable(reply->errorString()));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, nam, port]() {
+        const int httpStatus =
+            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray body = reply->readAll();
+
+        if (reply->error() == QNetworkReply::NoError) {
+            qDebug("[UPnP] [3/4 SOAP] AddPortMapping OK (HTTP %d) — "
+                   "порт %d проброшен успешно", httpStatus, port);
+        } else {
+            // Парсим UPnP SOAP Fault: <errorCode> и <errorDescription>
+            const QString xml = QString::fromUtf8(body);
+            static const QRegularExpression reCode("<errorCode>(\\d+)</errorCode>");
+            static const QRegularExpression reDesc(
+                "<errorDescription>([^<]+)</errorDescription>");
+            const auto mCode = reCode.match(xml);
+            const auto mDesc = reDesc.match(xml);
+            const QString upnpCode = mCode.hasMatch() ? mCode.captured(1) : "?";
+            const QString upnpDesc = mDesc.hasMatch() ? mDesc.captured(1) : "нет";
+
+            // Расшифровка кодов ошибок IGD (UPnP Forum WANIPConnection:1 spec)
+            QString hint;
+            if (upnpCode == "718")
+                hint = "порт уже занят другим приложением (ConflictInMappingEntry)";
+            else if (upnpCode == "725")
+                hint = "роутер не разрешает OnlyPermanentLeasesSupported — "
+                       "попробуй NewLeaseDuration=0";
+            else if (upnpCode == "501")
+                hint = "действие не поддерживается роутером (ActionFailed)";
+            else if (upnpCode == "606")
+                hint = "доступ запрещён роутером (Unauthorized)";
+
+            qWarning("[UPnP] [3/4 SOAP] AddPortMapping провалился:\n"
+                     "  HTTP статус: %d\n"
+                     "  SOAP ошибка: %s (%s)%s\n"
+                     "  Тело ответа: %s",
+                     httpStatus,
+                     qPrintable(upnpCode), qPrintable(upnpDesc),
+                     hint.isEmpty() ? "" : qPrintable("\n  Подсказка: " + hint),
+                     body.constData());
+        }
+
         reply->deleteLater();
         nam->deleteLater();
-        emit mapped(ok);
+        emit mapped(reply->error() == QNetworkReply::NoError);
     });
 }
 

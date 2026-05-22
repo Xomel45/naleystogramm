@@ -44,11 +44,15 @@ struct PeerConnection {
     QElapsedTimer    rateWindow       {};
     quint32          rateCount        {0};
 
-    // Профиль пира (заполняется из HANDSHAKE)
+    // Профиль пира (заполняется из CLIENT_HELLO / HANDSHAKE)
     qint64           latencyMs        {-1};       // Последний пинг, мс (-1 = нет данных)
     QDateTime        connectedSince   {};          // Момент установки соединения
     QJsonObject      systemInfo       {};          // Системная информация пира
     QString          avatarHash       {};          // SHA-256 hex аватара пира
+
+    // Заполняется из CLIENT_HELLO / SERVER_HELLO (до HANDSHAKE)
+    QString          helloName        {};          // Имя пира из приветствия
+    QString          helloVersion     {};          // Версия пира из приветствия
 };
 
 // Публичная информация о пире — безопасная копия для UI и диалогов
@@ -158,6 +162,7 @@ private:
     void        handleRelayFrame(const QUuid& fromUuid, const QJsonObject& innerObj);
 
     void        handleFrame(PeerConnection& peer, const QJsonObject& obj);
+    void        sendClientHello(QTcpSocket* socket);
     void        sendHandshake(QTcpSocket* socket);
     void        tryParseFrames(PeerConnection& conn, bool isPending);
 
@@ -210,6 +215,10 @@ private:
     QSet<QUuid> m_relayPeers;                   // UUID пиров подключённых через ретранслятор
     QTimer*     m_relayReconnectTimer {nullptr};
 
+    // Периодический рефреш UPnP-маппинга. UPnP IGD lease = kUpnpLeaseSeconds (3600с);
+    // без рефреша порт перестаёт пробрасываться через час непрерывной работы.
+    QTimer*     m_upnpRefreshTimer    {nullptr};
+
     static constexpr quint16 kDefaultPort          = 47821;
     static constexpr int     kConnectionTimeout    = 10000;   // 10 секунд на подключение
     static constexpr int     kMaxReconnectDelay    = 30000;   // Макс. задержка переподключения
@@ -222,4 +231,7 @@ private:
     static constexpr int     kMaxBufferSize        = 16 * 1024 * 1024; // 16 МБ
     static constexpr quint32 kMaxFramesPerSecond   = 200;              // Макс. фреймов в секунду от пира
     static constexpr const char* kMinPeerVersion   = "0.7.4";         // Минимальная версия пира для соединения
+    // Рефреш UPnP-маппинга. Lease в SOAP AddPortMapping = 3600с; перепробрасываем
+    // через 30 минут, с запасом, чтобы не упереться в момент истечения.
+    static constexpr int     kUpnpRefreshIntervalMs = 30 * 60 * 1000;  // 30 минут
 };

@@ -35,6 +35,7 @@ private slots:
     void onReset();
     void onAvatarClicked();
     void onImportTheme();
+    void onRemoveTheme();
 
 private:
     void buildHeader();
@@ -80,8 +81,9 @@ private:
     // Интерфейс
     QComboBox*   m_themeCombo          {nullptr};
     QComboBox*   m_langCombo           {nullptr};
-    QLabel*      m_customRestartHint   {nullptr};  // подсказка "требуется перезапуск"
+    QLabel*      m_customRestartHint   {nullptr};  // подсказка "требуется перезапуск" (всегда скрыта)
     QPushButton* m_importThemeBtn      {nullptr};  // кнопка "Импортировать тему..."
+    QPushButton* m_removeThemeBtn      {nullptr};  // кнопка "Удалить тему" (активна только для кастомных)
     class QCheckBox* m_enterSendsCheck {nullptr};  // Enter отправляет сообщение
 
     // Конфиденциальность

@@ -470,15 +470,19 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     connect(m_themeCombo, &QComboBox::currentIndexChanged,
             this, [this](int) {
         const QString s = m_themeCombo->currentData().toString();
+        m_removeThemeBtn->setEnabled(s.startsWith("custom:"));
 
         if (s.startsWith("custom:")) {
-            // Пользовательская тема: сохраняем в session.json, требуем перезапуск
-            SessionManager::instance().setTheme(s);
-            m_customRestartHint->setVisible(true);
+            const QString folderName = s.mid(7);
+            if (ThemeManager::instance().loadCustomTheme(folderName)) {
+                ThemeManager::instance().applyCustomTheme();
+            } else {
+                QMessageBox::warning(this, tr("Ошибка темы"),
+                    tr("Не удалось загрузить тему. Возможно, файл повреждён."));
+            }
             return;
         }
 
-        m_customRestartHint->setVisible(false);
         Theme t = Theme::Dark;
         if      (s == "light")     t = Theme::Light;
         else if (s == "bw")        t = Theme::BW;
@@ -510,11 +514,22 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addWidget(m_themeCombo);
     contentLayout->addWidget(m_customRestartHint);
 
-    // Кнопка импорта темы
+    // Кнопки управления темами
     m_importThemeBtn = new QPushButton(tr("Import theme..."));
     m_importThemeBtn->setObjectName("dlgCancelBtn");
     connect(m_importThemeBtn, &QPushButton::clicked, this, &SettingsPanel::onImportTheme);
-    contentLayout->addWidget(m_importThemeBtn);
+
+    m_removeThemeBtn = new QPushButton(tr("Remove theme"));
+    m_removeThemeBtn->setObjectName("dlgCancelBtn");
+    m_removeThemeBtn->setEnabled(false);
+    connect(m_removeThemeBtn, &QPushButton::clicked, this, &SettingsPanel::onRemoveTheme);
+
+    auto* themeBtnRow = new QHBoxLayout();
+    themeBtnRow->setSpacing(8);
+    themeBtnRow->addWidget(m_importThemeBtn);
+    themeBtnRow->addWidget(m_removeThemeBtn);
+    themeBtnRow->addStretch();
+    contentLayout->addLayout(themeBtnRow);
 
     contentLayout->addSpacing(12);
 
@@ -713,7 +728,7 @@ void SettingsPanel::reload() {
     const QString themeKey = themeStr.isEmpty() ? "dark" : themeStr;
     const int themeIdx = m_themeCombo->findData(themeKey);
     if (themeIdx >= 0) m_themeCombo->setCurrentIndex(themeIdx);
-    m_customRestartHint->setVisible(themeKey.startsWith("custom:"));
+    m_removeThemeBtn->setEnabled(themeKey.startsWith("custom:"));
 
     // Режим проброса портов — синхронизируем комбобокс и поля Manual
     {
@@ -936,15 +951,41 @@ void SettingsPanel::onImportTheme() {
     if (path.isEmpty()) return;
 
     QString error;
-    if (!CustomThemeManager::importArchive(path, error)) {
+    QString folderName;
+    if (!CustomThemeManager::importArchive(path, error, &folderName)) {
         QMessageBox::critical(this, tr("Ошибка импорта"), error);
         return;
     }
 
-    // Пересканируем и выбираем только что импортированную тему
     rebuildCustomThemeItems();
-    QMessageBox::information(this,
-        tr("Тема импортирована"),
-        tr("Тема успешно импортирована.\n"
-           "Выберите её в списке и перезапустите приложение для применения."));
+
+    // Автовыбор и немедленное применение импортированной темы
+    const int idx = m_themeCombo->findData("custom:" + folderName);
+    if (idx >= 0)
+        m_themeCombo->setCurrentIndex(idx);  // currentIndexChanged применяет тему
+}
+
+void SettingsPanel::onRemoveTheme() {
+    const QString s = m_themeCombo->currentData().toString();
+    if (!s.startsWith("custom:")) return;
+
+    const QString folderName = s.mid(7);
+    const QString displayName = ThemeManager::instance().customThemeDisplayName();
+
+    const int ret = QMessageBox::question(this,
+        tr("Удалить тему"),
+        tr("Удалить тему \"%1\"?").arg(displayName),
+        QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes) return;
+
+    // Переключаемся на Dark перед удалением активной темы
+    if (ThemeManager::instance().currentTheme() == Theme::Custom)
+        m_themeCombo->setCurrentIndex(0);
+
+    if (!CustomThemeManager::removeTheme(folderName)) {
+        QMessageBox::warning(this, tr("Ошибка"), tr("Не удалось удалить тему"));
+        return;
+    }
+
+    rebuildCustomThemeItems();
 }

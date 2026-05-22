@@ -23,8 +23,10 @@ public:
     static QList<CustomThemeMeta> scan();
 
     // Импортирует архив (.zip / .tar.gz / .7z) в themesDir()
-    // Возвращает true при успехе; outError — текст ошибки для UI
-    static bool importArchive(const QString& archivePath, QString& outError);
+    // Возвращает true при успехе; outError — текст ошибки для UI.
+    // outFolderName — имя итоговой папки темы (заполняется при успехе).
+    static bool importArchive(const QString& archivePath, QString& outError,
+                              QString* outFolderName = nullptr);
 
     // Удаляет тему по имени папки. Возвращает true при успехе.
     static bool removeTheme(const QString& folderName);

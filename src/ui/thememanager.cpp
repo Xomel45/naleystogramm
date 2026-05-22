@@ -97,6 +97,13 @@ void ThemeManager::applyPalette() {
 // ПОЛЬЗОВАТЕЛЬСКАЯ ТЕМА — загрузка из папки themes/
 // ═════════════════════════════════════════════════════════════════════════
 
+void ThemeManager::applyCustomTheme() {
+    m_theme = Theme::Custom;
+    SessionManager::instance().setTheme("custom:" + m_customFolderName);
+    qApp->setStyleSheet(stylesheet());
+    emit themeChanged(Theme::Custom);
+}
+
 bool ThemeManager::loadCustomTheme(const QString& folderName) {
     const QString dirPath = CustomThemeManager::themesDir() + "/" + folderName;
     QFile f(dirPath + "/theme.json");
@@ -149,10 +156,6 @@ bool ThemeManager::loadCustomTheme(const QString& folderName) {
     } else {
         m_customCss.clear();
     }
-
-    // Фоновое изображение (опционально)
-    const QString bgPath = dirPath + "/backgrounds/bg_main.png";
-    m_customBgMain = QFile::exists(bgPath) ? bgPath : QString();
 
     return true;
 }

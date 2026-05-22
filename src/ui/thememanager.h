@@ -72,6 +72,10 @@ public:
     // Возвращает true при успехе; при ошибке палитра не меняется.
     bool loadCustomTheme(const QString& folderName);
 
+    // Применяет уже загруженную через loadCustomTheme() тему немедленно.
+    // Обходит guard setTheme() при переключении между двумя кастомными темами.
+    void applyCustomTheme();
+
     // Возвращает иконку, перекрашенную в цвет textPrimary текущей темы.
     // Ожидает white-on-transparent PNG (наш стандарт). На тёмных темах
     // иконка остаётся белой, на светлых — становится тёмной автоматически.
@@ -90,7 +94,6 @@ public:
 
     [[nodiscard]] QString customThemeFolderName()  const noexcept { return m_customFolderName; }
     [[nodiscard]] QString customThemeDisplayName() const noexcept { return m_customDisplayName; }
-    [[nodiscard]] QString customThemeBgMain()      const noexcept { return m_customBgMain; }
 
 signals:
     void themeChanged(Theme newTheme);
@@ -114,5 +117,4 @@ private:
     QString m_customFolderName;
     QString m_customDisplayName;
     QString m_customCss;      // содержимое css/main.css (пусто → генерируем из палитры)
-    QString m_customBgMain;   // абсолютный путь к backgrounds/bg_main.png (пусто → нет фона)
 };

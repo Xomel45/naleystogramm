@@ -769,6 +769,67 @@ SPEC_EOF
     echo ""
 }
 
+# ── РЕЖИМ: Release Windows Installer (setup.exe) ──────────────────────────────
+# Назначение: собственный GUI-установщик (чистый C + Win32 API).
+# Пайплайн:
+#   1. Собрать основной .exe + DLL (deploy_release_windows — если нет)
+#   2. Упаковать папку релиза в payload.zip
+#   3. Скопировать payload.zip в installer/
+#   4. Собрать installer через CMake (MinGW cross)
+#   5. Скопировать setup.exe в builds/releases/VERSION-windows-installer/
+deploy_release_windows_installer() {
+    header "Release Windows Installer → ${BUILDS_DIR}/releases/${VERSION}-windows-installer/"
+    ensure_builds_tree
+
+    local win_dir="${BUILDS_DIR}/releases/${VERSION}-windows"
+    local inst_dir="${BUILDS_DIR}/releases/${VERSION}-windows-installer"
+    local payload_zip="installer/payload.zip"
+
+    # ── Шаг 1: убедиться что Windows-релиз собран ─────────────────────────────
+    if [[ ! -d "$win_dir" ]] || [[ ! -f "$win_dir/$APP_NAME.exe" ]]; then
+        log "Windows-релиз не найден, собираем..."
+        deploy_release_windows
+    else
+        ok "Windows-релиз уже есть: $win_dir/"
+    fi
+
+    # ── Шаг 2: создать payload.zip из папки релиза ────────────────────────────
+    log "Упаковка payload.zip..."
+    make_zip "$win_dir" "$payload_zip"
+    ok "payload.zip → $(file_size "$payload_zip")"
+
+    # ── Шаг 3: собрать инсталлер (MinGW cross) ────────────────────────────────
+    log "Сборка инсталлера (C + Win32 API)..."
+    cmake -B "$BUILD_WIN" \
+        -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw64.cmake \
+        -DCMAKE_BUILD_TYPE=Release
+    cmake --build "$BUILD_WIN" --target naleystogramm-setup --parallel "$(( $(nproc) - 2 ))"
+
+    local setup_exe="${BUILD_WIN}/naleystogramm-setup.exe"
+    if [[ ! -f "$setup_exe" ]]; then
+        fail "naleystogramm-setup.exe не найден после сборки!"
+    fi
+
+    # ── Шаг 4: копируем в releases/ ───────────────────────────────────────────
+    $DO_CLEAN && { safe_clean "$inst_dir"; }
+    mkdir -p "$inst_dir"
+    cp "$setup_exe" "$inst_dir/naleystogramm-setup.exe"
+    cp "installer/install.ps1" "$inst_dir/install.ps1"
+
+    write_build_info "$inst_dir" "windows-installer"
+
+    rule
+    ok "Windows Installer готов!"
+    echo "  Директория:  ${BOLD}$inst_dir/${NC}"
+    echo "  Файлы:       naleystogramm-setup.exe  ($(file_size "$inst_dir/naleystogramm-setup.exe"))"
+    echo "               install.ps1  (PowerShell-альтернатива)"
+    echo "  Версия:      $VERSION  |  commit: $(git_hash)"
+    echo ""
+    echo -e "  ${YELLOW}Запустить на Windows:${NC} naleystogramm-setup.exe"
+    echo "  (потребует права Администратора — UAC встроен)"
+    echo ""
+}
+
 # ── Вывод помощи ─────────────────────────────────────────────────────────────
 show_help() {
     echo ""
@@ -785,6 +846,7 @@ show_help() {
     echo "    ./deploy.sh release my            Авто: собирает пакет для текущего дистрибутива"
     echo "    ./deploy.sh release linux-all     Все Linux форматы → builds/releases/${VERSION}-linux/"
     echo "    ./deploy.sh release win           Собрать + .exe+DLL+zip → builds/releases/${VERSION}-windows/"
+    echo "    ./deploy.sh release win-installer Собрать GUI setup.exe → builds/releases/${VERSION}-windows-installer/"
     echo "    ./deploy.sh release all           Всё: AppImage+pkg+deb+rpm + Windows+zip"
     echo ""
     echo -e "  ${BOLD}Опции:${NC}"
@@ -844,6 +906,9 @@ case "$MODE" in
             win|windows)
                 deploy_release_windows
                 ;;
+            win-installer|windows-installer|installer)
+                deploy_release_windows_installer
+                ;;
             pkg|arch|Arch)
                 deploy_release_pkg
                 ;;
@@ -881,6 +946,7 @@ case "$MODE" in
                     ensure_builds_tree
                     safe_clean "${BUILDS_DIR}/releases/${VERSION}-linux"
                     safe_clean "${BUILDS_DIR}/releases/${VERSION}-windows"
+                    safe_clean "${BUILDS_DIR}/releases/${VERSION}-windows-installer"
                     rm -f "${BUILDS_DIR}/releases/${VERSION}-windows.zip"
                     DO_CLEAN=false
                 fi
@@ -889,6 +955,7 @@ case "$MODE" in
                 deploy_release_deb
                 deploy_release_rpm
                 deploy_release_windows
+                deploy_release_windows_installer
                 ;;
             both|--build|--clean|*)
                 # Если второй аргумент — опция, значит AppImage + Windows

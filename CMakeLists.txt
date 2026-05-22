@@ -594,6 +594,13 @@ if(UNIX AND NOT APPLE)
     )
 endif()
 
+# ── Installer (только Windows/MinGW кросс-компиляция) ────────────────────────
+# Инсталлер пишется на чистом C, не зависит от Qt6.
+# Собирается только при кросс-компиляции под Windows через MinGW.
+if(WIN32 OR (CMAKE_CROSSCOMPILING AND CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+    add_subdirectory(installer)
+endif()
+
 # ── Справка о deploy-целях ────────────────────────────────────────────────────
 message(STATUS "")
 message(STATUS "Deploy targets:")
@@ -601,6 +608,7 @@ if(UNIX AND NOT APPLE)
     message(STATUS "  make beta             → builds/beta/naleystogramm (сырой ELF)")
     message(STATUS "  make release-linux    → builds/releases/${APP_VERSION}-linux/ (AppImage)")
 endif()
-message(STATUS "  ./deploy.sh release win  → builds/releases/${APP_VERSION}-windows/ (.exe+DLL+zip)")
-message(STATUS "  ./deploy.sh --help       → полная документация скрипта")
+message(STATUS "  ./deploy.sh release win            → builds/releases/${APP_VERSION}-windows/ (.exe+DLL+zip)")
+message(STATUS "  ./deploy.sh release win-installer  → builds/releases/${APP_VERSION}-windows-installer/ (setup.exe)")
+message(STATUS "  ./deploy.sh --help                 → полная документация скрипта")
 message(STATUS "")

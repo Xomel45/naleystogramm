@@ -1,0 +1,50 @@
+// installer.rc — ресурсы установщика Naleystogramm
+#include "installer.h"
+
+// ── Иконка приложения ──────────────────────────────────────────────────────
+IDI_APP    ICON    "../resources/windows/app_icon.ico"
+
+// ── Манифест UAC: требуем права администратора ─────────────────────────────
+1 RT_MANIFEST "installer.manifest"
+
+// ── Встроенный payload ZIP (Windows-релиз) ─────────────────────────────────
+// payload.zip создаётся deploy.sh перед сборкой инсталлера.
+IDR_PAYLOAD    RCDATA    "payload.zip"
+
+// ── Версионная информация ──────────────────────────────────────────────────
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     0,7,4,0
+PRODUCTVERSION  0,7,4,0
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          0x40004L
+FILETYPE        0x1L
+FILESUBTYPE     0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "xomel45"
+            VALUE "FileDescription",  "Naleystogramm Installer"
+            VALUE "FileVersion",      "0.7.4"
+            VALUE "InternalName",     "naleystogramm-setup"
+            VALUE "LegalCopyright",   "xomel45 2025"
+            VALUE "OriginalFilename", "naleystogramm-setup.exe"
+            VALUE "ProductName",      "Naleystogramm"
+            VALUE "ProductVersion",   "0.7.4"
+        END
+        BLOCK "041904b0"
+        BEGIN
+            VALUE "CompanyName",      "xomel45"
+            VALUE "FileDescription",  "\xD0\xA3\xD1\x81\xD1\x82\xD0\xB0\xD0\xBD\xD0\xBE\xD0\xB2\xD1\x89\xD0\xB8\xD0\xBA Naleystogramm"
+            VALUE "FileVersion",      "0.7.4"
+            VALUE "ProductName",      "Naleystogramm"
+            VALUE "ProductVersion",   "0.7.4"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200, 0x0419, 1200
+    END
+END
