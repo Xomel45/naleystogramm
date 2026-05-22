@@ -26,6 +26,8 @@ signals:
     void verboseLoggingChanged(bool enabled);
     void avatarChanged(const QString& path);  // пользователь выбрал/сменил аватар
     void enterSendsChanged(bool on);          // режим отправки по Enter изменён
+    // Пользователь ввёл IP:порт главного устройства и код — MainWindow передаёт в NetworkManager
+    void connectToDeviceRequested(const QString& host, quint16 port, const QString& code);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;

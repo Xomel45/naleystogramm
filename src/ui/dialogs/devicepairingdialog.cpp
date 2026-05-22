@@ -1,0 +1,159 @@
+#include "devicepairingdialog.h"
+#include "../../core/device_pairing.h"
+#include "../../core/sessionmanager.h"
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QFrame>
+#include <QTimer>
+
+// ── DevicePairingDialog ───────────────────────────────────────────────────────
+
+DevicePairingDialog::DevicePairingDialog(QWidget* parent) : QDialog(parent) {
+    setWindowTitle(tr("Привязать устройство"));
+    setFixedWidth(380);
+
+    auto* layout = new QVBoxLayout(this);
+    layout->setContentsMargins(28, 24, 28, 24);
+    layout->setSpacing(12);
+
+    auto* title = new QLabel(tr("Привязка устройства"));
+    title->setObjectName("dlgTitle");
+    layout->addWidget(title);
+
+    auto* subtitle = new QLabel(
+        tr("Введите этот код на вторичном устройстве в течение 60 секунд."));
+    subtitle->setObjectName("dlgSubtitle");
+    subtitle->setWordWrap(true);
+    layout->addWidget(subtitle);
+
+    layout->addSpacing(8);
+
+    // ── Код ──────────────────────────────────────────────────────────────────
+    m_codeLabel = new QLabel();
+    m_codeLabel->setObjectName("pairingCode");
+    m_codeLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(m_codeLabel);
+
+    m_countdownLabel = new QLabel();
+    m_countdownLabel->setObjectName("dlgSubtitle");
+    m_countdownLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(m_countdownLabel);
+
+    m_newCodeBtn = new QPushButton(tr("Новый код"));
+    m_newCodeBtn->setObjectName("dlgCancelBtn");
+    connect(m_newCodeBtn, &QPushButton::clicked, this, &DevicePairingDialog::onNewCode);
+
+    auto* codeRow = new QHBoxLayout();
+    codeRow->addStretch();
+    codeRow->addWidget(m_newCodeBtn);
+    codeRow->addStretch();
+    layout->addLayout(codeRow);
+
+    layout->addSpacing(8);
+
+    // ── Разделитель + список устройств ───────────────────────────────────────
+    auto* sep = new QFrame();
+    sep->setFrameShape(QFrame::HLine);
+    sep->setObjectName("settingsSeparator");
+    layout->addWidget(sep);
+
+    auto* devTitle = new QLabel(tr("Привязанные устройства"));
+    devTitle->setObjectName("dlgSubtitle");
+    layout->addWidget(devTitle);
+
+    m_devicesLayout = new QVBoxLayout();
+    m_devicesLayout->setSpacing(4);
+    layout->addLayout(m_devicesLayout);
+
+    m_noDevicesLabel = new QLabel(tr("Нет привязанных устройств"));
+    m_noDevicesLabel->setObjectName("settingsHint");
+    m_devicesLayout->addWidget(m_noDevicesLabel);
+
+    layout->addSpacing(8);
+
+    auto* closeBtn = new QPushButton(tr("Закрыть"));
+    closeBtn->setObjectName("dlgOkBtn");
+    connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
+
+    auto* btnRow = new QHBoxLayout();
+    btnRow->addStretch();
+    btnRow->addWidget(closeBtn);
+    layout->addLayout(btnRow);
+
+    // ── Таймер ───────────────────────────────────────────────────────────────
+    m_timer = new QTimer(this);
+    m_timer->setInterval(1000);
+    connect(m_timer, &QTimer::timeout, this, &DevicePairingDialog::onTick);
+
+    onNewCode();
+    refreshDeviceList();
+}
+
+void DevicePairingDialog::onNewCode() {
+    const QString code = DevicePairing::generateCode();
+
+    // Отображаем как "XXX XXX" для читаемости
+    m_codeLabel->setText(code.left(3) + QStringLiteral("  ") + code.right(3));
+
+    m_secondsLeft = DevicePairing::kCodeTtlSecs;
+    m_countdownLabel->setText(tr("Действителен %1 сек").arg(m_secondsLeft));
+    m_timer->start();
+}
+
+void DevicePairingDialog::onTick() {
+    --m_secondsLeft;
+    if (m_secondsLeft <= 0) {
+        m_timer->stop();
+        m_codeLabel->setText(tr("— истёк —"));
+        m_countdownLabel->setText(tr("Нажмите «Новый код»"));
+        DevicePairing::clearCode();
+        return;
+    }
+    m_countdownLabel->setText(tr("Действителен %1 сек").arg(m_secondsLeft));
+}
+
+void DevicePairingDialog::refreshDeviceList() {
+    // Удаляем старые строки (кроме m_noDevicesLabel)
+    QLayoutItem* item;
+    while ((item = m_devicesLayout->takeAt(0)) != nullptr) {
+        if (item->widget() && item->widget() != m_noDevicesLabel)
+            item->widget()->deleteLater();
+        delete item;
+    }
+
+    const auto devices = SessionManager::instance().linkedDevices();
+    if (devices.isEmpty()) {
+        m_devicesLayout->addWidget(m_noDevicesLabel);
+        m_noDevicesLabel->show();
+        return;
+    }
+
+    m_noDevicesLabel->hide();
+    for (const auto& dev : devices) {
+        auto* row = new QHBoxLayout();
+
+        auto* nameLbl = new QLabel(dev.name);
+        nameLbl->setObjectName("settingsFieldLabel");
+
+        auto* roleLbl = new QLabel(dev.isPrimary ? tr("главное") : tr("вторичное"));
+        roleLbl->setObjectName("settingsHint");
+
+        auto* removeBtn = new QPushButton(tr("Отвязать"));
+        removeBtn->setObjectName("dlgCancelBtn");
+        const QUuid uuid = dev.uuid;
+        connect(removeBtn, &QPushButton::clicked, this, [this, uuid]() {
+            SessionManager::instance().removeLinkedDevice(uuid);
+            refreshDeviceList();
+        });
+
+        row->addWidget(nameLbl, 1);
+        row->addWidget(roleLbl);
+        row->addWidget(removeBtn);
+
+        auto* rowWidget = new QWidget();
+        rowWidget->setLayout(row);
+        m_devicesLayout->addWidget(rowWidget);
+    }
+}

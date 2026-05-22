@@ -54,6 +54,9 @@ struct PeerConnection {
     QString          helloName        {};          // Имя пира из приветствия
     QString          helloVersion     {};          // Версия пира из приветствия
     bool             isLinkedDevice   {false};     // true = привязанный девайс, не контакт
+
+    // Если непусто — после HANDSHAKE_ACK отправляем DEVICE_PAIR_REQUEST с этим кодом
+    QString          pendingPairCode  {};
 };
 
 // Публичная информация о пире — безопасная копия для UI и диалогов
@@ -84,6 +87,9 @@ public:
 
     // Инициировать исходящее подключение
     void        connectToPeer(const PeerInfo& peer);
+
+    // Подключиться к главному устройству и отправить запрос на привязку
+    void        connectToDevice(const QString& host, quint16 port, const QString& code);
 
     // Повторная попытка пробросить порты через UPnP
     void        retryUpnp();

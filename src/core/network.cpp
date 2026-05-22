@@ -627,6 +627,48 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
     socket->connectToHost(peer.ip, peer.port);
 }
 
+// ── Device pairing: outgoing connection from secondary ─────────────────────
+
+void NetworkManager::connectToDevice(const QString& host, quint16 port, const QString& code) {
+    log(QString("Подключаемся к главному устройству %1:%2 для привязки...").arg(host).arg(port), true);
+
+    auto* socket = new QTcpSocket(this);
+    const QUuid tempId = QUuid::createUuid();
+
+    m_peers[tempId] = PeerConnection{
+        .uuid            = tempId,
+        .ip              = host,
+        .port            = port,
+        .socket          = socket,
+        .state           = ConnectionState::Connecting,
+        .connectedSince  = QDateTime::currentDateTime(),
+        .pendingPairCode = code,
+    };
+
+    connect(socket, &QTcpSocket::connected, this, [this, socket, tempId, host, port]() {
+        if (!m_peers.contains(tempId)) return;
+        auto& conn = m_peers[tempId];
+        conn.state = ConnectionState::Connected;
+        conn.lastActivity = QDateTime::currentDateTime();
+
+        connect(socket, &QTcpSocket::readyRead, this, &NetworkManager::onSocketReadyRead);
+        connect(socket, &QTcpSocket::disconnected, this, &NetworkManager::onSocketDisconnected);
+
+        sendClientHello(socket);
+        log(QString("CLIENT_HELLO отправлен → главное устройство %1:%2").arg(host).arg(port));
+    });
+
+    connect(socket, &QTcpSocket::errorOccurred, this,
+            [this, socket, tempId](QAbstractSocket::SocketError) {
+        log(QString("Ошибка подключения к главному устройству: %1").arg(socket->errorString()), true);
+        emit error(tr("Не удалось подключиться к главному устройству: ") + socket->errorString());
+        m_peers.remove(tempId);
+        socket->deleteLater();
+    });
+
+    socket->connectToHost(host, port);
+}
+
 // ── Incoming connection ────────────────────────────────────────────────────
 
 void NetworkManager::onNewConnection() {
@@ -1039,6 +1081,15 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
                 .arg(peer.name)
                 .arg(!peer.systemInfo.isEmpty() ? "получена" : "отсутствует"));
             emit peerConnected(peer.uuid, peer.name);
+            // Если это инициатор привязки устройства — отправляем запрос с кодом
+            if (!peer.pendingPairCode.isEmpty()) {
+                const auto& id = Identity::instance();
+                const QJsonObject req = DevicePairing::makePairRequest(
+                    id.uuid(), id.displayName(), peer.pendingPairCode);
+                peer.socket->write(QJsonDocument(req).toJson(QJsonDocument::Compact) + '\n');
+                log(QString("DEVICE_PAIR_REQUEST отправлен → %1").arg(peer.ip));
+                peer.pendingPairCode.clear();
+            }
             // Отправляем накопленные сообщения из очереди
             drainMessageQueue(peer.uuid);
         } else {

@@ -504,6 +504,10 @@ void MainWindow::setupUi() {
             this, [this](const QString&) { loadOwnAvatar(); });
     connect(m_settings, &SettingsPanel::enterSendsChanged,
             this, [this](bool on) { m_chat->setEnterSends(on); });
+    connect(m_settings, &SettingsPanel::connectToDeviceRequested,
+            this, [this](const QString& host, quint16 port, const QString& code) {
+                if (m_network) m_network->connectToDevice(host, port, code);
+            });
 
     m_leftStack->addWidget(chatsPage);   // index 0
     m_leftStack->addWidget(m_settings);  // index 1

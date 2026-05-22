@@ -145,6 +145,10 @@ set(SOURCES
     src/ui/dialogs/fileacceptdialog.cpp
     src/ui/dialogs/contactprofiledialog.h
     src/ui/dialogs/contactprofiledialog.cpp
+    src/ui/dialogs/devicepairingdialog.h
+    src/ui/dialogs/devicepairingdialog.cpp
+    src/ui/dialogs/devicelinkdialog.h
+    src/ui/dialogs/devicelinkdialog.cpp
     src/ui/filetransferwidget.h
     src/ui/filetransferwidget.cpp
     src/ui/splashscreen.h

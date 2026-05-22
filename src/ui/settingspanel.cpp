@@ -3,6 +3,8 @@
 #include "wheelfilter.h"
 #include "customthememanager.h"
 #include "logpanel.h"
+#include "dialogs/devicepairingdialog.h"
+#include "dialogs/devicelinkdialog.h"
 #include "../core/identity.h"
 #include "../core/updatechecker.h"
 #include "../core/demomode.h"
@@ -556,6 +558,44 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     contentLayout->addWidget(m_enterSendsCheck);
     contentLayout->addWidget(hint(tr("Shift+Enter — новая строка. "
                                      "Если выключено: Enter — новая строка, Ctrl+Enter — отправить.")));
+
+    contentLayout->addSpacing(8);
+    contentLayout->addWidget(separator());
+    contentLayout->addSpacing(8);
+
+    // ── СВЯЗАННЫЕ УСТРОЙСТВА ──────────────────────────────────────────────
+    contentLayout->addWidget(sectionTitle(tr("Linked Devices"),
+                             QStringLiteral(":/icons/input_link_settings.png")));
+    contentLayout->addSpacing(6);
+    contentLayout->addWidget(hint(tr(
+        "Link multiple devices to one account. "
+        "The primary device holds all encrypted sessions; "
+        "secondary devices relay through it.")));
+    contentLayout->addSpacing(8);
+
+    auto* pairingBtnRow = new QHBoxLayout();
+    pairingBtnRow->setSpacing(8);
+
+    auto* primaryBtn = new QPushButton(tr("This is primary device"));
+    primaryBtn->setObjectName("dlgCancelBtn");
+    connect(primaryBtn, &QPushButton::clicked, this, [this]() {
+        DevicePairingDialog dlg(this);
+        dlg.exec();
+    });
+
+    auto* secondaryBtn = new QPushButton(tr("Link to primary device"));
+    secondaryBtn->setObjectName("dlgCancelBtn");
+    connect(secondaryBtn, &QPushButton::clicked, this, [this]() {
+        DeviceLinkDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted)
+            emit connectToDeviceRequested(
+                dlg.host(), static_cast<quint16>(dlg.port()), dlg.code());
+    });
+
+    pairingBtnRow->addWidget(primaryBtn);
+    pairingBtnRow->addWidget(secondaryBtn);
+    pairingBtnRow->addStretch();
+    contentLayout->addLayout(pairingBtnRow);
 
     contentLayout->addSpacing(8);
     contentLayout->addWidget(separator());
