@@ -212,11 +212,21 @@ deploy.sh         — скрипт сборки релизов
 ### v0.7.5 «Кикишка»
 
 **UPnP — исправления**
-- PPPoE-роутеры: `fetchControlUrl` теперь захватывает тип сервиса (`WANIPConnection` / `WANPPPConnection`); `addPortMapping` и `soapRequest` получают `serviceType` — `SOAPAction` и XML-namespace соответствуют реальному сервису роутера (без этого PPPoE-роутеры отклоняли запрос с ошибкой 401/500)
-- `NewLeaseDuration`: 3600 → 0 — часть прошивок принимает только постоянные маппинги (`OnlyPermanentLeasesSupported`, код 725)
+- PPPoE-роутеры: `fetchControlUrl` теперь захватывает тип сервиса (`WANIPConnection` / `WANPPPConnection`); `addPortMapping` и `soapRequest` получают `serviceType` — `SOAPAction` и XML-namespace строятся под конкретный роутер (без этого PPPoE-роутеры отклоняли запрос с 401/500)
+- `NewLeaseDuration`: 3600 → 0 — часть прошивок падала с `OnlyPermanentLeasesSupported` (код 725); теперь сразу просим постоянный маппинг
+
+**Привязка устройств**
+- Новый механизм device pairing: вторичный девайс привязывается к главному через одноразовый 6-значный код (действует 60 сек, можно запросить новый)
+- После привязки девайсы синхронизируют сообщения через `DEVICE_RELAY_MSG`: входящие пересылаются на все вторичные, исходящие с вторичного проксируются через главное
+
+**Windows-инсталлер (бета)**
+- Добавлен `naleystogramm-setup.exe` — GUI-установщик на чистом C + Win32 API, без Qt-зависимостей
+- Сборка: `./deploy.sh release win-installer`; пайплайн: exe+DLL → `payload.zip` → компиляция инсталлера через MinGW → `setup.exe` в `builds/releases/VERSION-windows-installer/`
+- `./deploy.sh release all` теперь включает инсталлер автоматически
+- ⚠️ Бета, не прикладывается к релизам — только для самостоятельной сборки
 
 **Версия и кодовое имя из CMake**
-- `app.setApplicationVersion()` и `UpdateChecker::kCurrentVersion` используют макрос `APP_VERSION` (из `PROJECT_VERSION` в `CMakeLists.txt`) — больше не нужно менять версию в коде
+- `app.setApplicationVersion()` и `UpdateChecker::kCurrentVersion` используют макрос `APP_VERSION` (из `PROJECT_VERSION` в `CMakeLists.txt`) — при смене версии достаточно поменять одну строку
 - Сплеш-экран читает версию через `QCoreApplication::applicationVersion()` и кодовое имя через `APP_CODENAME`
 - Добавлен `APP_CODENAME` в `target_compile_definitions`
 
