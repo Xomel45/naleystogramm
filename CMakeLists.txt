@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.7.4 LANGUAGES CXX)
+project(naleystogramm VERSION 0.7.5 LANGUAGES CXX)
 
 # RC (Windows Resource Compiler) нужен только при сборке под Windows.
 # На Linux windres не установлен, поэтому включаем язык только там.
@@ -221,6 +221,7 @@ add_dependencies(naleystogramm translations)
 target_compile_definitions(naleystogramm PRIVATE
     TRANSLATIONS_DIR="${TRANSLATIONS_OUTPUT_DIR}"
     APP_VERSION="${PROJECT_VERSION}"
+    APP_CODENAME="Кикишка"
 )
 
 target_include_directories(naleystogramm PRIVATE

@@ -4,7 +4,7 @@
 
 **Зашифрованный P2P-мессенджер без серверов и слежки**
 
-[![Version](https://img.shields.io/badge/version-0.7.4-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
+[![Version](https://img.shields.io/badge/version-0.7.5-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4a4a7a?style=flat-square)](#установка)
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52?style=flat-square)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
@@ -89,17 +89,17 @@ Naleystogramm — десктопный мессенджер с прямым за
 
 ```bash
 # AppImage — работает на любом дистрибутиве, Qt не нужен
-chmod +x Naleystogramm-0.7.4-x86_64.AppImage
-./Naleystogramm-0.7.4-x86_64.AppImage
+chmod +x Naleystogramm-0.7.5-x86_64.AppImage
+./Naleystogramm-0.7.5-x86_64.AppImage
 
 # Arch Linux / pacman
-sudo pacman -U naleystogramm-0.7.4-1-x86_64.pkg.tar.zst
+sudo pacman -U naleystogramm-0.7.5-1-x86_64.pkg.tar.zst
 
 # Debian / Ubuntu / Mint
-sudo dpkg -i naleystogramm_0.7.4_amd64.deb
+sudo dpkg -i naleystogramm_0.7.5_amd64.deb
 
 # Fedora / RHEL / openSUSE
-sudo dnf install ./naleystogramm-0.7.4-1.x86_64.rpm
+sudo dnf install ./naleystogramm-0.7.5-1.x86_64.rpm
 ```
 
 ### Windows
@@ -152,10 +152,10 @@ cmake --build build-win -j$(( $(nproc) - 2 ))
 # Все платформы одной командой (рекомендуется)
 ./deploy.sh release all
 
-# Только Windows: cmake + DLL + zip → builds/releases/0.7.4-windows/
+# Только Windows: cmake + DLL + zip → builds/releases/0.7.5-windows/
 ./deploy.sh release win
 
-# Linux AppImage → builds/releases/0.7.4-linux/
+# Linux AppImage → builds/releases/0.7.5-linux/
 ./deploy.sh release linux
 
 # Все Linux форматы: AppImage + .pkg.tar.zst + .deb + .rpm
@@ -173,7 +173,7 @@ cmake --build build-win -j$(( $(nproc) - 2 ))
 ./deploy.sh release all --clean
 ```
 
-Артефакты: `builds/releases/0.7.4-linux/` и `builds/releases/0.7.4-windows/` (+ `.zip`)
+Артефакты: `builds/releases/0.7.5-linux/` и `builds/releases/0.7.5-windows/` (+ `.zip`)
 
 ---
 
@@ -208,6 +208,21 @@ deploy.sh         — скрипт сборки релизов
 ---
 
 ## Changelog
+
+### v0.7.5 «Кикишка»
+
+**UPnP — исправления**
+- PPPoE-роутеры: `fetchControlUrl` теперь захватывает тип сервиса (`WANIPConnection` / `WANPPPConnection`); `addPortMapping` и `soapRequest` получают `serviceType` — `SOAPAction` и XML-namespace соответствуют реальному сервису роутера (без этого PPPoE-роутеры отклоняли запрос с ошибкой 401/500)
+- `NewLeaseDuration`: 3600 → 0 — часть прошивок принимает только постоянные маппинги (`OnlyPermanentLeasesSupported`, код 725)
+
+**Версия и кодовое имя из CMake**
+- `app.setApplicationVersion()` и `UpdateChecker::kCurrentVersion` используют макрос `APP_VERSION` (из `PROJECT_VERSION` в `CMakeLists.txt`) — больше не нужно менять версию в коде
+- Сплеш-экран читает версию через `QCoreApplication::applicationVersion()` и кодовое имя через `APP_CODENAME`
+- Добавлен `APP_CODENAME` в `target_compile_definitions`
+
+*Изменения в Android-версии — см. [naleystogramm-mobile](https://github.com/Xomel45/naleystogramm-mobile)*
+
+---
 
 ### v0.7.4 «ыЪы»
 
@@ -293,6 +308,6 @@ deploy.sh         — скрипт сборки релизов
 
 <div align="center">
 
-*v0.7.4 «ыЪы»*
+*v0.7.5 «Кикишка»*
 
 </div>
