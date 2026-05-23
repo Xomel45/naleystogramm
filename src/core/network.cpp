@@ -669,6 +669,25 @@ void NetworkManager::connectToDevice(const QString& host, quint16 port, const QS
     socket->connectToHost(host, port);
 }
 
+// ── Multi-device relay helpers ─────────────────────────────────────────────
+
+void NetworkManager::relayToLinkedDevices(const QUuid& exceptUuid, const QJsonObject& frame) {
+    for (auto it = m_peers.cbegin(); it != m_peers.cend(); ++it) {
+        if (it.value().isLinkedDevice && it.key() != exceptUuid)
+            sendJson(it.key(), frame);
+    }
+}
+
+QUuid NetworkManager::primaryDeviceUuid() const {
+    for (auto it = m_peers.cbegin(); it != m_peers.cend(); ++it) {
+        if (!it.value().isLinkedDevice) continue;
+        const auto dev = SessionManager::instance().linkedDevice(it.key());
+        if (dev.has_value() && dev->isPrimary)
+            return it.key();
+    }
+    return {};
+}
+
 // ── Incoming connection ────────────────────────────────────────────────────
 
 void NetworkManager::onNewConnection() {

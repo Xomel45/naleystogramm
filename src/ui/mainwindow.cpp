@@ -957,6 +957,79 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         return;
     }
 
+    // ── Вторичное устройство просит отправить сообщение (мы — главное) ──────────
+    if (type == "DEVICE_MSG_SEND") {
+        const QUuid toUuid = QUuid(msg["to_uuid"].toString());
+        const QString text = msg["text"].toString();
+        const QString msgId = msg["msg_id"].toString();
+        if (toUuid.isNull() || text.isEmpty()) return;
+        if (!m_e2e->hasSession(toUuid)) return;
+
+        QJsonObject env = m_e2e->encrypt(toUuid, text.toUtf8());
+        if (env.isEmpty()) return;
+        env["msg_id"] = msgId.isEmpty()
+            ? QUuid::createUuid().toString(QUuid::WithoutBraces) : msgId;
+        m_network->sendJson(toUuid, env);
+
+        Message saved;
+        saved.peerUuid  = toUuid; saved.outgoing = true;
+        saved.text      = text;   saved.timestamp = QDateTime::currentDateTime();
+        saved.ciphertext = QJsonDocument(env).toJson();
+        (void)m_storage->saveMessage(saved);
+
+        if (m_activePeer == toUuid) {
+            m_chat->appendMessage(text, true, saved.timestamp, env["msg_id"].toString());
+            m_contacts->updateLastMessage(toUuid, text);
+        }
+
+        // Уведомляем остальные вторичные устройства
+        const QJsonObject relay{
+            {"type",      "DEVICE_RELAY_MSG"},
+            {"to_uuid",   toUuid.toString(QUuid::WithoutBraces)},
+            {"msg_id",    env["msg_id"].toString()},
+            {"text",      text},
+            {"outgoing",  true},
+            {"timestamp", saved.timestamp.toString(Qt::ISODate)},
+        };
+        m_network->relayToLinkedDevices(from, relay);
+        return;
+    }
+
+    // ── Главное устройство прислало нам relay сообщения (мы — вторичное) ────────
+    if (type == "DEVICE_RELAY_MSG") {
+        const bool outgoing  = msg["outgoing"].toBool();
+        const QUuid peerUuid = outgoing
+            ? QUuid(msg["to_uuid"].toString())
+            : QUuid(msg["from_uuid"].toString());
+        const QString text   = msg["text"].toString();
+        const QString msgId  = msg["msg_id"].toString();
+        const QDateTime ts   = QDateTime::fromString(
+            msg["timestamp"].toString(), Qt::ISODate);
+        if (peerUuid.isNull() || text.isEmpty()) return;
+
+        if (m_storage->getContact(peerUuid).uuid.isNull()) {
+            const QString name = msg["from_name"].toString();
+            Contact tmp; tmp.uuid = peerUuid;
+            tmp.name = name.isEmpty()
+                ? peerUuid.toString(QUuid::WithoutBraces).left(8) : name;
+            (void)m_storage->addContact(tmp);
+            m_contacts->setContacts(m_storage->allContacts());
+        }
+
+        Message saved;
+        saved.peerUuid  = peerUuid; saved.outgoing = outgoing;
+        saved.text      = text;
+        saved.timestamp = ts.isValid() ? ts : QDateTime::currentDateTime();
+        (void)m_storage->saveMessage(saved);
+
+        if (m_activePeer == peerUuid)
+            m_chat->appendMessage(text, outgoing, saved.timestamp, msgId);
+        else if (!outgoing)
+            m_contacts->incrementUnread(peerUuid);
+        m_contacts->updateLastMessage(peerUuid, text);
+        return;
+    }
+
     if (type == "CHAT") {
         if (!checkPrivacy(SessionManager::instance().privacyMessages(), from)) {
             qDebug("[Main] Сообщение от %s отклонено (настройки конфиденциальности)",
@@ -1027,6 +1100,23 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
             }
         }
         m_contacts->updateLastMessage(from, text);
+
+        // Пересылаем расшифрованный текст на все подключённые вторичные устройства
+        {
+            const Contact sender = m_storage->getContact(from);
+            const QString senderName = sender.uuid.isNull()
+                ? from.toString(QUuid::WithoutBraces).left(8) : sender.name;
+            const QJsonObject relay{
+                {"type",      "DEVICE_RELAY_MSG"},
+                {"from_uuid", from.toString(QUuid::WithoutBraces)},
+                {"from_name", senderName},
+                {"msg_id",    ackId},
+                {"text",      text},
+                {"outgoing",  false},
+                {"timestamp", QDateTime::currentDateTime().toString(Qt::ISODate)},
+            };
+            m_network->relayToLinkedDevices(from, relay);
+        }
         return;
     }
     m_fileTransfer->handleMessage(from, msg);
@@ -1106,6 +1196,26 @@ void MainWindow::onContactSelected(QUuid uuid) {
 
 void MainWindow::onSendMessage(const QString& text) {
     if (m_activePeer.isNull() || text.trimmed().isEmpty()) return;
+
+    // Если мы вторичное устройство — пересылаем через главное
+    const QUuid primaryUuid = m_network->primaryDeviceUuid();
+    if (!primaryUuid.isNull()) {
+        const QString msgId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        m_network->sendJson(primaryUuid, QJsonObject{
+            {"type",    "DEVICE_MSG_SEND"},
+            {"to_uuid", m_activePeer.toString(QUuid::WithoutBraces)},
+            {"msg_id",  msgId},
+            {"text",    text},
+        });
+        Message msg;
+        msg.peerUuid  = m_activePeer; msg.outgoing = true;
+        msg.text      = text; msg.timestamp = QDateTime::currentDateTime();
+        (void)m_storage->saveMessage(msg);
+        m_chat->appendMessage(text, true, msg.timestamp, msgId);
+        m_contacts->updateLastMessage(m_activePeer, text);
+        return;
+    }
+
     if (!m_e2e->hasSession(m_activePeer)) {
         QMessageBox::warning(this, tr("E2E not ready"),
             tr("Encryption session is not established yet. Wait a moment."));

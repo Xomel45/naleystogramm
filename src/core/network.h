@@ -91,6 +91,12 @@ public:
     // Подключиться к главному устройству и отправить запрос на привязку
     void        connectToDevice(const QString& host, quint16 port, const QString& code);
 
+    // Разослать фрейм всем подключённым вторичным устройствам (кроме exceptUuid)
+    void        relayToLinkedDevices(const QUuid& exceptUuid, const QJsonObject& frame);
+
+    // UUID главного устройства среди подключённых пиров (null если нет)
+    [[nodiscard]] QUuid primaryDeviceUuid() const;
+
     // Повторная попытка пробросить порты через UPnP
     void        retryUpnp();
 
