@@ -218,9 +218,10 @@ void UpnpMapper::fetchControlUrl(const QString& location) {
         qDebug("[UPnP] [2/4 Describe] XML получен (%lld байт)",
                static_cast<qint64>(xml.size()));
 
-        // Ищем controlURL для WANIPConnection или WANPPPConnection
+        // Ищем controlURL для WANIPConnection или WANPPPConnection;
+        // захватываем "IP" / "PPP" чтобы передать правильный SOAPAction.
         static const QRegularExpression re(
-            "<serviceType>urn:schemas-upnp-org:service:WAN(?:IP|PPP)Connection:1</serviceType>"
+            "<serviceType>urn:schemas-upnp-org:service:WAN(IP|PPP)Connection:1</serviceType>"
             ".*?<controlURL>([^<]+)</controlURL>",
             QRegularExpression::DotMatchesEverythingOption);
         auto match = re.match(xml);
@@ -243,23 +244,28 @@ void UpnpMapper::fetchControlUrl(const QString& location) {
             return;
         }
 
+        // group 1 = "IP" или "PPP", group 2 = controlURL
+        const QString serviceType = "WAN" + match.captured(1) + "Connection";
+
         // Строим полный URL управления (если relative path — дополняем схемой/хостом/портом)
         QUrl base(location);
-        QString ctrl = match.captured(1).trimmed();
+        QString ctrl = match.captured(2).trimmed();
         if (!ctrl.startsWith("http"))
             ctrl = QString("%1://%2:%3%4")
                 .arg(base.scheme(), base.host())
                 .arg(base.port(80))
                 .arg(ctrl);
 
-        qDebug("[UPnP] [2/4 Describe] Control URL: %s", qPrintable(ctrl));
-        addPortMapping(ctrl, m_port);
+        qDebug("[UPnP] [2/4 Describe] Service: %s, Control URL: %s",
+               qPrintable(serviceType), qPrintable(ctrl));
+        addPortMapping(ctrl, m_port, serviceType);
     });
 }
 
 // ── SOAP: AddPortMapping ──────────────────────────────────────────────────
 
-void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port) {
+void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port,
+                                const QString& serviceType) {
     const QString body = QString(
         "<NewRemoteHost></NewRemoteHost>"
         "<NewExternalPort>%1</NewExternalPort>"
@@ -268,10 +274,10 @@ void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port) {
         "<NewInternalClient>%2</NewInternalClient>"
         "<NewEnabled>1</NewEnabled>"
         "<NewPortMappingDescription>naleystogramm</NewPortMappingDescription>"
-        "<NewLeaseDuration>3600</NewLeaseDuration>")
+        "<NewLeaseDuration>0</NewLeaseDuration>")
         .arg(port).arg(m_localIp);
 
-    const QByteArray soap = soapRequest("AddPortMapping", body).toUtf8();
+    const QByteArray soap = soapRequest("AddPortMapping", body, serviceType).toUtf8();
 
     qDebug("[UPnP] [3/4 SOAP] AddPortMapping: порт %d → %s\n"
            "  Control URL: %s",
@@ -283,7 +289,8 @@ void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port) {
     req.setHeader(QNetworkRequest::ContentTypeHeader,
                   "text/xml; charset=\"utf-8\"");
     req.setRawHeader("SOAPAction",
-        "\"urn:schemas-upnp-org:service:WANIPConnection:1#AddPortMapping\"");
+        QString("\"urn:schemas-upnp-org:service:%1:1#AddPortMapping\"")
+        .arg(serviceType).toUtf8());
 
     auto* nam = new QNetworkAccessManager(this);
     auto* reply = nam->post(req, soap);
@@ -312,8 +319,8 @@ void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port) {
             if (upnpCode == "718")
                 hint = "порт уже занят другим приложением (ConflictInMappingEntry)";
             else if (upnpCode == "725")
-                hint = "роутер не разрешает OnlyPermanentLeasesSupported — "
-                       "попробуй NewLeaseDuration=0";
+                hint = "роутер принимает только постоянные маппинги (OnlyPermanentLeasesSupported) — "
+                       "уже используем LeaseDuration=0, возможна несовместимость прошивки";
             else if (upnpCode == "501")
                 hint = "действие не поддерживается роутером (ActionFailed)";
             else if (upnpCode == "606")
@@ -335,16 +342,17 @@ void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port) {
     });
 }
 
-QString UpnpMapper::soapRequest(const QString& action, const QString& body) {
+QString UpnpMapper::soapRequest(const QString& action, const QString& body,
+                                 const QString& serviceType) {
     return QString(
         "<?xml version=\"1.0\"?>"
         "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
         "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
         "<s:Body>"
-        "<u:%1 xmlns:u=\"urn:schemas-upnp-org:service:WANIPConnection:1\">"
+        "<u:%1 xmlns:u=\"urn:schemas-upnp-org:service:%3:1\">"
         "%2"
         "</u:%1>"
         "</s:Body>"
         "</s:Envelope>")
-        .arg(action, body);
+        .arg(action, body, serviceType);
 }

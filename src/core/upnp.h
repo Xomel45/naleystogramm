@@ -20,8 +20,8 @@ signals:
 private:
     void    discover();
     void    fetchControlUrl(const QString& location);
-    void    addPortMapping(const QString& controlUrl, quint16 port);
-    QString soapRequest(const QString& action, const QString& body);
+    void    addPortMapping(const QString& controlUrl, quint16 port, const QString& serviceType);
+    QString soapRequest(const QString& action, const QString& body, const QString& serviceType);
 
     quint16 m_port       {0};
     QString m_localIp;
