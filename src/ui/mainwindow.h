@@ -27,6 +27,8 @@ class UpdateBanner;
 class ContactProfileDialog;
 class ShellWindow;
 class ShellMonitor;
+class QLineEdit;
+class SideDrawer;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -112,6 +114,9 @@ private:
     UpdateBanner*    m_updateBanner {nullptr};
     QLabel*          m_nameLabel    {nullptr};
     QLabel*          m_myAvatar     {nullptr};
+    QLineEdit*       m_searchEdit   {nullptr};
+    QPushButton*     m_hamburgerBtn {nullptr};
+    SideDrawer*      m_sideDrawer   {nullptr};
 
     StorageManager*       m_storage      {nullptr};
     E2EManager*           m_e2e          {nullptr};

@@ -120,6 +120,8 @@ set(SOURCES
     src/ui/chatwidget.cpp
     src/ui/contactswidget.h
     src/ui/contactswidget.cpp
+    src/ui/sidedrawer.h
+    src/ui/sidedrawer.cpp
     src/core/updatechecker.h
     src/core/updatechecker.cpp
     src/core/demomode.h

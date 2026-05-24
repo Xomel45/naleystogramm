@@ -22,6 +22,7 @@
 #include "dialogs/fileacceptdialog.h"
 #include "shellwindow.h"
 #include "shellmonitor.h"
+#include "sidedrawer.h"
 #include "../media/mediaengine.h"
 #include "../core/identity.h"
 #include "../core/updatechecker.h"
@@ -52,6 +53,7 @@
 #include <QPainterPath>
 #include <QHostAddress>
 #include <QMenu>
+#include <QLineEdit>
 #include <QCloseEvent>
 #include <QIcon>
 #include <QSize>
@@ -419,85 +421,63 @@ void MainWindow::setupUi() {
     chatsLayout->setContentsMargins(0,0,0,0);
     chatsLayout->setSpacing(0);
 
-    // Хедер
-    auto* headerBar = new QWidget();
-    headerBar->setObjectName("headerBar");
-    headerBar->setFixedHeight(62);
-    auto* headerLayout = new QHBoxLayout(headerBar);
-    headerLayout->setContentsMargins(14, 0, 10, 0);
-    headerLayout->setSpacing(8);
+    // ── Компактный топбар: гамбургер-меню + поиск ───────────────────────────
+    auto* topBar = new QWidget();
+    topBar->setObjectName("headerBar");
+    topBar->setFixedHeight(54);
+    auto* topBarLayout = new QHBoxLayout(topBar);
+    topBarLayout->setContentsMargins(8, 0, 8, 0);
+    topBarLayout->setSpacing(8);
 
-    m_myAvatar = new QLabel();
-    m_myAvatar->setObjectName("myAvatar");
-    m_myAvatar->setFixedSize(38, 38);
-    m_myAvatar->setAlignment(Qt::AlignCenter);
+    m_hamburgerBtn = new QPushButton();
+    m_hamburgerBtn->setObjectName("iconBtn");
+    m_hamburgerBtn->setFixedSize(36, 36);
+    m_hamburgerBtn->setToolTip(tr("Меню"));
+    ThemeManager::applyIcon(m_hamburgerBtn, QStringLiteral(":/icons/dialogs_menu.png"), QSize(20, 20));
 
-    m_nameLabel = new QLabel(Identity::instance().displayName());
-    m_nameLabel->setObjectName("myNameLabel");
-    m_nameLabel->setCursor(Qt::PointingHandCursor);
+    m_searchEdit = new QLineEdit();
+    m_searchEdit->setObjectName("searchInput");
+    m_searchEdit->setPlaceholderText(tr("Поиск..."));
 
-    auto* idBtn = new QPushButton();
-    idBtn->setObjectName("iconBtn");
-    idBtn->setFixedSize(32, 32);
-    idBtn->setToolTip(tr("My ID"));
-    ThemeManager::applyIcon(idBtn, QStringLiteral(":/icons/nav_profile.png"), QSize(18, 18));
-    connect(idBtn, &QPushButton::clicked, this, &MainWindow::onShowMyId);
+    topBarLayout->addWidget(m_hamburgerBtn);
+    topBarLayout->addWidget(m_searchEdit, 1);
 
-    auto* editBtn = new QPushButton();
-    editBtn->setObjectName("iconBtn");
-    editBtn->setFixedSize(32, 32);
-    editBtn->setToolTip(tr("Edit name"));
-    ThemeManager::applyIcon(editBtn, QStringLiteral(":/icons/ctx_edit.png"), QSize(18, 18));
-    connect(editBtn, &QPushButton::clicked, this, &MainWindow::onEditName);
-
-    headerLayout->addWidget(m_myAvatar);
-    headerLayout->addWidget(m_nameLabel, 1);
-    headerLayout->addWidget(idBtn);
-    headerLayout->addWidget(editBtn);
+    // Гамбургер → боковой ящик
+    connect(m_hamburgerBtn, &QPushButton::clicked, this, [this]() {
+        const QString name = Identity::instance().displayName();
+        const QString ownPath = SessionManager::instance().avatarPath();
+        QPixmap avatar((!ownPath.isEmpty() && QFile::exists(ownPath))
+                       ? ownPath : ":/icons/not-avatar.png");
+        m_sideDrawer->open(name, avatar);
+    });
 
     // Контакты
     m_contacts = new ContactsWidget(chatsPage);
 
-    // Баннер обновления — появляется между хедером и контактами
+    // Боковой ящик (поверх контактов, дочерний для chatsPage)
+    m_sideDrawer = new SideDrawer(chatsPage);
+    connect(m_sideDrawer, &SideDrawer::editNameRequested,   this, &MainWindow::onEditName);
+    connect(m_sideDrawer, &SideDrawer::showIdRequested,     this, &MainWindow::onShowMyId);
+    connect(m_sideDrawer, &SideDrawer::addContactRequested, this, &MainWindow::onAddContactClicked);
+    connect(m_sideDrawer, &SideDrawer::settingsRequested,   this, &MainWindow::openSettings);
+
+    // Баннер обновления — появляется между топбаром и контактами
     m_updateBanner = new UpdateBanner(chatsPage);
 
-    // Кнопка добавить
-    auto* addBtn = new QPushButton(tr("Add contact"));
-    addBtn->setObjectName("addContactBtn");
-    ThemeManager::applyIconOnAccent(addBtn, QStringLiteral(":/icons/profile_add_member.png"), QSize(16, 16));
-    connect(addBtn, &QPushButton::clicked, this, &MainWindow::onAddContactClicked);
+    // Поиск соединяем с фильтром контактов
+    connect(m_searchEdit, &QLineEdit::textChanged, m_contacts, &ContactsWidget::setFilter);
 
-    // Футер — шестерёнка + три кнопки тем
-    auto* footer = new QWidget();
-    footer->setObjectName("themeFooter");
-    auto* footerLayout = new QHBoxLayout(footer);
-    footerLayout->setContentsMargins(10, 8, 10, 10);
-    footerLayout->setSpacing(6);
-
-    auto* settingsBtn = new QPushButton();
-    settingsBtn->setObjectName("iconBtn");
-    settingsBtn->setFixedSize(32, 32);
-    settingsBtn->setToolTip(tr("Settings"));
-    ThemeManager::applyIcon(settingsBtn, QStringLiteral(":/icons/settings_btn.png"), QSize(20, 20));
-    connect(settingsBtn, &QPushButton::clicked, this, &MainWindow::openSettings);
-
-    // Кнопки тем перенесены в SettingsPanel — здесь остаётся только кнопка настроек
-    footerLayout->addWidget(settingsBtn);
-
-    chatsLayout->addWidget(headerBar);
+    chatsLayout->addWidget(topBar);
     chatsLayout->addWidget(m_updateBanner);   // скрыт по умолчанию
     chatsLayout->addWidget(m_contacts, 1);
-    chatsLayout->addWidget(addBtn);
-    chatsLayout->addWidget(footer);
 
-    // ── Страница 1: настройки ─────────────────────────────────────────────
-    m_settings = new SettingsPanel();
-    connect(m_settings, &SettingsPanel::backRequested,
-            this, &MainWindow::closeSettings);
+    m_leftStack->addWidget(chatsPage);
+    m_leftStack->setCurrentIndex(0);
+
+    // ── Настройки — overlay поверх всего central widget ──────────────────
+    m_settings = new SettingsPanel(central);
     connect(m_settings, &SettingsPanel::nameChanged,
             this, [this](const QString& name) {
-                m_nameLabel->setText(name);
-                // Рассылаем PROFILE_UPDATE всем подключённым пирам сразу
                 if (m_network) m_network->broadcastProfileUpdate(name);
             });
     connect(m_settings, &SettingsPanel::avatarChanged,
@@ -508,10 +488,6 @@ void MainWindow::setupUi() {
             this, [this](const QString& host, quint16 port, const QString& code) {
                 if (m_network) m_network->connectToDevice(host, port, code);
             });
-
-    m_leftStack->addWidget(chatsPage);   // index 0
-    m_leftStack->addWidget(m_settings);  // index 1
-    m_leftStack->setCurrentIndex(0);
 
     // ── Правая панель — чат ───────────────────────────────────────────────
     m_chat = new ChatWidget();
@@ -593,19 +569,22 @@ void MainWindow::setupUi() {
 }
 
 void MainWindow::openSettings() {
-    m_settings->reload();
-    m_leftStack->setCurrentIndex(1);
-    m_chat->showPlaceholder();
+    if (m_sideDrawer->isVisible()) {
+        // Дроуер ещё на экране (открыт или закрывается) — ждём конца анимации,
+        // чтобы он не попал в захват фона для блюра
+        connect(m_sideDrawer, &SideDrawer::closed, this, [this]() {
+            m_settings->openPanel();
+        }, Qt::SingleShotConnection);
+        if (m_sideDrawer->isOpen())
+            m_sideDrawer->closeDrawer();
+        // иначе анимация закрытия уже идёт — просто ждём сигнала closed()
+    } else {
+        m_settings->openPanel();
+    }
 }
 
 void MainWindow::closeSettings() {
-    m_leftStack->setCurrentIndex(0);
-    // Восстанавливаем чат если был активный пир
-    if (!m_activePeer.isNull()) {
-        const Contact c = m_storage->getContact(m_activePeer);
-        m_chat->openConversation(c.name, m_network->isOnline(m_activePeer));
-        m_chat->loadHistory(m_storage->getMessages(m_activePeer, 50));
-    }
+    m_settings->closePanel();
 }
 
 void MainWindow::loadOwnAvatar() {
@@ -1396,7 +1375,6 @@ void MainWindow::onEditName() {
         QLineEdit::Normal, Identity::instance().displayName(), &ok);
     if (ok && !name.trimmed().isEmpty()) {
         Identity::instance().setDisplayName(name.trimmed());
-        m_nameLabel->setText(name.trimmed());
     }
 }
 

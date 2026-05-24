@@ -74,8 +74,10 @@ public:
     // ── Identity ──────────────────────────────────────────────────────────
     [[nodiscard]] QUuid   uuid()        const { return m_uuid; }
     [[nodiscard]] QString displayName() const { return m_displayName; }
+    [[nodiscard]] QString bio()         const { return m_bio; }
     void setUuid(const QUuid& uuid);
     void setDisplayName(const QString& name);
+    void setBio(const QString& b);
 
     // ── Network ───────────────────────────────────────────────────────────
     [[nodiscard]] quint16 port()        const { return m_port; }
@@ -164,6 +166,7 @@ private:
     // Identity
     QUuid   m_uuid;
     QString m_displayName {"User"};
+    QString m_bio {};
 
     // Network
     quint16 m_port   {47821};

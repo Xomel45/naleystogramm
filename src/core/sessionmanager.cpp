@@ -109,6 +109,7 @@ QJsonObject SessionManager::toJson() const {
     QJsonObject identity;
     identity["uuid"]       = m_uuid.toString(QUuid::WithoutBraces);
     identity["name"]       = m_displayName;
+    if (!m_bio.isEmpty()) identity["bio"] = m_bio;
     identity["avatarPath"] = m_avatarPath;
 
     QJsonObject network;
@@ -169,6 +170,7 @@ void SessionManager::fromJson(const QJsonObject& obj) {
     const QString uuidStr = id["uuid"].toString();
     m_uuid        = uuidStr.isEmpty() ? QUuid() : QUuid(uuidStr);
     m_displayName = id["name"].toString("User");
+    m_bio         = id["bio"].toString();
     m_avatarPath  = id["avatarPath"].toString();
 
     // Network
@@ -244,6 +246,7 @@ void SessionManager::scheduleSave() {
 
 void SessionManager::setUuid(const QUuid& uuid)          { m_uuid = uuid;              scheduleSave(); }
 void SessionManager::setDisplayName(const QString& name)  { m_displayName = name;       scheduleSave(); }
+void SessionManager::setBio(const QString& b)             { m_bio = b;                  scheduleSave(); }
 void SessionManager::setPort(quint16 port)                { m_port = port;              scheduleSave(); }
 void SessionManager::setBindIp(const QString& ip)         { m_bindIp = ip;              scheduleSave(); }
 void SessionManager::setTheme(const QString& theme)       { m_theme = theme;            scheduleSave(); }
