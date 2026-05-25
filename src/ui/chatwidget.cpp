@@ -1,6 +1,8 @@
 #include "chatwidget.h"
 #include "thememanager.h"
+#include "voicewaveform.h"
 #include "../core/audiorecorder.h"
+#include <QFileInfo>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -102,13 +104,27 @@ ChatWidget::ChatWidget(QWidget* parent) : QWidget(parent) {
     m_player->setAudioOutput(m_audioOutput);
     m_audioOutput->setVolume(1.0f);
 
-    // Когда воспроизведение завершается — сбрасываем кнопку
+    // Когда воспроизведение завершается — сбрасываем кнопку и волну
     connect(m_player, &QMediaPlayer::playbackStateChanged,
             this, [this](QMediaPlayer::PlaybackState state) {
         if (state == QMediaPlayer::StoppedState && m_activePlayBtn) {
             m_activePlayBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_play.png")));
             m_activePlayBtn->setText({});
             m_activePlayBtn = nullptr;
+            if (m_activeWaveform) {
+                m_activeWaveform->setProgress(0.0f);
+                m_activeWaveform = nullptr;
+            }
+        }
+    });
+
+    // Обновляем прогресс волновой формы во время воспроизведения
+    connect(m_player, &QMediaPlayer::positionChanged,
+            this, [this](qint64 pos) {
+        if (m_activeWaveform) {
+            const qint64 dur = m_player->duration();
+            if (dur > 0)
+                m_activeWaveform->setProgress(static_cast<float>(pos) / dur);
         }
     });
 #endif
@@ -638,93 +654,135 @@ QWidget* ChatWidget::makeVoiceBubble(bool outgoing, int durationMs,
     rowLayout->setContentsMargins(0, 2, 0, 2);
     rowLayout->setSpacing(0);
 
-    // Контейнер пузыря
+    // Пузырь
     auto* bubble = new QFrame();
-    bubble->setMaximumWidth(280);
-    bubble->setMinimumWidth(160);
-    auto* bLayout = new QHBoxLayout(bubble);
+    bubble->setObjectName("voiceBubble");
+    bubble->setMaximumWidth(340);
+    bubble->setMinimumWidth(220);
+    auto* bLayout = new QVBoxLayout(bubble);
     bLayout->setContentsMargins(10, 8, 12, 8);
-    bLayout->setSpacing(8);
+    bLayout->setSpacing(4);
 
-    // Кнопка воспроизведения
+    // ── Верхний ряд: кнопка + волна ──────────────────────────────────────
+    auto* topRow = new QWidget();
+    auto* topLay = new QHBoxLayout(topRow);
+    topLay->setContentsMargins(0, 0, 0, 0);
+    topLay->setSpacing(8);
+
     auto* playBtn = new QPushButton();
-    playBtn->setFixedSize(32, 32);
+    playBtn->setFixedSize(36, 36);
     playBtn->setObjectName("voicePlayBtn");
-    ThemeManager::applyIcon(playBtn, QStringLiteral(":/icons/media_play.png"), QSize(16, 16));
+    ThemeManager::applyIcon(playBtn, QStringLiteral(":/icons/media_play.png"), QSize(18, 18));
 
-    // Форматируем длительность
+    // Волновая форма
+    auto* waveform = new VoiceWaveform();
+    const QColor colorPlayed   = outgoing ? p.textPrimary : p.accent;
+    const QColor colorUnplayed = QColor(outgoing ? p.textMuted : p.textMuted);
+    waveform->setColors(colorPlayed, colorUnplayed);
+    waveform->loadFile(filePath);
+    waveform->setCursor(Qt::PointingHandCursor);
+
+    topLay->addWidget(playBtn);
+    topLay->addWidget(waveform, 1);
+
+    // ── Нижний ряд: длительность + размер + время ────────────────────────
+    auto* botRow = new QWidget();
+    auto* botLay = new QHBoxLayout(botRow);
+    botLay->setContentsMargins(44, 0, 0, 0);  // выравнивание по правому краю кнопки
+    botLay->setSpacing(0);
+
     const int totalSec = durationMs / 1000;
-    const int mm = totalSec / 60;
-    const int ss = totalSec % 60;
-    const QString durStr = QString("%1:%2").arg(mm).arg(ss, 2, 10, QChar('0'));
-    const QString timeStr = ts.toString("hh:mm");
+    const QString durStr = QString("%1:%2")
+        .arg(totalSec / 60).arg(totalSec % 60, 2, 10, QChar('0'));
 
-    auto* infoLabel = new QLabel(
-        QString("🎤 %1  <span style='color:%2; font-size:10px;'>%3</span>")
-            .arg(durStr, p.textMuted, timeStr));
-    infoLabel->setTextFormat(Qt::RichText);
+    QString sizeStr;
+    if (!filePath.isEmpty()) {
+        const qint64 bytes = QFileInfo(filePath).size();
+        sizeStr = bytes < 1024 * 1024
+            ? QString(", %1 KB").arg(bytes / 1024.0, 0, 'f', 1)
+            : QString(", %1 MB").arg(bytes / 1024.0 / 1024.0, 0, 'f', 1);
+    }
 
-    bLayout->addWidget(playBtn);
-    bLayout->addWidget(infoLabel, 1);
+    auto* durLabel  = new QLabel(durStr + sizeStr);
+    durLabel->setObjectName("voiceDurLabel");
+    auto* timeLabel = new QLabel(ts.toString("hh:mm"));
+    timeLabel->setObjectName("voiceTimeLabel");
 
-    // Стиль пузыря
-    const QString playBtnBase = outgoing
-        ? "QPushButton { background: rgba(255,255,255,0.18); border-radius:16px; "
-          "color: %1; font-size:12px; } QPushButton:hover { background: rgba(255,255,255,0.28); }"
-        : "QPushButton { background: rgba(255,255,255,0.10); border-radius:16px; "
-          "color: %1; font-size:12px; } QPushButton:hover { background: rgba(255,255,255,0.18); }";
+    botLay->addWidget(durLabel);
+    botLay->addStretch();
+    botLay->addWidget(timeLabel);
 
-    playBtn->setStyleSheet(QString(playBtnBase).arg(p.textPrimary));
+    bLayout->addWidget(topRow);
+    bLayout->addWidget(botRow);
+
+    // ── Стиль пузыря ─────────────────────────────────────────────────────
+    const QString playBtnStyle =
+        "QPushButton#voicePlayBtn { background: rgba(255,255,255,0.18); "
+        "border-radius: 18px; border: none; }"
+        "QPushButton#voicePlayBtn:hover { background: rgba(255,255,255,0.30); }";
 
     if (outgoing) {
         bubble->setStyleSheet(QString(R"(
-            QFrame {
+            QFrame#voiceBubble {
                 background: %1;
                 border-radius: 18px;
                 border-bottom-right-radius: 6px;
             }
-            QLabel { color: %2; font-size: 13px; background: transparent; }
-        )").arg(p.bgBubbleOut, p.textPrimary));
+            QWidget { background: transparent; }
+            QLabel#voiceDurLabel  { color: %2; font-size: 11px; }
+            QLabel#voiceTimeLabel { color: %3; font-size: 11px; }
+        )").arg(p.bgBubbleOut, p.textPrimary, p.textMuted) + playBtnStyle);
         rowLayout->addStretch();
         rowLayout->addWidget(bubble);
     } else {
         bubble->setStyleSheet(QString(R"(
-            QFrame {
+            QFrame#voiceBubble {
                 background: %1;
                 border: 1px solid %2;
                 border-radius: 18px;
                 border-bottom-left-radius: 6px;
             }
-            QLabel { color: %3; font-size: 13px; background: transparent; }
-        )").arg(p.bgBubbleIn, p.border, p.textPrimary));
+            QWidget { background: transparent; }
+            QLabel#voiceDurLabel  { color: %3; font-size: 11px; }
+            QLabel#voiceTimeLabel { color: %4; font-size: 11px; }
+        )").arg(p.bgBubbleIn, p.border, p.textPrimary, p.textMuted) + playBtnStyle);
         rowLayout->addWidget(bubble);
         rowLayout->addStretch();
     }
 
-    // Воспроизведение через общий m_player (только при наличии Qt6Multimedia)
-    if (!filePath.isEmpty()) {
+    // ── Воспроизведение ───────────────────────────────────────────────────
+    const bool hasFile = !filePath.isEmpty();
+    if (hasFile) {
 #ifdef HAVE_QT_MULTIMEDIA
+        // Перемотка по клику на волну
+        connect(waveform, &VoiceWaveform::seekRequested, this,
+                [this, waveform](float pos) {
+            if (m_activeWaveform == waveform) {
+                m_player->setPosition(static_cast<qint64>(pos * m_player->duration()));
+            }
+        });
+
         connect(playBtn, &QPushButton::clicked, this,
-                [this, playBtn, filePath]() {
+                [this, playBtn, waveform, filePath]() {
             if (m_activePlayBtn == playBtn) {
-                // Повторное нажатие — стоп
                 m_player->stop();
-                playBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_play.png")));
-                m_activePlayBtn = nullptr;
+                ThemeManager::applyIcon(playBtn, ":/icons/media_play.png", QSize(18, 18));
+                m_activePlayBtn  = nullptr;
+                m_activeWaveform = nullptr;
             } else {
-                // Остановить предыдущий
                 if (m_activePlayBtn) {
-                    m_activePlayBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_play.png")));
+                    ThemeManager::applyIcon(m_activePlayBtn, ":/icons/media_play.png", QSize(18, 18));
                     m_player->stop();
                 }
-                m_activePlayBtn = playBtn;
-                playBtn->setIcon(ThemeManager::tintedIcon(QStringLiteral(":/icons/media_pause.png")));
+                if (m_activeWaveform) m_activeWaveform->setProgress(0.0f);
+                m_activePlayBtn  = playBtn;
+                m_activeWaveform = waveform;
+                ThemeManager::applyIcon(playBtn, ":/icons/media_pause.png", QSize(18, 18));
                 m_player->setSource(QUrl::fromLocalFile(filePath));
                 m_player->play();
             }
         });
 #else
-        // Qt6Multimedia недоступен — воспроизведение отключено
         playBtn->setEnabled(false);
         playBtn->setToolTip(tr("Воспроизведение недоступно (Qt6Multimedia не скомпилирован)"));
 #endif

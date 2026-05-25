@@ -49,6 +49,7 @@ struct PeerConnection {
     QDateTime        connectedSince   {};          // Момент установки соединения
     QJsonObject      systemInfo       {};          // Системная информация пира
     QString          avatarHash       {};          // SHA-256 hex аватара пира
+    QString          birthday         {};          // ДР пира "yyyy-MM-dd" или пусто
 
     // Заполняется из CLIENT_HELLO / SERVER_HELLO (до HANDSHAKE)
     QString          helloName        {};          // Имя пира из приветствия
@@ -69,6 +70,7 @@ struct PeerPublicInfo {
     QDateTime       connectedSince {};
     QJsonObject     systemInfo     {};
     QString         avatarHash     {};
+    QString         birthday       {};
 };
 
 class NetworkManager : public QObject {

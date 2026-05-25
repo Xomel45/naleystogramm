@@ -20,6 +20,7 @@ struct Contact {
     bool       isMuted   {false};
     QDateTime  lastSeen  {};
     QString    systemInfoJson {};
+    QString    birthday       {};   // ISO date "yyyy-MM-dd" or empty
     QString    versionCreated {"0.1.0"};
 };
 
@@ -78,7 +79,9 @@ struct TransferProgress {
 // ── Информация об обновлении ─────────────────────────────────────────────────
 struct UpdateInfo {
     QString version;
-    QString url;
+    QString url;         // HTML-страница релиза
     QString notes;
+    QString downloadUrl; // прямая ссылка на пакет (пусто — только HTML-страница)
+    QString assetName;   // имя файла (определяет тип пакета)
     bool    available{false};
 };

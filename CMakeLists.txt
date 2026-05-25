@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.7.5 LANGUAGES CXX)
+project(naleystogramm VERSION 0.8.0 LANGUAGES CXX)
 
 # RC (Windows Resource Compiler) нужен только при сборке под Windows.
 # На Linux windres не установлен, поэтому включаем язык только там.
@@ -118,6 +118,8 @@ set(SOURCES
     src/ui/customthememanager.cpp
     src/ui/chatwidget.h
     src/ui/chatwidget.cpp
+    src/ui/voicewaveform.h
+    src/ui/voicewaveform.cpp
     src/ui/contactswidget.h
     src/ui/contactswidget.cpp
     src/ui/sidedrawer.h
@@ -137,6 +139,30 @@ set(SOURCES
     src/ui/updatebanner.cpp
     src/ui/settingspanel.h
     src/ui/settingspanel.cpp
+    src/ui/toggleswitch.h
+    src/ui/toggleswitch.cpp
+    src/ui/settings/settingspagebase.h
+    src/ui/settings/settingshelpers.h
+    src/ui/settings/settingspage_main.h
+    src/ui/settings/settingspage_main.cpp
+    src/ui/settings/settingspage_profile.h
+    src/ui/settings/settingspage_profile.cpp
+    src/ui/settings/settingspage_network.h
+    src/ui/settings/settingspage_network.cpp
+    src/ui/settings/settingspage_demo.h
+    src/ui/settings/settingspage_demo.cpp
+    src/ui/settings/settingspage_privacy.h
+    src/ui/settings/settingspage_privacy.cpp
+    src/ui/settings/settingspage_security.h
+    src/ui/settings/settingspage_security.cpp
+    src/ui/settings/settingspage_interface.h
+    src/ui/settings/settingspage_interface.cpp
+    src/ui/settings/settingspage_devices.h
+    src/ui/settings/settingspage_devices.cpp
+    src/ui/settings/settingspage_updates.h
+    src/ui/settings/settingspage_updates.cpp
+    src/ui/settings/settingspage_debug.h
+    src/ui/settings/settingspage_debug.cpp
     src/ui/logpanel.h
     src/ui/logpanel.cpp
     src/ui/dialogs/addcontactdialog.h

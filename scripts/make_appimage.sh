@@ -343,7 +343,7 @@ info "Создание AppImage..."
     }
 
 # linuxdeploy создаёт AppImage в текущей директории, переносим в build
-APPIMAGE_NAME="Naleystogramm-${APP_VERSION}-x86_64.AppImage"
+APPIMAGE_NAME="Naleystogramm-x86_64.AppImage"
 # Ищем только что созданный AppImage, исключая уже готовый целевой файл
 CREATED_APPIMAGE=$(ls -1 Naleystogramm*.AppImage 2>/dev/null \
     | grep -v "^${APPIMAGE_NAME}$" | head -1)

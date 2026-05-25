@@ -15,6 +15,58 @@
 #include <QFile>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QTimer>
+
+// ── DrawerGhost ───────────────────────────────────────────────────────────────
+// Sibling overlay drawn behind the SideDrawer during its close animation.
+// Holds a blurred snapshot of the drawer at its original (open) position and
+// fades it out, producing a motion-trail "smear" as the drawer slides away.
+class DrawerGhost : public QWidget {
+public:
+    DrawerGhost(QWidget* parent, const QPixmap& px, int durationMs)
+        : QWidget(parent), m_px(px)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_TranslucentBackground);
+        setAttribute(Qt::WA_DeleteOnClose);
+        resize(parent->size());
+        show();
+
+        const int interval = 16;
+        const int steps    = qMax(1, durationMs / interval);
+        m_step = 1.0 / steps;
+
+        m_timer = new QTimer(this);
+        m_timer->setInterval(interval);
+        connect(m_timer, &QTimer::timeout, this, [this]() {
+            m_alpha -= m_step;
+            if (m_alpha <= 0.0) { close(); return; }
+            update();
+        });
+        m_timer->start();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        if (m_px.isNull() || m_alpha <= 0.0) return;
+        QPainter p(this);
+        // 4 ghost copies with decreasing opacity away from origin (rightward blur smear)
+        constexpr int STEPS   = 4;
+        constexpr int SPACING = 14;
+        for (int i = STEPS; i >= 1; i--) {
+            const qreal frac = qreal(STEPS - i + 1) / STEPS;
+            p.setOpacity(m_alpha * frac * 0.5);
+            // Copies sit at x = (i-1)*SPACING, so x=0 is most opaque (where drawer was)
+            p.drawPixmap((i - 1) * SPACING, 0, m_px);
+        }
+    }
+
+private:
+    QPixmap m_px;
+    qreal   m_alpha {1.0};
+    qreal   m_step  {0.05};
+    QTimer* m_timer {nullptr};
+};
 
 #ifndef APP_VERSION
 #define APP_VERSION "0.7.5"
@@ -207,6 +259,21 @@ void SideDrawer::closeDrawer() {
     if (!m_open) return;
     m_open = false;
     qApp->removeEventFilter(this);
+
+    // Spawn motion-trail ghost before animating away
+    if (parentWidget()) {
+        const QPixmap raw = grab();
+        const int f = 4;
+        const QPixmap blurred =
+            raw.scaled(qMax(1, raw.width()/f), qMax(1, raw.height()/f),
+                       Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+               .scaled(raw.width(), raw.height(),
+                       Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        auto* ghost = new DrawerGhost(parentWidget(), blurred, m_anim->duration());
+        ghost->resize(parentWidget()->size());
+        ghost->show();
+        raise();  // keep drawer on top of its ghost
+    }
 
     m_anim->stop();
     m_anim->setStartValue(QPoint(0, 0));

@@ -18,6 +18,7 @@ class QAudioOutput;
 #endif
 class QTimer;
 class AudioRecorder;
+class VoiceWaveform;
 
 class ChatWidget : public QWidget {
     Q_OBJECT
@@ -128,7 +129,8 @@ private:
 #ifdef HAVE_QT_MULTIMEDIA
     QMediaPlayer*  m_player{nullptr};
     QAudioOutput*  m_audioOutput{nullptr};
-    QPushButton*   m_activePlayBtn{nullptr};  // текущая активная кнопка ▶/⏸
+    QPushButton*   m_activePlayBtn{nullptr};   // текущая активная кнопка ▶/⏸
+    VoiceWaveform* m_activeWaveform{nullptr};  // текущая активная волновая форма
 #endif
 
     // Typing indicator (входящий)

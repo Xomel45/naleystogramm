@@ -21,6 +21,7 @@ public:
     [[nodiscard]] bool        updateContactName(const QUuid& uuid, const QString& name);
     // Сохранить снимок системной информации пира (CPU/RAM/OS) — для показа в профиле офлайн
     [[nodiscard]] bool        updateContactSystemInfo(const QUuid& uuid, const QJsonObject& info);
+    [[nodiscard]] bool        updateContactBirthday(const QUuid& uuid, const QString& birthday);
     // Установить/снять блокировку контакта (все сообщения от него игнорируются)
     [[nodiscard]] bool        blockContact(const QUuid& uuid, bool blocked);
     // Включить/отключить уведомления от контакта

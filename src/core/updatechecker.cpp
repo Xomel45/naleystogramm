@@ -4,11 +4,59 @@
 #include <QNetworkReply>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include "sessionmanager.h"
 #include <QDateTime>
 #include <QUrl>
+#include <QFile>
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+// Возвращает ID= из /etc/os-release (например, "arch", "ubuntu", "fedora").
+static QString detectDistroId() {
+    QFile f("/etc/os-release");
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
+    while (!f.atEnd()) {
+        QString line = QString::fromUtf8(f.readLine()).trimmed();
+        if (line.startsWith("ID=")) {
+            QString val = line.mid(3);
+            if (val.startsWith('"')) val = val.mid(1, val.length() - 2);
+            return val.toLower();
+        }
+    }
+    return {};
+}
+
+// Выбирает лучший ассет из массива по типу дистрибутива.
+// Возвращает {url, name}.
+static std::pair<QString,QString> pickAsset(const QJsonArray& assets) {
+    const QString distro = detectDistroId();
+
+    QString appUrl, appName;
+    QString debUrl, debName;
+    QString rpmUrl, rpmName;
+    QString pkgUrl, pkgName;
+
+    for (const auto& a : assets) {
+        const QJsonObject obj  = a.toObject();
+        const QString name     = obj["name"].toString();
+        const QString url      = obj["browser_download_url"].toString();
+        if (name.endsWith(".AppImage"))       { appUrl = url; appName = name; }
+        else if (name.endsWith(".deb"))        { debUrl = url; debName = name; }
+        else if (name.endsWith(".rpm"))        { rpmUrl = url; rpmName = name; }
+        else if (name.endsWith(".pkg.tar.zst")){ pkgUrl = url; pkgName = name; }
+    }
+
+    static const QStringList archBased    {"arch","manjaro","endeavouros","garuda","artix","cachyos"};
+    static const QStringList debianBased  {"ubuntu","debian","linuxmint","pop","zorin","kali","elementary"};
+    static const QStringList rpmBased     {"fedora","rhel","centos","rocky","almalinux",
+                                           "opensuse","opensuse-leap","opensuse-tumbleweed"};
+
+    if (archBased.contains(distro)  && !pkgUrl.isEmpty()) return {pkgUrl, pkgName};
+    if (debianBased.contains(distro) && !debUrl.isEmpty()) return {debUrl, debName};
+    if (rpmBased.contains(distro)   && !rpmUrl.isEmpty()) return {rpmUrl, rpmName};
+    return {appUrl, appName};
+}
 
 // Парсим semver "v1.2.3", "1.2.3-beta", "1.2.3-rc1" → {1, 2, 3}.
 // Суффиксы (-beta, -rc1 и т.п.) отбрасываются перед разбором чисел.
@@ -41,6 +89,8 @@ QString UpdateChecker::lastChecked() const {
 }
 
 void UpdateChecker::checkInBackground() {
+    if (!SessionManager::instance().autoCheckUpdates())
+        return;
     const QString isoStr = SessionManager::instance().lastUpdateCheck();
     const auto last = isoStr.isEmpty()
         ? QDateTime()
@@ -107,11 +157,15 @@ void UpdateChecker::doCheck() {
             ? body.left(280) + "…"
             : body;
 
+        const auto [dlUrl, dlName] = pickAsset(obj["assets"].toArray());
+
         m_cached = UpdateInfo{
-            .version   = tagName,
-            .url       = htmlUrl,
-            .notes     = notes,
-            .available = isNewerVersion(tagName, kCurrentVersion),
+            .version     = tagName,
+            .url         = htmlUrl,
+            .notes       = notes,
+            .downloadUrl = dlUrl,
+            .assetName   = dlName,
+            .available   = isNewerVersion(tagName, kCurrentVersion),
         };
 
         if (m_cached.available)

@@ -1,17 +1,19 @@
 #pragma once
 #include <QWidget>
 #include <QPixmap>
-#include "thememanager.h"
 
-class QLineEdit;
-class QSpinBox;
-class QComboBox;
-class QLabel;
-class QPushButton;
-class LogPanel;
 class QPropertyAnimation;
 class QStackedWidget;
-class QScrollArea;
+class SettingsMainPage;
+class SettingsProfilePage;
+class SettingsNetworkPage;
+class SettingsDemoPage;
+class SettingsPrivacyPage;
+class SettingsSecurityPage;
+class SettingsInterfacePage;
+class SettingsDevicesPage;
+class SettingsUpdatesPage;
+class SettingsDebugPage;
 
 // ── SettingsPanel ──────────────────────────────────────────────────────────
 // Overlay-панель настроек — появляется поверх всего окна с анимацией сверху.
@@ -22,14 +24,19 @@ class SettingsPanel : public QWidget {
     Q_PROPERTY(qreal overlayOpacity READ overlayOpacity WRITE setOverlayOpacity)
 public:
     explicit SettingsPanel(QWidget* parent = nullptr);
-    void reload();      // перечитать актуальные значения
-    void openPanel();   // показать с анимацией
-    void closePanel();  // скрыть с анимацией
+    void reload();
+    void openPanel();
+    void closePanel();
+
+    void setExternalAddress(const QString& ip, quint16 port);
+
+    // Вызывается из SettingsMainPage и SettingsDevicesPage
+    void showSection(int pageIdx, const QString& title, bool hasSave);
 
 signals:
     void nameChanged(const QString& name);
     void networkChanged(const QString& ip, quint16 port);
-    void backRequested();  // устарел, оставлен для совместимости
+    void backRequested();
     void verboseLoggingChanged(bool enabled);
     void avatarChanged(const QString& path);
     void enterSendsChanged(bool on);
@@ -43,102 +50,37 @@ protected:
 
 private slots:
     void onSave();
-    void onReset();
-    void onAvatarClicked();
-    void onImportTheme();
-    void onRemoveTheme();
 
 private:
     void updateCardGeometry();
     void applyCardTheme();
-    void rebuildCustomThemeItems();
-    void applyAvatarPixmap(const QString& path);
-    void showSection(int pageIdx, const QString& title, bool hasSave);
     void showMainPage();
 
-    QWidget*     buildMainPage();
-    QScrollArea* buildProfilePage();
-    QScrollArea* buildNetworkPage();
-    QScrollArea* buildDemoPage();
-    QScrollArea* buildPrivacyPage();
-    QScrollArea* buildSecurityPage();
-    QScrollArea* buildInterfacePage();
-    QScrollArea* buildDevicesPage();
-    QScrollArea* buildUpdatesPage();
-    QScrollArea* buildDebugPage();
-
-    // Профиль
-    QLabel*      m_avatarLabel     {nullptr};
-    QPushButton* m_changeAvatarBtn {nullptr};
-    QLineEdit*   m_nameEdit        {nullptr};
-    QLineEdit*   m_uuidEdit        {nullptr};
-    class QTextEdit* m_bioEdit     {nullptr};
-    QLabel*      m_profileNameLbl  {nullptr};
-
-    // Сеть
-    QWidget*   m_portGroup    {nullptr};
-    QSpinBox*  m_portSpin     {nullptr};
-    QLineEdit* m_ipEdit       {nullptr};
-    QLabel*    m_proxyStatus  {nullptr};
-
-    // Режим проброса портов
-    QComboBox* m_pfModeCombo    {nullptr};
-    QWidget*   m_manualFields   {nullptr};
-    QLineEdit* m_manualIpEdit   {nullptr};
-    QSpinBox*  m_manualPortSpin {nullptr};
-    QWidget*   m_openPortFields {nullptr};
-    QSpinBox*  m_openPortSpin   {nullptr};
-
-    // Relay (Client-Server)
-    QWidget*   m_relayFields      {nullptr};
-    QLineEdit* m_relayIpEdit      {nullptr};
-    QSpinBox*  m_relayTcpPortSpin {nullptr};
-    QSpinBox*  m_relayUdpPortSpin {nullptr};
-    QLabel*    m_relayWarning     {nullptr};
-
-    // Интерфейс
-    QComboBox*       m_themeCombo        {nullptr};
-    QComboBox*       m_langCombo         {nullptr};
-    QLabel*          m_customRestartHint {nullptr};
-    QPushButton*     m_importThemeBtn    {nullptr};
-    QPushButton*     m_removeThemeBtn    {nullptr};
-    class QCheckBox* m_enterSendsCheck   {nullptr};
-
-    // Конфиденциальность
-    QComboBox* m_privacyMessages {nullptr};
-    QComboBox* m_privacyFiles    {nullptr};
-    QComboBox* m_privacyCalls    {nullptr};
-    QComboBox* m_privacyVoice    {nullptr};
-    QComboBox* m_privacyAvatar   {nullptr};
-    QComboBox* m_privacyShell    {nullptr};
-
-    // Безопасность
-    QPushButton* m_shellToggle {nullptr};
-
-    // Обновления
-    QLabel* m_lastCheckedLabel  {nullptr};
-    QLabel* m_updateStatusLabel {nullptr};
-
-    // Отладка
-    LogPanel* m_logPanel {nullptr};
-
-    // Главная страница — только отображение (не редактирование)
-    QLabel* m_mainPageAvatar {nullptr};
-    QLabel* m_mainPageName   {nullptr};
-    QLabel* m_mainPageUuid   {nullptr};
+    // Страницы
+    SettingsMainPage*      m_mainPage      {nullptr};
+    SettingsProfilePage*   m_profilePage   {nullptr};
+    SettingsNetworkPage*   m_networkPage   {nullptr};
+    SettingsDemoPage*      m_demoPage      {nullptr};
+    SettingsPrivacyPage*   m_privacyPage   {nullptr};
+    SettingsSecurityPage*  m_securityPage  {nullptr};
+    SettingsInterfacePage* m_interfacePage {nullptr};
+    SettingsDevicesPage*   m_devicesPage   {nullptr};
+    SettingsUpdatesPage*   m_updatesPage   {nullptr};
+    SettingsDebugPage*     m_debugPage     {nullptr};
 
     // Навигация
     QStackedWidget* m_pageStack    {nullptr};
-    QLabel*         m_cardTitleLbl {nullptr};
-    QPushButton*    m_backBtn      {nullptr};
-    QPushButton*    m_saveBtn      {nullptr};
+    class QLabel*   m_cardTitleLbl {nullptr};
+    class QPushButton* m_backBtn   {nullptr};
+    class QPushButton* m_saveBtn   {nullptr};
 
     // Overlay
-    QWidget*            m_card         {nullptr};
-    QPropertyAnimation* m_anim         {nullptr};
-    QPropertyAnimation* m_fadeAnim     {nullptr};
+    QWidget*            m_card           {nullptr};
+    QPropertyAnimation* m_anim           {nullptr};
+    QPropertyAnimation* m_fadeAnim       {nullptr};
     QPixmap             m_blurredBg;
-    bool                m_closing      {false};
+    QPixmap             m_trailPixmap;
+    bool                m_closing        {false};
     qreal               m_overlayOpacity {0.0};
 
     qreal overlayOpacity() const { return m_overlayOpacity; }

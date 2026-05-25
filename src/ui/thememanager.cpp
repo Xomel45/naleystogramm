@@ -627,7 +627,7 @@ QPushButton#addContactBtn:pressed {
 QPushButton#iconBtn {
     background: transparent;
     border: none;
-    border-radius: 10px;
+    border-radius: 18px;
     color: %13;
     font-size: 15px;
     padding: 4px;
@@ -939,24 +939,25 @@ QSplitter#mainSplitter::handle:pressed {
 
 QWidget#updateBanner {
     background: %21;
-    border-bottom: 1px solid %22;
+    border-top: 1px solid %22;
+    cursor: pointer;
+}
+QWidget#updateBanner:hover {
+    background: %24;
+}
+QLabel#updateBannerIcon {
+    color: %23;
+    font-size: 15px;
 }
 QLabel#updateBannerText {
     color: %23;
     font-size: 12px;
     font-weight: 600;
 }
-QPushButton#updateBannerBtn {
-    background: %22;
-    border: none;
-    border-radius: 6px;
+QLabel#updateBannerProgress {
     color: %23;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
-    padding: 2px 10px;
-}
-QPushButton#updateBannerBtn:hover {
-    background: %24;
 }
 
 /* ── SettingsDialog ──────────────────────────────────────────────────── */

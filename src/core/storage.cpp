@@ -139,6 +139,8 @@ void StorageManager::migrate() {
     // Время последнего присутствия онлайн (Unix timestamp секунды, 0 = неизвестно)
     if (!cols.contains("last_seen"))
         alter.exec("ALTER TABLE contacts ADD COLUMN last_seen INTEGER NOT NULL DEFAULT 0");
+    if (!cols.contains("birthday"))
+        alter.exec(QStringLiteral("ALTER TABLE contacts ADD COLUMN birthday TEXT NOT NULL DEFAULT ''"));
 
     // ── Безопасная миграция сообщений: колонки для голосовых сообщений ───────
     QSqlQuery msgInfo(m_db);
@@ -252,6 +254,7 @@ static Contact rowToContact(QSqlQuery& q) {
     c.isBlocked       = q.value("is_blocked").toInt() != 0;
     c.isMuted         = q.value("is_muted").toInt() != 0;
     c.systemInfoJson  = q.value("systeminfo_json").toString();
+    c.birthday        = q.value("birthday").toString();
     // versionCreated: для старых записей (до v0.5.1) — дефолтное значение "0.1.0"
     const QString vc = q.value("version_created").toString();
     c.versionCreated  = vc.isEmpty() ? QStringLiteral("0.1.0") : vc;
@@ -356,6 +359,18 @@ bool StorageManager::updateContactSystemInfo(const QUuid& uuid, const QJsonObjec
     if (!q.exec()) {
         qWarning("[Storage] updateContactSystemInfo: %s",
                  qPrintable(q.lastError().text()));
+        return false;
+    }
+    return true;
+}
+
+bool StorageManager::updateContactBirthday(const QUuid& uuid, const QString& birthday) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE contacts SET birthday=:v WHERE uuid=:uuid"));
+    q.bindValue(":v",    birthday);
+    q.bindValue(":uuid", uuid.toString(QUuid::WithoutBraces));
+    if (!q.exec()) {
+        qWarning("[Storage] updateContactBirthday: %s", qPrintable(q.lastError().text()));
         return false;
     }
     return true;

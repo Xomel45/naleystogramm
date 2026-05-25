@@ -239,7 +239,7 @@ deploy_beta() {
 # ── РЕЖИМ: Release Linux (AppImage) ──────────────────────────────────────────
 # Назначение: финальный дистрибутив для Linux.
 # Артефакт:   самодостаточный AppImage (Qt + плагины + переводы внутри).
-# Путь:       builds/releases/VERSION-linux/Naleystogramm-VERSION-x86_64.AppImage
+# Путь:       builds/releases/VERSION-linux/Naleystogramm-x86_64.AppImage
 deploy_release_linux() {
     header "Release Linux → ${BUILDS_DIR}/releases/${VERSION}-linux/"
     ensure_builds_tree
@@ -250,7 +250,7 @@ deploy_release_linux() {
     fi
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
-    local appimage_name="Naleystogramm-${VERSION}-x86_64.AppImage"
+    local appimage_name="Naleystogramm-x86_64.AppImage"
 
     # Опциональная очистка
     $DO_CLEAN && { safe_clean "$dest"; }
@@ -457,12 +457,12 @@ Naleystogramm v${VERSION} — Windows Release
 EOF
     ok "  + README.txt"
 
-    make_zip "$dest" "${BUILDS_DIR}/releases/${VERSION}-windows.zip"
+    make_zip "$dest" "${BUILDS_DIR}/releases/naleystogramm-windows.zip"
 
     rule
     ok "Release Windows готов!"
     echo "  Директория:  ${BOLD}$dest/${NC}"
-    echo "  ZIP:         ${VERSION}-windows.zip  ($(file_size "${BUILDS_DIR}/releases/${VERSION}-windows.zip"))"
+    echo "  ZIP:         naleystogramm-windows.zip  ($(file_size "${BUILDS_DIR}/releases/naleystogramm-windows.zip"))"
     echo "  .exe:        $APP_NAME.exe  ($(file_size "$dest/$APP_NAME.exe"))"
     echo "  Скопировано: $ok_count  |  Пропущено: $warn_count"
     echo ""
@@ -478,9 +478,9 @@ EOF
 
 # ── РЕЖИМ: Release Linux (.pkg.tar.zst — Arch Linux) ─────────────────────────
 # Назначение: нативный пакет для Arch Linux / pacman.
-# Артефакт:   naleystogramm-VERSION-1-x86_64.pkg.tar.zst
+# Артефакт:   naleystogramm-x86_64.pkg.tar.zst
 # Путь:       builds/releases/VERSION-linux/
-# Установка:  sudo pacman -U naleystogramm-VERSION-1-x86_64.pkg.tar.zst
+# Установка:  sudo pacman -U naleystogramm-x86_64.pkg.tar.zst
 deploy_release_pkg() {
     header "Release .pkg.tar.zst → ${BUILDS_DIR}/releases/${VERSION}-linux/"
     ensure_builds_tree
@@ -495,7 +495,7 @@ deploy_release_pkg() {
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
     local pkgver="${VERSION}-1"
-    local pkg_name="naleystogramm-${pkgver}-x86_64.pkg.tar.zst"
+    local pkg_name="naleystogramm-x86_64.pkg.tar.zst"
     local staging="${BUILD_LINUX}/pkg-staging"
 
     $DO_CLEAN && { safe_clean "$dest"; }
@@ -562,7 +562,7 @@ PKGINFO_EOF
 
 # ── РЕЖИМ: Release Linux (.deb) ───────────────────────────────────────────────
 # Назначение: пакет для Debian / Ubuntu / Mint (системная установка).
-# Артефакт:   naleystogramm_VERSION_amd64.deb
+# Артефакт:   naleystogramm_amd64.deb
 # Путь:       builds/releases/VERSION-linux/
 # Требует:    dpkg-deb  (пакет dpkg-dev)
 deploy_release_deb() {
@@ -578,7 +578,7 @@ deploy_release_deb() {
     fi
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
-    local deb_name="naleystogramm_${VERSION}_amd64.deb"
+    local deb_name="naleystogramm_amd64.deb"
     local pkg_dir="${BUILD_LINUX}/deb-staging"
 
     $DO_CLEAN && { safe_clean "$dest"; }
@@ -650,7 +650,7 @@ CTRL_EOF
 
 # ── РЕЖИМ: Release Linux (.rpm) ───────────────────────────────────────────────
 # Назначение: пакет для Fedora / RHEL / openSUSE / Arch (системная установка).
-# Артефакт:   naleystogramm-VERSION-1.x86_64.rpm
+# Артефакт:   naleystogramm-x86_64.rpm
 # Путь:       builds/releases/VERSION-linux/
 # Требует:    rpmbuild  (пакет rpm-build / rpm-tools)
 deploy_release_rpm() {
@@ -668,7 +668,7 @@ deploy_release_rpm() {
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
     # RPM не допускает дефисы в Version — заменяем на подчёркивания
     local rpm_version="${VERSION//-/_}"
-    local rpm_name="naleystogramm-${rpm_version}-1.x86_64.rpm"
+    local rpm_name="naleystogramm-x86_64.rpm"
     local rpm_topdir="${BUILD_LINUX}/rpm-staging"
     local buildroot="${rpm_topdir}/BUILDROOT/naleystogramm-${rpm_version}-1.x86_64"
 
@@ -872,10 +872,10 @@ show_help() {
     echo "    │   └── build-info.txt"
     echo "    └── releases/"
     echo "        ├── ${VERSION}-linux/"
-    echo "        │   ├── Naleystogramm-${VERSION}-x86_64.AppImage"
-    echo "        │   ├── naleystogramm-${VERSION}-1-x86_64.pkg.tar.zst"
-    echo "        │   ├── naleystogramm_${VERSION}_amd64.deb"
-    echo "        │   ├── naleystogramm-${VERSION}-1.x86_64.rpm"
+    echo "        │   ├── Naleystogramm-x86_64.AppImage"
+    echo "        │   ├── naleystogramm-x86_64.pkg.tar.zst"
+    echo "        │   ├── naleystogramm_amd64.deb"
+    echo "        │   ├── naleystogramm-x86_64.rpm"
     echo "        │   └── build-info.txt"
     echo "        └── ${VERSION}-windows/"
     echo "            ├── naleystogramm.exe"
@@ -947,7 +947,7 @@ case "$MODE" in
                     safe_clean "${BUILDS_DIR}/releases/${VERSION}-linux"
                     safe_clean "${BUILDS_DIR}/releases/${VERSION}-windows"
                     safe_clean "${BUILDS_DIR}/releases/${VERSION}-windows-installer"
-                    rm -f "${BUILDS_DIR}/releases/${VERSION}-windows.zip"
+                    rm -f "${BUILDS_DIR}/releases/naleystogramm-windows.zip"
                     DO_CLEAN=false
                 fi
                 deploy_release_linux

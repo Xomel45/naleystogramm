@@ -72,6 +72,7 @@ PeerPublicInfo NetworkManager::getPeerInfo(const QUuid& uuid) const {
         .connectedSince = p.connectedSince,
         .systemInfo     = p.systemInfo,
         .avatarHash     = p.avatarHash,
+        .birthday       = p.birthday,
     };
 }
 
@@ -512,6 +513,7 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
                 {"port",       static_cast<int>(m_localPort)},
                 {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
                 {"avatarHash", ownAvatarHash},
+                {"birthday",   SessionManager::instance().birthday()},
                 {"version",    QCoreApplication::applicationVersion()},
             };
             sendViaRelay(peer.uuid, hs);
@@ -1013,6 +1015,7 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
         peer.name       = rawName.left(256).remove(kCtrlCharsHello).trimmed();
         peer.serverPort = static_cast<quint16>(obj["port"].toInt(0));
         peer.avatarHash = obj["avatarHash"].toString();
+        peer.birthday   = obj["birthday"].toString().left(10); // "yyyy-MM-dd"
 
         // H-2: проверяем размер systemInfo — более 4 КБ не принимаем (защита от DoS)
         const QJsonObject rawSysInfo = obj["systemInfo"].toObject();
@@ -1096,6 +1099,7 @@ void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
             else
                 log(QString("HANDSHAKE_ACK: systemInfo от %1 превышает 4 КБ — игнорируем").arg(peer.name), true);
             peer.avatarHash = obj["avatarHash"].toString();
+            peer.birthday   = obj["birthday"].toString().left(10); // "yyyy-MM-dd"
             log(QString("HANDSHAKE_ACK принят от %1 (systemInfo: %2)")
                 .arg(peer.name)
                 .arg(!peer.systemInfo.isEmpty() ? "получена" : "отсутствует"));
@@ -1212,6 +1216,7 @@ void NetworkManager::sendHandshake(QTcpSocket* socket) {
         {"port",       static_cast<int>(m_advertisedPort ? m_advertisedPort : m_localPort)},
         {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
         {"avatarHash", ownAvatarHash},
+        {"birthday",   SessionManager::instance().birthday()},
         {"version",    QCoreApplication::applicationVersion()},
     };
     socket->write(QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n');
@@ -1334,6 +1339,7 @@ void NetworkManager::acceptIncoming(const QUuid& peerUuid) {
                 {"name",       id.displayName()},
                 {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
                 {"avatarHash", ownAvatarHash},
+                {"birthday",   SessionManager::instance().birthday()},
                 {"version",    QCoreApplication::applicationVersion()},
             };
             // Отправляем HANDSHAKE_ACK (напрямую или через ретранслятор)

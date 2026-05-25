@@ -233,6 +233,14 @@ MainWindow::MainWindow(App& app, QWidget* parent)
             m_network,  &NetworkManager::setVerboseLogging);
 
     connect(m_network, &NetworkManager::ready,             this, &MainWindow::onAppReady);
+    connect(m_network, &NetworkManager::ready,
+            m_settings, [this](const QString& ip, quint16 port, bool) {
+                m_settings->setExternalAddress(ip, port);
+            });
+    connect(m_network, &NetworkManager::externalIpDiscovered,
+            m_settings, [this](const QString& ip) {
+                m_settings->setExternalAddress(ip, m_network->advertisedPort());
+            });
     connect(m_network, &NetworkManager::incomingRequest,   this, &MainWindow::onIncomingRequest);
     connect(m_network, &NetworkManager::peerConnected,     this, &MainWindow::onPeerConnected);
     connect(m_network, &NetworkManager::peerDisconnected,  this, &MainWindow::onPeerDisconnected);
@@ -438,6 +446,7 @@ void MainWindow::setupUi() {
     m_searchEdit = new QLineEdit();
     m_searchEdit->setObjectName("searchInput");
     m_searchEdit->setPlaceholderText(tr("Поиск..."));
+    m_searchEdit->setFixedHeight(36);
 
     topBarLayout->addWidget(m_hamburgerBtn);
     topBarLayout->addWidget(m_searchEdit, 1);
@@ -461,15 +470,14 @@ void MainWindow::setupUi() {
     connect(m_sideDrawer, &SideDrawer::addContactRequested, this, &MainWindow::onAddContactClicked);
     connect(m_sideDrawer, &SideDrawer::settingsRequested,   this, &MainWindow::openSettings);
 
-    // Баннер обновления — появляется между топбаром и контактами
     m_updateBanner = new UpdateBanner(chatsPage);
 
     // Поиск соединяем с фильтром контактов
     connect(m_searchEdit, &QLineEdit::textChanged, m_contacts, &ContactsWidget::setFilter);
 
     chatsLayout->addWidget(topBar);
-    chatsLayout->addWidget(m_updateBanner);   // скрыт по умолчанию
     chatsLayout->addWidget(m_contacts, 1);
+    chatsLayout->addWidget(m_updateBanner);   // внизу, скрыт по умолчанию
 
     m_leftStack->addWidget(chatsPage);
     m_leftStack->setCurrentIndex(0);
@@ -762,6 +770,8 @@ void MainWindow::onPeerConnected(QUuid uuid, QString name) {
             qWarning("[Main] Не удалось сохранить systemInfo для %s",
                      qPrintable(name));
     }
+    if (!info.birthday.isEmpty())
+        (void)m_storage->updateContactBirthday(uuid, info.birthday);
 
     // Проверяем аватар пира: запрашиваем если хэш изменился или нет в кэше
     const Contact stored = m_storage->getContact(uuid);
@@ -1519,33 +1529,36 @@ void MainWindow::onDeleteContact(QUuid uuid) {
 
 void MainWindow::onOpenProfile(QUuid uuid) {
     // Избегаем дублирующих окон для одного пира
+    // Уже открыт для того же UUID — поднимаем поверх
     const auto dialogs = findChildren<ContactProfileDialog*>();
     for (auto* dlg : dialogs) {
         if (dlg->property("peerUuid").toUuid() == uuid) {
-            dlg->raise();
-            dlg->activateWindow();
+            dlg->openPanel();
             return;
         }
     }
 
     auto* dlg = new ContactProfileDialog(uuid, m_network, m_storage, this);
     dlg->setProperty("peerUuid", uuid);
-    dlg->setAttribute(Qt::WA_DeleteOnClose);
 
     // Устанавливаем номер безопасности (Safety Number) если сессия уже установлена
     dlg->setSafetyNumber(m_e2e->getSafetyNumber(uuid));
 
-    // Обновляем диалог когда пришла новая информация о пире
+    // Обновляем виджет когда пришла новая информация о пире
     connect(m_network, &NetworkManager::peerInfoUpdated,
             dlg, [dlg, uuid](const QUuid& u) {
                 if (u == uuid) dlg->refreshData();
             });
 
-    // Кнопка ">_" в диалоге профиля → запрос шелл-сессии
+    // Кнопки действий в профиле
     connect(dlg, &ContactProfileDialog::shellRequested,
             this, &MainWindow::onShellRequestedFromProfile);
+    connect(dlg, &ContactProfileDialog::callRequested,
+            this, &MainWindow::onCallRequested);
+    connect(dlg, &ContactProfileDialog::blockRequested,
+            this, &MainWindow::onBlockContact);
 
-    dlg->show();
+    dlg->openPanel();
 }
 
 // ── Удалённый шелл ────────────────────────────────────────────────────────────

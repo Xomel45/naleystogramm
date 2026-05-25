@@ -75,9 +75,11 @@ public:
     [[nodiscard]] QUuid   uuid()        const { return m_uuid; }
     [[nodiscard]] QString displayName() const { return m_displayName; }
     [[nodiscard]] QString bio()         const { return m_bio; }
+    [[nodiscard]] QString birthday()    const { return m_birthday; }
     void setUuid(const QUuid& uuid);
     void setDisplayName(const QString& name);
     void setBio(const QString& b);
+    void setBirthday(const QString& d);
 
     // ── Network ───────────────────────────────────────────────────────────
     [[nodiscard]] quint16 port()        const { return m_port; }
@@ -98,8 +100,10 @@ public:
     void setEnterSends(bool on);
 
     // ── Updates ───────────────────────────────────────────────────────────
-    [[nodiscard]] QString lastUpdateCheck() const { return m_lastUpdateCheck; }
+    [[nodiscard]] QString lastUpdateCheck()    const { return m_lastUpdateCheck; }
+    [[nodiscard]] bool    autoCheckUpdates()   const { return m_autoCheckUpdates; }
     void setLastUpdateCheck(const QString& iso);
+    void setAutoCheckUpdates(bool on);
 
     // ── Port Forwarding ───────────────────────────────────────────────────
     [[nodiscard]] PortForwardingMode portForwardingMode() const { return m_portForwardingMode; }
@@ -167,6 +171,7 @@ private:
     QUuid   m_uuid;
     QString m_displayName {"User"};
     QString m_bio {};
+    QString m_birthday {};
 
     // Network
     quint16 m_port   {47821};
@@ -180,7 +185,8 @@ private:
     bool    m_enterSends     {true};
 
     // Updates
-    QString m_lastUpdateCheck {};
+    QString m_lastUpdateCheck   {};
+    bool    m_autoCheckUpdates  {true};
 
     // Port Forwarding
     PortForwardingMode m_portForwardingMode {PortForwardingMode::UpnpAuto};

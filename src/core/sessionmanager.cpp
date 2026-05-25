@@ -109,7 +109,8 @@ QJsonObject SessionManager::toJson() const {
     QJsonObject identity;
     identity["uuid"]       = m_uuid.toString(QUuid::WithoutBraces);
     identity["name"]       = m_displayName;
-    if (!m_bio.isEmpty()) identity["bio"] = m_bio;
+    if (!m_bio.isEmpty())      identity["bio"]      = m_bio;
+    if (!m_birthday.isEmpty()) identity["birthday"] = m_birthday;
     identity["avatarPath"] = m_avatarPath;
 
     QJsonObject network;
@@ -131,6 +132,7 @@ QJsonObject SessionManager::toJson() const {
 
     QJsonObject updates;
     updates["lastChecked"] = m_lastUpdateCheck;
+    updates["autoCheck"]   = m_autoCheckUpdates;
 
     QJsonObject meta;
     meta["version"] = APP_VERSION;
@@ -171,6 +173,7 @@ void SessionManager::fromJson(const QJsonObject& obj) {
     m_uuid        = uuidStr.isEmpty() ? QUuid() : QUuid(uuidStr);
     m_displayName = id["name"].toString("User");
     m_bio         = id["bio"].toString();
+    m_birthday    = id["birthday"].toString();
     m_avatarPath  = id["avatarPath"].toString();
 
     // Network
@@ -195,7 +198,8 @@ void SessionManager::fromJson(const QJsonObject& obj) {
 
     // Updates
     const auto upd = obj["updates"].toObject();
-    m_lastUpdateCheck = upd["lastChecked"].toString();
+    m_lastUpdateCheck  = upd["lastChecked"].toString();
+    m_autoCheckUpdates = upd["autoCheck"].toBool(true);
 
     // Security
     const auto sec = obj["security"].toObject();
@@ -247,6 +251,7 @@ void SessionManager::scheduleSave() {
 void SessionManager::setUuid(const QUuid& uuid)          { m_uuid = uuid;              scheduleSave(); }
 void SessionManager::setDisplayName(const QString& name)  { m_displayName = name;       scheduleSave(); }
 void SessionManager::setBio(const QString& b)             { m_bio = b;                  scheduleSave(); }
+void SessionManager::setBirthday(const QString& d)        { m_birthday = d;             scheduleSave(); }
 void SessionManager::setPort(quint16 port)                { m_port = port;              scheduleSave(); }
 void SessionManager::setBindIp(const QString& ip)         { m_bindIp = ip;              scheduleSave(); }
 void SessionManager::setTheme(const QString& theme)       { m_theme = theme;            scheduleSave(); }
@@ -254,7 +259,8 @@ void SessionManager::setLanguage(const QString& lang)     { m_language = lang;  
 void SessionManager::setDemoMode(bool on)                 { m_demoMode = on;            scheduleSave(); }
 void SessionManager::setLeftPanelWidth(int w)             { m_leftPanelWidth = w;       scheduleSave(); }
 void SessionManager::setEnterSends(bool on)               { m_enterSends = on;          scheduleSave(); }
-void SessionManager::setLastUpdateCheck(const QString& iso){ m_lastUpdateCheck = iso;   scheduleSave(); }
+void SessionManager::setLastUpdateCheck(const QString& iso){ m_lastUpdateCheck = iso;      scheduleSave(); }
+void SessionManager::setAutoCheckUpdates(bool on)          { m_autoCheckUpdates = on;     scheduleSave(); }
 
 void SessionManager::setPortForwardingMode(PortForwardingMode mode) {
     m_portForwardingMode = mode;
