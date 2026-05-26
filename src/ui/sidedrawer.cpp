@@ -72,7 +72,7 @@ private:
 #define APP_VERSION "0.7.5"
 #endif
 #ifndef APP_CODENAME
-#define APP_CODENAME "Кикишка"
+#define APP_CODENAME "Хномык"
 #endif
 
 SideDrawer::SideDrawer(QWidget* parent) : QWidget(parent) {

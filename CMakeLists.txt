@@ -252,7 +252,7 @@ add_dependencies(naleystogramm translations)
 target_compile_definitions(naleystogramm PRIVATE
     TRANSLATIONS_DIR="${TRANSLATIONS_OUTPUT_DIR}"
     APP_VERSION="${PROJECT_VERSION}"
-    APP_CODENAME="Кикишка"
+    APP_CODENAME="Хномык"
 )
 
 target_include_directories(naleystogramm PRIVATE
