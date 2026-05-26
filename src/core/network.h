@@ -87,6 +87,11 @@ public:
     [[nodiscard]] quint16  advertisedPort() const noexcept { return m_advertisedPort ? m_advertisedPort : m_localPort; }
     [[nodiscard]] bool     upnpMapped()     const noexcept { return m_upnpMapped; }
 
+    static constexpr quint16 kDefaultPort = 47821;
+
+    // Определяет лучший LAN IP этой машины (192.168.x / 10.x, без VPN/loopback).
+    [[nodiscard]] static QString detectLocalLanIp();
+
     // Инициировать исходящее подключение
     void        connectToPeer(const PeerInfo& peer);
 
@@ -239,7 +244,6 @@ private:
     // без рефреша порт перестаёт пробрасываться через час непрерывной работы.
     QTimer*     m_upnpRefreshTimer    {nullptr};
 
-    static constexpr quint16 kDefaultPort          = 47821;
     static constexpr int     kConnectionTimeout    = 10000;   // 10 секунд на подключение
     static constexpr int     kMaxReconnectDelay    = 30000;   // Макс. задержка переподключения
     static constexpr int     kPingInterval         = 30000;   // Интервал PING (30 сек)

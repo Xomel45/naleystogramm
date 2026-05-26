@@ -5,10 +5,11 @@ class QLabel;
 class QPushButton;
 class QTimer;
 class QVBoxLayout;
+class QrCodeWidget;
 
 // ── DevicePairingDialog ───────────────────────────────────────────────────────
 // Открывается на ГЛАВНОМ устройстве.
-// Показывает сгенерированный 6-значный код, обратный отсчёт (60 сек),
+// Показывает QR-код и 6-значный код, обратный отсчёт (60 сек),
 // кнопку «Новый код» и список уже привязанных устройств.
 
 class DevicePairingDialog : public QDialog {
@@ -23,6 +24,7 @@ private slots:
 private:
     void refreshDeviceList();
 
+    QrCodeWidget* m_qrWidget      {nullptr};
     QLabel*      m_codeLabel      {nullptr};
     QLabel*      m_countdownLabel {nullptr};
     QPushButton* m_newCodeBtn     {nullptr};

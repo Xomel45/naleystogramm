@@ -542,6 +542,7 @@ depend = qt6-base
 depend = openssl
 optdepend = qt6-multimedia: голосовые сообщения
 optdepend = opus: голосовые звонки
+optdepend = qrencode: QR-код для привязки устройств
 PKGINFO_EOF
     ok "  + .PKGINFO  (depends: qt6-base, openssl)"
 
@@ -602,6 +603,7 @@ Priority: optional
 Architecture: amd64
 Installed-Size: ${installed_kb}
 Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6widgets6 | libqt6widgets6t64, libqt6network6 | libqt6network6t64, libqt6sql6 | libqt6sql6t64, libssl3 | libssl1.1
+Recommends: libqt6multimedia6 | libqt6multimedia6t64, libopus0, libqrencode4
 Maintainer: xomel45 <xom.xom.zip@gmail.com>
 Homepage: https://github.com/xomel45/naleystogramm
 Description: P2P мессенджер с E2E-шифрованием без центрального сервера
@@ -718,6 +720,7 @@ License:        Proprietary
 URL:            https://github.com/xomel45/naleystogramm
 BuildArch:      x86_64
 Requires:       qt6-qtbase >= 6.0, openssl-libs
+Suggests:       qt6-qtmultimedia, opus-libs, qrencode-libs
 %define __spec_install_pre %{nil}
 %define _unpackaged_files_terminate_build 0
 

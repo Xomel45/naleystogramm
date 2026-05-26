@@ -27,6 +27,7 @@
 #include <QEasingCurve>
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QKeyEvent>
 #include <QResizeEvent>
 #include <QDate>
 #include <QLocale>
@@ -116,6 +117,7 @@ void ContactProfileDialog::openPanel() {
     // Разворачиваем анимацию закрытия
     if (isVisible() && m_closing) {
         m_closing = false;
+        qApp->installEventFilter(this);
         m_anim->stop();
         const QPoint fromPos = m_card->pos();
         if (!m_card->isVisible()) m_card->show();
@@ -169,6 +171,7 @@ void ContactProfileDialog::openPanel() {
     show();
     raise();
     update();
+    qApp->installEventFilter(this);
 
     // Карточка начинает движение сразу
     m_anim->stop();
@@ -189,6 +192,7 @@ void ContactProfileDialog::openPanel() {
 
 void ContactProfileDialog::closePanel() {
     if (!isVisible() || m_closing) return;
+    qApp->removeEventFilter(this);
     m_closing = true;
 
     // Grab blurred snapshot for motion trail (before card starts moving)
@@ -722,6 +726,15 @@ bool ContactProfileDialog::eventFilter(QObject* obj, QEvent* ev) {
         setGeometry(parentWidget()->rect());
         updateCardGeometry();
         update();
+    }
+    if (ev->type() == QEvent::KeyPress && isVisible() && !m_closing
+        && !QApplication::activeModalWidget())
+    {
+        auto* ke = static_cast<QKeyEvent*>(ev);
+        if (ke->key() == Qt::Key_Escape) {
+            closePanel();
+            return true;
+        }
     }
     if (ev->type() == QEvent::MouseButtonPress) {
         if (auto* w = qobject_cast<QWidget*>(obj)) {

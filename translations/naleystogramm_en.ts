@@ -434,4 +434,72 @@
     </message>
 </context>
 
+<context>
+    <name>DevicePairingDialog</name>
+    <message>
+        <source>Привязать устройство</source>
+        <translation>Pair Device</translation>
+    </message>
+    <message>
+        <source>Привязка устройства</source>
+        <translation>Device Pairing</translation>
+    </message>
+    <message>
+        <source>Отсканируйте QR-код на вторичном устройстве или введите код вручную.</source>
+        <translation>Scan the QR code on the secondary device or enter the code manually.</translation>
+    </message>
+    <message>
+        <source>Новый код</source>
+        <translation>New Code</translation>
+    </message>
+    <message>
+        <source>Привязанные устройства</source>
+        <translation>Paired Devices</translation>
+    </message>
+    <message>
+        <source>Нет привязанных устройств</source>
+        <translation>No paired devices</translation>
+    </message>
+    <message>
+        <source>главное</source>
+        <translation>primary</translation>
+    </message>
+    <message>
+        <source>вторичное</source>
+        <translation>secondary</translation>
+    </message>
+    <message>
+        <source>Отвязать</source>
+        <translation>Unlink</translation>
+    </message>
+    <message>
+        <source>Закрыть</source>
+        <translation>Close</translation>
+    </message>
+    <message>
+        <source>Действителен %1 сек</source>
+        <translation>Valid for %1 sec</translation>
+    </message>
+    <message>
+        <source>— истёк —</source>
+        <translation>— expired —</translation>
+    </message>
+    <message>
+        <source>Нажмите «Новый код»</source>
+        <translation>Click «New Code»</translation>
+    </message>
+</context>
+
+<context>
+    <name>QrCodeWidget</name>
+    <message>
+        <source>Установите
+libqrencode
+для QR-кода</source>
+        <translation>Install
+libqrencode
+for QR codes</translation>
+    </message>
+</context>
+
 </TS>

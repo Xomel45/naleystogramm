@@ -4,7 +4,7 @@
 
 **Зашифрованный P2P-мессенджер без серверов и слежки**
 
-[![Version](https://img.shields.io/badge/version-0.7.5-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
+[![Version](https://img.shields.io/badge/version-0.8.0-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4a4a7a?style=flat-square)](#установка)
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52?style=flat-square)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
@@ -89,17 +89,17 @@ Naleystogramm — десктопный мессенджер с прямым за
 
 ```bash
 # AppImage — работает на любом дистрибутиве, Qt не нужен
-chmod +x Naleystogramm-0.7.5-x86_64.AppImage
-./Naleystogramm-0.7.5-x86_64.AppImage
+chmod +x Naleystogramm-0.8.0-x86_64.AppImage
+./Naleystogramm-0.8.0-x86_64.AppImage
 
 # Arch Linux / pacman
-sudo pacman -U naleystogramm-0.7.5-1-x86_64.pkg.tar.zst
+sudo pacman -U naleystogramm-0.8.0-1-x86_64.pkg.tar.zst
 
 # Debian / Ubuntu / Mint
-sudo dpkg -i naleystogramm_0.7.5_amd64.deb
+sudo dpkg -i naleystogramm_0.8.0_amd64.deb
 
 # Fedora / RHEL / openSUSE
-sudo dnf install ./naleystogramm-0.7.5-1.x86_64.rpm
+sudo dnf install ./naleystogramm-0.8.0-1.x86_64.rpm
 ```
 
 ### Windows
@@ -125,11 +125,13 @@ sudo dnf install ./naleystogramm-0.7.5-1.x86_64.rpm
 
 ```bash
 # Arch / Manjaro
-sudo pacman -S qt6-base qt6-multimedia opus openssl cmake
+sudo pacman -S qt6-base qt6-multimedia opus openssl cmake qrencode
 
 # Ubuntu / Debian
-sudo apt install qt6-base-dev qt6-multimedia-dev libopus-dev libssl-dev cmake
+sudo apt install qt6-base-dev qt6-multimedia-dev libopus-dev libssl-dev cmake libqrencode-dev
 ```
+
+> `qt6-multimedia`, `opus` и `qrencode` — опциональные: без них сборка проходит, но голосовые сообщения, голосовые звонки и QR-код привязки устройств будут недоступны.
 
 ### Linux
 
@@ -173,7 +175,7 @@ cmake --build build-win -j$(( $(nproc) - 2 ))
 ./deploy.sh release all --clean
 ```
 
-Артефакты: `builds/releases/0.7.5-linux/` и `builds/releases/0.7.5-windows/` (+ `.zip`)
+Артефакты: `builds/releases/0.8.0-linux/` и `builds/releases/0.8.0-windows/` (+ `.zip`)
 
 ---
 
@@ -208,6 +210,29 @@ deploy.sh         — скрипт сборки релизов
 ---
 
 ## Changelog
+
+### v0.8.0 «Кикишка»
+
+**QR-код для привязки устройств**
+- `DevicePairingDialog` теперь отображает QR-код с URI `naleys://pair?ip=<LAN_IP>&port=47821&code=<6digit>` — Android-клиент может сканировать его вместо ручного ввода
+- QR генерируется через `libqrencode` (опционально; без библиотеки диалог работает с текстовым кодом как раньше)
+- `NetworkManager::detectLocalLanIp()` переведён в публичный статический метод — используется при генерации QR
+
+**ESC для панелей-оверлеев**
+- ESC закрывает `SettingsPanel`: со страницы секции — возврат на главную страницу настроек; с главной страницы — закрытие панели
+- ESC закрывает `ContactProfileDialog`
+- Реализовано через `qApp->installEventFilter` при открытии панели и `removeEventFilter` при закрытии (кнопка не перехватывает ESC у модальных диалогов)
+
+**Редизайн интерфейса чата**
+- Входящие сообщения отображаются слева с круглым аватаром и именем собеседника над пузырём (аналогично Telegram)
+- Шапка чата: кнопка поиска (чекбокс), кнопка звонка, кнопка «⋮» с меню (профиль, отправить файл)
+- Строка ввода: кнопка прикрепления файла слева, кнопка эмодзи (20 быстрых эмодзи), микрофон, отправить
+- Поиск по сообщениям: панель разворачивается из шапки, подсвечивает совпадения, навигация ← →
+- Голосовые сообщения входящих тоже получили аватар и имя
+
+*Изменения в Android-версии — см. [naleystogramm-mobile](https://github.com/Xomel45/naleystogramm-mobile)*
+
+---
 
 ### v0.7.5 «Кикишка»
 
@@ -318,6 +343,6 @@ deploy.sh         — скрипт сборки релизов
 
 <div align="center">
 
-*v0.7.5 «Кикишка»*
+*v0.8.0 «Кикишка»*
 
 </div>

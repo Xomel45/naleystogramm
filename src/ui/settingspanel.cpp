@@ -23,6 +23,8 @@
 #include <QPaintEvent>
 #include <QMouseEvent>
 #include <QCoreApplication>
+#include <QApplication>
+#include <QKeyEvent>
 
 SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     setObjectName("settingsOverlay");
@@ -203,6 +205,18 @@ bool SettingsPanel::eventFilter(QObject* watched, QEvent* event) {
         updateCardGeometry();
         update();
     }
+    if (event->type() == QEvent::KeyPress && isVisible() && !m_closing
+        && !QApplication::activeModalWidget())
+    {
+        auto* ke = static_cast<QKeyEvent*>(event);
+        if (ke->key() == Qt::Key_Escape) {
+            if (m_pageStack->currentIndex() != 0)
+                showMainPage();
+            else
+                closePanel();
+            return true;
+        }
+    }
     return QWidget::eventFilter(watched, event);
 }
 
@@ -214,6 +228,7 @@ void SettingsPanel::openPanel() {
 
     if (isVisible() && m_closing) {
         m_closing = false;
+        qApp->installEventFilter(this);
         m_anim->stop();
         updateCardGeometry();
         const int targetY = (height() - m_card->height()) / 2;
@@ -263,6 +278,7 @@ void SettingsPanel::openPanel() {
     show();
     raise();
     update();
+    qApp->installEventFilter(this);
 
     m_anim->stop();
     m_anim->setStartValue(m_card->pos());
@@ -277,6 +293,7 @@ void SettingsPanel::openPanel() {
 
 void SettingsPanel::closePanel() {
     if (!isVisible() || m_closing) return;
+    qApp->removeEventFilter(this);
     m_closing = true;
 
     // Grab blurred snapshot for motion trail (before card starts moving)

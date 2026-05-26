@@ -79,7 +79,7 @@ PeerPublicInfo NetworkManager::getPeerInfo(const QUuid& uuid) const {
 // ── Вспомогательная функция: лучший локальный LAN IP ─────────────────────
 // Используется в режиме Disabled для определения адреса объявляемого пирам.
 
-static QString detectLocalLanIp() {
+QString NetworkManager::detectLocalLanIp() {
     static const QStringList kVpnPrefixes {
         "tun", "tap", "wg", "utun", "ppp", "vpn", "veth", "docker", "virbr", "br-"
     };

@@ -71,6 +71,7 @@ if(PkgConfig_FOUND)
     if(NOT WIN32)
         pkg_check_modules(SQLCIPHER QUIET sqlcipher)
         pkg_check_modules(OPUS QUIET opus)
+        pkg_check_modules(QRENCODE QUIET libqrencode)
     endif()
 endif()
 
@@ -173,6 +174,8 @@ set(SOURCES
     src/ui/dialogs/fileacceptdialog.cpp
     src/ui/dialogs/contactprofiledialog.h
     src/ui/dialogs/contactprofiledialog.cpp
+    src/ui/qrcodewidget.h
+    src/ui/qrcodewidget.cpp
     src/ui/dialogs/devicepairingdialog.h
     src/ui/dialogs/devicepairingdialog.cpp
     src/ui/dialogs/devicelinkdialog.h
@@ -289,6 +292,17 @@ if(OPUS_FOUND)
 else()
     message(STATUS "libopus:         не найден — голосовые звонки отключены")
     message(STATUS "                 Установить: sudo pacman -S opus  или  sudo apt install libopus-dev")
+endif()
+
+# ── libqrencode: QR-коды для привязки устройств ──────────────────────────────
+if(QRENCODE_FOUND)
+    message(STATUS "libqrencode:     найден (${QRENCODE_VERSION}) — QR-коды включены")
+    target_compile_definitions(naleystogramm PRIVATE HAVE_QRENCODE)
+    target_include_directories(naleystogramm PRIVATE ${QRENCODE_INCLUDE_DIRS})
+    target_link_libraries(naleystogramm PRIVATE ${QRENCODE_LIBRARIES})
+else()
+    message(STATUS "libqrencode:     не найден — QR-коды отключены (код привязки останется)")
+    message(STATUS "                 Установить: sudo pacman -S qrencode  или  sudo apt install libqrencode-dev")
 endif()
 
 # ── SQLCipher: включаем если найден ───────────────────────────────────────────

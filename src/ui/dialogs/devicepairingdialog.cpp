@@ -1,6 +1,8 @@
 #include "devicepairingdialog.h"
 #include "../../core/device_pairing.h"
+#include "../../core/network.h"
 #include "../../core/sessionmanager.h"
+#include "../qrcodewidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -23,14 +25,24 @@ DevicePairingDialog::DevicePairingDialog(QWidget* parent) : QDialog(parent) {
     layout->addWidget(title);
 
     auto* subtitle = new QLabel(
-        tr("Введите этот код на вторичном устройстве в течение 60 секунд."));
+        tr("Отсканируйте QR-код на вторичном устройстве или введите код вручную."));
     subtitle->setObjectName("dlgSubtitle");
     subtitle->setWordWrap(true);
     layout->addWidget(subtitle);
 
     layout->addSpacing(8);
 
-    // ── Код ──────────────────────────────────────────────────────────────────
+    // ── QR-код ───────────────────────────────────────────────────────────────
+    m_qrWidget = new QrCodeWidget(200, this);
+    auto* qrRow = new QHBoxLayout();
+    qrRow->addStretch();
+    qrRow->addWidget(m_qrWidget);
+    qrRow->addStretch();
+    layout->addLayout(qrRow);
+
+    layout->addSpacing(4);
+
+    // ── Текстовый код ────────────────────────────────────────────────────────
     m_codeLabel = new QLabel();
     m_codeLabel->setObjectName("pairingCode");
     m_codeLabel->setAlignment(Qt::AlignCenter);
@@ -97,6 +109,14 @@ void DevicePairingDialog::onNewCode() {
     // Отображаем как "XXX XXX" для читаемости
     m_codeLabel->setText(code.left(3) + QStringLiteral("  ") + code.right(3));
 
+    // QR кодирует URI вида naleys://pair?ip=…&port=…&code=…
+    const QString ip  = NetworkManager::detectLocalLanIp();
+    const QString uri = QStringLiteral("naleys://pair?ip=%1&port=%2&code=%3")
+                            .arg(ip)
+                            .arg(NetworkManager::kDefaultPort)
+                            .arg(code);
+    m_qrWidget->setContent(uri);
+
     m_secondsLeft = DevicePairing::kCodeTtlSecs;
     m_countdownLabel->setText(tr("Действителен %1 сек").arg(m_secondsLeft));
     m_timer->start();
@@ -108,6 +128,7 @@ void DevicePairingDialog::onTick() {
         m_timer->stop();
         m_codeLabel->setText(tr("— истёк —"));
         m_countdownLabel->setText(tr("Нажмите «Новый код»"));
+        m_qrWidget->clear();
         DevicePairing::clearCode();
         return;
     }

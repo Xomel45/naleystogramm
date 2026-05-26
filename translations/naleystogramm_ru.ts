@@ -1421,4 +1421,72 @@ Client-Server — все соединения через ваш relay-серве
         <translation>неизвестно</translation>
     </message>
 </context>
+
+<context>
+    <name>DevicePairingDialog</name>
+    <message>
+        <source>Привязать устройство</source>
+        <translation>Привязать устройство</translation>
+    </message>
+    <message>
+        <source>Привязка устройства</source>
+        <translation>Привязка устройства</translation>
+    </message>
+    <message>
+        <source>Отсканируйте QR-код на вторичном устройстве или введите код вручную.</source>
+        <translation>Отсканируйте QR-код на вторичном устройстве или введите код вручную.</translation>
+    </message>
+    <message>
+        <source>Новый код</source>
+        <translation>Новый код</translation>
+    </message>
+    <message>
+        <source>Привязанные устройства</source>
+        <translation>Привязанные устройства</translation>
+    </message>
+    <message>
+        <source>Нет привязанных устройств</source>
+        <translation>Нет привязанных устройств</translation>
+    </message>
+    <message>
+        <source>главное</source>
+        <translation>главное</translation>
+    </message>
+    <message>
+        <source>вторичное</source>
+        <translation>вторичное</translation>
+    </message>
+    <message>
+        <source>Отвязать</source>
+        <translation>Отвязать</translation>
+    </message>
+    <message>
+        <source>Закрыть</source>
+        <translation>Закрыть</translation>
+    </message>
+    <message>
+        <source>Действителен %1 сек</source>
+        <translation>Действителен %1 сек</translation>
+    </message>
+    <message>
+        <source>— истёк —</source>
+        <translation>— истёк —</translation>
+    </message>
+    <message>
+        <source>Нажмите «Новый код»</source>
+        <translation>Нажмите «Новый код»</translation>
+    </message>
+</context>
+
+<context>
+    <name>QrCodeWidget</name>
+    <message>
+        <source>Установите
+libqrencode
+для QR-кода</source>
+        <translation>Установите
+libqrencode
+для QR-кода</translation>
+    </message>
+</context>
 </TS>
