@@ -3,6 +3,7 @@
 
 class QVBoxLayout;
 class QLabel;
+class IPlugin;
 
 class SettingsPluginsPage : public SettingsPageBase {
     Q_OBJECT
@@ -12,8 +13,10 @@ public:
 
 private:
     void rebuildList();
+    void showKeyDialog(const QString& id, const QString& name);
+    void showPluginSettings(IPlugin* plugin);
     void openPluginsFolder() const;
 
-    QVBoxLayout* m_listLay {nullptr};
+    QVBoxLayout* m_listLay  {nullptr};
     QLabel*      m_emptyLbl {nullptr};
 };

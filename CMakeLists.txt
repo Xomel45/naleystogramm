@@ -139,6 +139,8 @@ set(SOURCES
 
     # Плагины
     src/plugins/iplugin.h
+    src/plugins/pluginformat.h
+    src/plugins/pluginformat.cpp
     src/plugins/pluginmanager.h
     src/plugins/pluginmanager.cpp
 
@@ -673,3 +675,4 @@ message(STATUS "  ./deploy.sh release win            → builds/releases/${APP_V
 message(STATUS "  ./deploy.sh release win-installer  → builds/releases/${APP_VERSION}-windows-installer/ (setup.exe)")
 message(STATUS "  ./deploy.sh --help                 → полная документация скрипта")
 message(STATUS "")
+
