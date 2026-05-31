@@ -128,6 +128,8 @@ SettingsMainPage::SettingsMainPage(SettingsPanel* panel) : QWidget(panel) {
     sl->addWidget(makeNavRow(":/icons/install_update.png",      tr("Обновления"),           8, tr("Обновления"),           false));
     sl->addWidget(spSeparator());
     sl->addWidget(makeNavRow(":/icons/settings_advanced.png",   tr("Отладка"),              9, tr("Отладка"),              false));
+    sl->addWidget(spSeparator());
+    sl->addWidget(makeNavRow(":/icons/nav_attach.png",          tr("Плагины"),             10, tr("Плагины"),             false));
     sl->addStretch();
 
     listScroll->setWidget(sectionsWidget);

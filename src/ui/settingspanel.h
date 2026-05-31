@@ -14,6 +14,7 @@ class SettingsInterfacePage;
 class SettingsDevicesPage;
 class SettingsUpdatesPage;
 class SettingsDebugPage;
+class SettingsPluginsPage;
 
 // ── SettingsPanel ──────────────────────────────────────────────────────────
 // Overlay-панель настроек — появляется поверх всего окна с анимацией сверху.
@@ -67,6 +68,7 @@ private:
     SettingsDevicesPage*   m_devicesPage   {nullptr};
     SettingsUpdatesPage*   m_updatesPage   {nullptr};
     SettingsDebugPage*     m_debugPage     {nullptr};
+    SettingsPluginsPage*   m_pluginsPage   {nullptr};
 
     // Навигация
     QStackedWidget* m_pageStack    {nullptr};

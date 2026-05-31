@@ -19,6 +19,7 @@
 #include "core/sessionmanager.h"
 #include "core/systeminfo.h"
 #include "core/logger.h"
+#include "plugins/pluginmanager.h"
 
 // Путь к переводам (передаётся из CMake)
 #ifndef TRANSLATIONS_DIR
@@ -167,8 +168,13 @@ int main(int argc, char* argv[]) {
         qDebug("[ThreadPool] Воркеров: %d (ядер CPU: %d)", workerThreads, cpuCores);
     }
 
-    // ── Шаг 6: Инициализация core-слоя (Identity, KeyProtector, Storage, E2E, Network) ──
-    splash->updateStatus(85, QObject::tr("Запуск сетевого модуля..."));
+    // ── Шаг 6: Загрузка плагинов ─────────────────────────────────────────
+    splash->updateStatus(80, QObject::tr("Загрузка плагинов..."));
+    splashDelay(60);
+    PluginManager::instance().loadAll();
+
+    // ── Шаг 7: Инициализация core-слоя (Identity, KeyProtector, Storage, E2E, Network) ──
+    splash->updateStatus(88, QObject::tr("Запуск сетевого модуля..."));
     splashDelay(80);
     App core;
 

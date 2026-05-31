@@ -10,6 +10,7 @@
 #include "settings/settingspage_devices.h"
 #include "settings/settingspage_updates.h"
 #include "settings/settingspage_debug.h"
+#include "settings/settingspage_plugins.h"
 #include "../core/updatechecker.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -89,6 +90,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_devicesPage   = new SettingsDevicesPage();
     m_updatesPage   = new SettingsUpdatesPage();
     m_debugPage     = new SettingsDebugPage();
+    m_pluginsPage   = new SettingsPluginsPage();
 
     // ── Стек страниц ──────────────────────────────────────────────────────
     m_pageStack = new QStackedWidget(m_card);
@@ -102,6 +104,7 @@ SettingsPanel::SettingsPanel(QWidget* parent) : QWidget(parent) {
     m_pageStack->addWidget(m_devicesPage);   // 7
     m_pageStack->addWidget(m_updatesPage);   // 8
     m_pageStack->addWidget(m_debugPage);     // 9
+    m_pageStack->addWidget(m_pluginsPage);   // 10
 
     // ── Сигналы страниц ───────────────────────────────────────────────────
     connect(m_profilePage,   &SettingsProfilePage::nameChanged,

@@ -1,6 +1,7 @@
 #include "thememanager.h"
 #include "customthememanager.h"
 #include "../core/sessionmanager.h"
+#include "../plugins/pluginmanager.h"
 #include <QApplication>
 #include <QPalette>
 #include <QFile>
@@ -453,13 +454,16 @@ ThemePalette ThemeManager::legacyPalette() {
 // ═════════════════════════════════════════════════════════════════════════
 
 QString ThemeManager::stylesheet() const {
-    // Кастомная тема с явным CSS — возвращаем его целиком
-    if (m_theme == Theme::Custom && !m_customCss.isEmpty())
-        return m_customCss;
+    // Кастомная тема с явным CSS — возвращаем его целиком + plugin CSS
+    if (m_theme == Theme::Custom && !m_customCss.isEmpty()) {
+        QString css = m_customCss;
+        css += PluginManager::instance().collectExtraCSS();
+        return css;
+    }
 
     const auto& p = m_palette;
 
-    return QString(R"(
+    QString css = QString(R"(
 
 /* ── Базовые виджеты ──────────────────────────────────────────────────── */
 
@@ -1273,6 +1277,9 @@ QToolTip {
     .arg(p.bannerBorder)   // %22
     .arg(p.bannerText)     // %23
     .arg(p.bannerBtnHover);// %24
+
+    css += PluginManager::instance().collectExtraCSS();
+    return css;
 }
 
 // ── Динамическая раскраска иконок ────────────────────────────────────────────

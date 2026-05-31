@@ -136,6 +136,12 @@ set(SOURCES
     src/core/types.h
     src/core/app.h
     src/core/app.cpp
+
+    # Плагины
+    src/plugins/iplugin.h
+    src/plugins/pluginmanager.h
+    src/plugins/pluginmanager.cpp
+
     src/ui/updatebanner.h
     src/ui/updatebanner.cpp
     src/ui/settingspanel.h
@@ -164,6 +170,8 @@ set(SOURCES
     src/ui/settings/settingspage_updates.cpp
     src/ui/settings/settingspage_debug.h
     src/ui/settings/settingspage_debug.cpp
+    src/ui/settings/settingspage_plugins.h
+    src/ui/settings/settingspage_plugins.cpp
     src/ui/logpanel.h
     src/ui/logpanel.cpp
     src/ui/dialogs/addcontactdialog.h
@@ -224,6 +232,9 @@ endif()
 set(TS_FILES
     translations/naleystogramm_ru.ts
     translations/naleystogramm_en.ts
+    translations/naleystogramm_be.ts
+    translations/naleystogramm_uk.ts
+    translations/naleystogramm_de.ts
 )
 
 qt_add_translation(QM_FILES ${TS_FILES})
@@ -261,6 +272,7 @@ target_include_directories(naleystogramm PRIVATE
     src/crypto
     src/ui
     src/media
+    src/plugins
     ${OPENSSL_INCLUDE_DIR}
 )
 

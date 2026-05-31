@@ -102,8 +102,11 @@ SettingsInterfacePage::SettingsInterfacePage(QWidget* parent) : SettingsPageBase
     m_langCombo = new QComboBox();
     m_langCombo->setObjectName("settingsInput");
     noScrollWheel(m_langCombo);
-    m_langCombo->addItem(tr("Russian"), "ru");
-    m_langCombo->addItem(tr("English"), "en");
+    m_langCombo->addItem(tr("Russian"),     "ru");
+    m_langCombo->addItem(tr("English"),     "en");
+    m_langCombo->addItem(tr("Belarusian"),  "be");
+    m_langCombo->addItem(tr("Ukrainian"),   "uk");
+    m_langCombo->addItem(tr("German"),      "de");
     m_lay->addWidget(m_langCombo);
     m_lay->addWidget(spHint(tr("Requires restart")));
     m_lay->addSpacing(12);

@@ -1,38 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
-<TS version="2.1" language="en_US">
+<TS version="2.1" language="be_BY">
 <context>
     <name>AddContactDialog</name>
     <message>
         <location filename="../src/ui/dialogs/addcontactdialog.cpp" line="12"/>
         <location filename="../src/ui/dialogs/addcontactdialog.cpp" line="20"/>
         <source>Add Contact</source>
-        <translation>Add Contact</translation>
+        <translation>Дадаць кантакт</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/addcontactdialog.cpp" line="23"/>
         <source>Paste connection string from another user</source>
-        <translation>Paste connection string from another user</translation>
+        <translation>Устаўце радок падключэння ад іншага карыстальніка</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/addcontactdialog.cpp" line="29"/>
         <source>Name@UUID@IP:Port</source>
-        <translation>Name@UUID@IP:Port</translation>
+        <translation>Імя@UUID@IP:Порт</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/addcontactdialog.cpp" line="41"/>
         <source>Connect</source>
-        <translation>Connect</translation>
+        <translation>Далучыцца</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/addcontactdialog.cpp" line="46"/>
         <source>Enter connection string</source>
-        <translation>Enter connection string</translation>
+        <translation>Увядзіце радок падключэння</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/addcontactdialog.cpp" line="39"/>
         <source>Cancel</source>
-        <translation>Cancel</translation>
+        <translation>Скасаваць</translation>
     </message>
 </context>
 <context>
@@ -40,64 +40,64 @@
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="276"/>
         <source>online</source>
-        <translation>online</translation>
+        <translation>анлайн</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="124"/>
         <location filename="../src/ui/chatwidget.cpp" line="276"/>
         <source>offline</source>
-        <translation>offline</translation>
+        <translation>афлайн</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="134"/>
         <source>Send file</source>
-        <translation>Send file</translation>
+        <translation>Адправіць файл</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="142"/>
         <source>Голосовой звонок</source>
-        <translation>Voice call</translation>
+        <translation>Галасавы звонак</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="144"/>
         <source>Голосовые звонки недоступны (libopus не найден)</source>
-        <translation>Voice calls unavailable (libopus not found)</translation>
+        <translation>Галасавыя звонкі недаступны (libopus не знойдзены)</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="170"/>
         <source>Select a contact</source>
-        <translation>Select a contact</translation>
+        <translation>Выберыце кантакт</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="175"/>
         <source>to start a conversation</source>
-        <translation>to start a conversation</translation>
+        <translation>каб пачаць размову</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="216"/>
         <source>Message...</source>
-        <translation>Message...</translation>
+        <translation>Паведамленне...</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="223"/>
         <location filename="../src/ui/chatwidget.cpp" line="482"/>
         <source>Записать голосовое сообщение</source>
-        <translation>Record voice message</translation>
+        <translation>Запісаць галасавое паведамленне</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="468"/>
         <source>Остановить запись</source>
-        <translation>Stop recording</translation>
+        <translation>Спыніць запіс</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="611"/>
         <source>Воспроизведение недоступно (Qt6Multimedia не скомпилирован)</source>
-        <translation>Playback unavailable (Qt6Multimedia not compiled)</translation>
+        <translation>Прайграванне недаступна (Qt6Multimedia не скампіляваны)</translation>
     </message>
     <message>
         <location filename="../src/ui/chatwidget.cpp" line="615"/>
         <source>Файл недоступен</source>
-        <translation>File unavailable</translation>
+        <translation>Файл недаступны</translation>
     </message>
 </context>
 <context>
@@ -105,17 +105,17 @@
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="58"/>
         <source>Профиль контакта</source>
-        <translation>Contact Profile</translation>
+        <translation>Профіль кантакту</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="117"/>
         <source>Устройство</source>
-        <translation>Device</translation>
+        <translation>Прылада</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="122"/>
         <source>Тип:</source>
-        <translation>Type:</translation>
+        <translation>Тып:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="127"/>
@@ -125,22 +125,22 @@
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="132"/>
         <source>ОЗУ:</source>
-        <translation>RAM:</translation>
+        <translation>АЗП:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="137"/>
         <source>ОС:</source>
-        <translation>OS:</translation>
+        <translation>АС:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="145"/>
         <source>Соединение</source>
-        <translation>Connection</translation>
+        <translation>Злучэнне</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="149"/>
         <source>Пинг:</source>
-        <translation>Ping:</translation>
+        <translation>Пінг:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="154"/>
@@ -150,17 +150,17 @@
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="159"/>
         <source>Порт:</source>
-        <translation>Port:</translation>
+        <translation>Порт:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="164"/>
         <source>Подключён:</source>
-        <translation>Connected:</translation>
+        <translation>Падключаны:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="172"/>
         <source>Безопасность</source>
-        <translation>Security</translation>
+        <translation>Бяспека</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="176"/>
@@ -176,61 +176,61 @@
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="296"/>
         <source>Сверьте этот код с собеседником по голосовому/видео-звонку.
 Если коды совпадают — соединение защищено.</source>
-        <translation>Compare this Safety Number with your contact over a voice/video call.
-If the codes match — the connection is secure.</translation>
+        <translation>Параўнайце гэты код з субяседнікам па галасавым/відэа-званку.
+Калі коды супадаюць — злучэнне абаронена.</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="195"/>
         <source>&gt;_ Удалённый шелл</source>
-        <translation>&gt;_ Remote Shell</translation>
+        <translation>&gt;_ Аддалены шэл</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="198"/>
         <source>Запросить удалённую шелл-сессию.
 Доступно только когда контакт онлайн.</source>
-        <translation>Request a remote shell session.
-Only available when the contact is online.</translation>
+        <translation>Запытаць аддаленую шэл-сесію.
+Даступна толькі калі кантакт анлайн.</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="214"/>
         <source>Неизвестный</source>
-        <translation>Unknown</translation>
+        <translation>Невядомы</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="242"/>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="308"/>
         <source>● Онлайн</source>
-        <translation>● Online</translation>
+        <translation>● Анлайн</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="242"/>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="308"/>
         <source>○ Офлайн</source>
-        <translation>○ Offline</translation>
+        <translation>○ Афлайн</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="251"/>
         <source>⚠ Этот контакт использует более новую версию приложения (v%1).
 Некоторые данные могут отображаться некорректно.
 Обновите приложение для полной совместимости.</source>
-        <translation>⚠ This contact is using a newer version of the app (v%1).
-Some information may not display correctly.
-Update the app for full compatibility.</translation>
+        <translation>⚠ Гэты кантакт выкарыстоўвае больш новую версію праграмы (v%1).
+Некаторыя дадзеныя могуць адлюстроўвацца некарэктна.
+Абнавіце праграму для поўнай сумяшчальнасці.</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="292"/>
         <source>Сессия E2E ещё не установлена.</source>
-        <translation>E2E session not yet established.</translation>
+        <translation>Сесія E2E яшчэ не ўсталявана.</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="336"/>
         <source>%1ч %2м</source>
-        <translation>%1h %2m</translation>
+        <translation>%1г %2м</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/contactprofiledialog.cpp" line="337"/>
         <source>%1м</source>
-        <translation>%1m</translation>
+        <translation>%1м</translation>
     </message>
 </context>
 <context>
@@ -238,7 +238,7 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/ui/contactswidget.cpp" line="21"/>
         <source>Search...</source>
-        <translation>Search...</translation>
+        <translation>Пошук...</translation>
     </message>
     <message>
         <location filename="../src/ui/contactswidget.cpp" line="154"/>
@@ -248,27 +248,27 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/ui/contactswidget.cpp" line="201"/>
         <source>Просмотр профиля</source>
-        <translation>View profile</translation>
+        <translation>Прагляд профілю</translation>
     </message>
     <message>
         <location filename="../src/ui/contactswidget.cpp" line="204"/>
         <source>Разблокировать</source>
-        <translation>Unblock</translation>
+        <translation>Разблакаваць</translation>
     </message>
     <message>
         <location filename="../src/ui/contactswidget.cpp" line="204"/>
         <source>Заблокировать</source>
-        <translation>Block</translation>
+        <translation>Заблакаваць</translation>
     </message>
     <message>
         <location filename="../src/ui/contactswidget.cpp" line="205"/>
         <source>Удалить чат</source>
-        <translation>Delete chat</translation>
+        <translation>Выдаліць чат</translation>
     </message>
     <message>
         <location filename="../src/ui/contactswidget.cpp" line="208"/>
         <source>Удалить контакт</source>
-        <translation>Delete contact</translation>
+        <translation>Выдаліць кантакт</translation>
     </message>
 </context>
 <context>
@@ -276,37 +276,37 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/ui/dialogs/fileacceptdialog.cpp" line="20"/>
         <source>Incoming file</source>
-        <translation>Incoming file</translation>
+        <translation>Уваходны файл</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/fileacceptdialog.cpp" line="38"/>
         <source>Incoming file transfer</source>
-        <translation>Incoming file transfer</translation>
+        <translation>Уваходная перадача файла</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/fileacceptdialog.cpp" line="52"/>
         <source>From:</source>
-        <translation>From:</translation>
+        <translation>Ад:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/fileacceptdialog.cpp" line="62"/>
         <source>File:</source>
-        <translation>File:</translation>
+        <translation>Файл:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/fileacceptdialog.cpp" line="73"/>
         <source>Size:</source>
-        <translation>Size:</translation>
+        <translation>Памер:</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/fileacceptdialog.cpp" line="95"/>
         <source>Accept</source>
-        <translation>Accept</translation>
+        <translation>Прыняць</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/fileacceptdialog.cpp" line="87"/>
         <source>Reject</source>
-        <translation>Reject</translation>
+        <translation>Адхіліць</translation>
     </message>
 </context>
 <context>
@@ -314,42 +314,42 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="105"/>
         <source>Ошибка вычисления хеша файла</source>
-        <translation>File hash calculation error</translation>
+        <translation>Памылка вылічэння хэша файла</translation>
     </message>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="164"/>
         <source>Нет E2E-сессии — ключ файла нельзя передать безопасно</source>
-        <translation>No E2E session — file key cannot be transferred securely</translation>
+        <translation>Няма E2E-сесіі — ключ файла нельга перадаць бяспечна</translation>
     </message>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="193"/>
         <source>Cannot open file</source>
-        <translation>Cannot open file</translation>
+        <translation>Не ўдалося адкрыць файл</translation>
     </message>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="270"/>
         <source>Encryption failed</source>
-        <translation>Encryption failed</translation>
+        <translation>Памылка шыфравання</translation>
     </message>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="613"/>
         <source>Cannot create temp file</source>
-        <translation>Cannot create temp file</translation>
+        <translation>Не ўдалося стварыць часовы файл</translation>
     </message>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="648"/>
         <source>Decryption failed — data corrupted</source>
-        <translation>Decryption failed — data corrupted</translation>
+        <translation>Памылка расшыфравання — дадзеныя пашкоджаны</translation>
     </message>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="695"/>
         <source>File hash mismatch — corrupted</source>
-        <translation>File hash mismatch — corrupted</translation>
+        <translation>Хэш файла не супадае — файл пашкоджаны</translation>
     </message>
     <message>
         <location filename="../src/core/filetransfer.cpp" line="719"/>
         <source>Cannot save file</source>
-        <translation>Cannot save file</translation>
+        <translation>Не ўдалося захаваць файл</translation>
     </message>
 </context>
 <context>
@@ -357,33 +357,33 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/ui/filetransferwidget.cpp" line="86"/>
         <source>Waiting...</source>
-        <translation>Waiting...</translation>
+        <translation>Чаканне...</translation>
     </message>
     <message>
         <location filename="../src/ui/filetransferwidget.cpp" line="105"/>
         <location filename="../src/ui/filetransferwidget.cpp" line="112"/>
         <source>Pause</source>
-        <translation>Pause</translation>
+        <translation>Паўза</translation>
     </message>
     <message>
         <location filename="../src/ui/filetransferwidget.cpp" line="116"/>
         <source>Resume</source>
-        <translation>Resume</translation>
+        <translation>Працягнуць</translation>
     </message>
     <message>
         <location filename="../src/ui/filetransferwidget.cpp" line="189"/>
         <source>Completed</source>
-        <translation>Completed</translation>
+        <translation>Завершана</translation>
     </message>
     <message>
         <location filename="../src/ui/filetransferwidget.cpp" line="195"/>
         <source>Failed</source>
-        <translation>Failed</translation>
+        <translation>Памылка</translation>
     </message>
     <message>
         <location filename="../src/ui/filetransferwidget.cpp" line="121"/>
         <source>Cancel</source>
-        <translation>Cancel</translation>
+        <translation>Скасаваць</translation>
     </message>
 </context>
 <context>
@@ -392,22 +392,22 @@ Update the app for full compatibility.</translation>
         <location filename="../src/ui/dialogs/incomingdialog.cpp" line="9"/>
         <location filename="../src/ui/dialogs/incomingdialog.cpp" line="21"/>
         <source>Incoming request</source>
-        <translation>Incoming request</translation>
+        <translation>Уваходны запыт</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/incomingdialog.cpp" line="31"/>
         <source>wants to connect to you</source>
-        <translation>wants to connect to you</translation>
+        <translation>хоча далучыцца да вас</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/incomingdialog.cpp" line="40"/>
         <source>Accept</source>
-        <translation>Accept</translation>
+        <translation>Прыняць</translation>
     </message>
     <message>
         <location filename="../src/ui/dialogs/incomingdialog.cpp" line="38"/>
         <source>Reject</source>
-        <translation>Reject</translation>
+        <translation>Адхіліць</translation>
     </message>
 </context>
 <context>
@@ -415,27 +415,27 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/ui/logpanel.cpp" line="48"/>
         <source>Clear</source>
-        <translation>Clear</translation>
+        <translation>Ачысціць</translation>
     </message>
     <message>
         <location filename="../src/ui/logpanel.cpp" line="54"/>
         <source>Export</source>
-        <translation>Export</translation>
+        <translation>Экспарт</translation>
     </message>
     <message>
         <location filename="../src/ui/logpanel.cpp" line="149"/>
         <source>Log files (*.log *.txt)</source>
-        <translation>Log files (*.log *.txt)</translation>
+        <translation>Файлы журналаў (*.log *.txt)</translation>
     </message>
     <message>
         <location filename="../src/ui/logpanel.cpp" line="41"/>
         <source>Verbose mode</source>
-        <translation>Verbose mode</translation>
+        <translation>Падрабязны рэжым</translation>
     </message>
     <message>
         <location filename="../src/ui/logpanel.cpp" line="147"/>
         <source>Save log file</source>
-        <translation>Save log file</translation>
+        <translation>Захаваць файл журнала</translation>
     </message>
 </context>
 <context>
@@ -443,12 +443,12 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="198"/>
         <source>Файл отправлен: %1</source>
-        <translation>File sent: %1</translation>
+        <translation>Файл адпраўлены: %1</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="199"/>
         <source>Файл получен: %1</source>
-        <translation>File received: %1</translation>
+        <translation>Файл атрыманы: %1</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="247"/>
@@ -465,7 +465,7 @@ Update the app for full compatibility.</translation>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="252"/>
         <source>UPnP: порты успешно проброшены (%1)</source>
-        <translation>UPnP: ports forwarded successfully (%1)</translation>
+        <translation>UPnP: парты паспяхова перакінуты (%1)</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="253"/>
@@ -474,33 +474,33 @@ Update the app for full compatibility.</translation>
 или включите DMZ.
 
 Нажмите для повторной попытки.</source>
-        <translation>Could not open ports automatically.
-Forward ports 47821–47841 manually in your router settings
-or enable DMZ.
+        <translation>Не ўдалося адкрыць парты аўтаматычна.
+Перакіньце парты 47821–47841 уручную ў наладах маршрутызатара
+або ўключыце DMZ.
 
-Click to retry.</translation>
+Націсніце для паўторнай спробы.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="346"/>
         <location filename="../src/ui/mainwindow.cpp" line="982"/>
         <source>My ID</source>
-        <translation>My ID</translation>
+        <translation>Мой ID</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="352"/>
         <location filename="../src/ui/mainwindow.cpp" line="997"/>
         <source>Edit name</source>
-        <translation>Edit name</translation>
+        <translation>Змяніць імя</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="367"/>
         <source>+ Add contact</source>
-        <translation>+ Add contact</translation>
+        <translation>+ Дадаць кантакт</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="381"/>
         <source>Settings</source>
-        <translation>Settings</translation>
+        <translation>Налады</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="447"/>
@@ -512,129 +512,129 @@ Click to retry.</translation>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="453"/>
         <source>Проверяем UPnP...</source>
-        <translation>Checking UPnP...</translation>
+        <translation>Правяраем UPnP...</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="456"/>
         <source>Повторяем пробрасывание портов...</source>
-        <translation>Retrying port forwarding...</translation>
+        <translation>Паўтараем перакідванне партоў...</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="459"/>
         <source>Проверяем...</source>
-        <translation>Checking...</translation>
+        <translation>Правяраем...</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="464"/>
         <source>Инициализация...</source>
-        <translation>Initializing...</translation>
+        <translation>Ініцыялізацыя...</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="522"/>
         <source>Нет IP</source>
-        <translation>No IP</translation>
+        <translation>Няма IP</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="563"/>
         <source>%1 переподключился</source>
-        <translation>%1 reconnected</translation>
+        <translation>%1 перападключыўся</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="591"/>
         <source>%1 connected</source>
-        <translation>%1 connected</translation>
+        <translation>%1 падключыўся</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="628"/>
         <source>offline</source>
-        <translation>offline</translation>
+        <translation>афлайн</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="760"/>
         <source>❌ Не удалось расшифровать сообщение (ключи не совпадают). Возможна переустановка приложения у собеседника или MITM-атака.</source>
-        <translation>❌ Failed to decrypt message (keys do not match). The contact may have reinstalled the app or a MITM attack is occurring.</translation>
+        <translation>❌ Не ўдалося расшыфраваць паведамленне (ключы не супадаюць). Магчыма перапраўка праграмы ў субяседніка або MITM-атака.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="796"/>
         <source>Invalid format</source>
-        <translation>Invalid format</translation>
+        <translation>Няслушны фармат</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="797"/>
         <source>Connection string is invalid.
 Format: Name@UUID@IP:Port</source>
-        <translation>Connection string is invalid.
-Format: Name@UUID@IP:Port</translation>
+        <translation>Радок падключэння няслушны.
+Фармат: Імя@UUID@IP:Порт</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="811"/>
         <source>Connecting to %1...</source>
-        <translation>Connecting to %1...</translation>
+        <translation>Падключэнне да %1...</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="824"/>
         <source>Предупреждение совместимости</source>
-        <translation>Compatibility Warning</translation>
+        <translation>Папярэджанне сумяшчальнасці</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="825"/>
         <source>Контакт &lt;b&gt;%1&lt;/b&gt; использует более новую версию приложения (v%2).&lt;br&gt;Некоторые данные могут отображаться некорректно.&lt;br&gt;Обновите приложение до последней версии.</source>
-        <translation>Contact &lt;b&gt;%1&lt;/b&gt; is using a newer version of the app (v%2).&lt;br&gt;Some information may not display correctly.&lt;br&gt;Update to the latest version.</translation>
+        <translation>Кантакт &lt;b&gt;%1&lt;/b&gt; выкарыстоўвае больш новую версію праграмы (v%2).&lt;br&gt;Некаторыя дадзеныя могуць адлюстроўвацца некарэктна.&lt;br&gt;Абнавіце праграму да апошняй версіі.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="839"/>
         <source>[Сообщение из более новой версии — обновите приложение]</source>
-        <translation>[Message from a newer version — update the app]</translation>
+        <translation>[Паведамленне з больш новай версіі — абнавіце праграму]</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="855"/>
         <source>E2E not ready</source>
-        <translation>E2E not ready</translation>
+        <translation>E2E не гатова</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="856"/>
         <source>Encryption session is not established yet. Wait a moment.</source>
-        <translation>Encryption session is not established yet. Wait a moment.</translation>
+        <translation>Сесія шыфравання яшчэ не ўсталявана. Пачакайце крыху.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="883"/>
         <source>Выбрать файл для отправки</source>
-        <translation>Select file to send</translation>
+        <translation>Выбраць файл для адпраўкі</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="983"/>
         <source>&lt;b&gt;Send this string to your contact:&lt;/b&gt;</source>
-        <translation>&lt;b&gt;Send this string to your contact:&lt;/b&gt;</translation>
+        <translation>&lt;b&gt;Адправіце гэты радок вашаму кантакту:&lt;/b&gt;</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="985"/>
         <source>Copy</source>
-        <translation>Copy</translation>
+        <translation>Капіяваць</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="986"/>
         <source>Close</source>
-        <translation>Close</translation>
+        <translation>Закрыць</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="990"/>
         <source>Copied!</source>
-        <translation>Copied!</translation>
+        <translation>Скапіявана!</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="997"/>
         <source>New name:</source>
-        <translation>New name:</translation>
+        <translation>Новае імя:</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1076"/>
         <source>заблокирован</source>
-        <translation>blocked</translation>
+        <translation>заблакаваны</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1076"/>
         <source>разблокирован</source>
-        <translation>unblocked</translation>
+        <translation>разблакаваны</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1077"/>
@@ -644,119 +644,119 @@ Format: Name@UUID@IP:Port</translation>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1087"/>
         <source>Удалить чат</source>
-        <translation>Delete chat</translation>
+        <translation>Выдаліць чат</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1088"/>
         <source>Удалить всю переписку с %1?
 Сам контакт останется в списке.</source>
-        <translation>Delete all messages with %1?
-The contact will remain in the list.</translation>
+        <translation>Выдаліць усю перапіску з %1?
+Сам кантакт застанецца ў спісе.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1103"/>
         <source>Чат с %1 удалён</source>
-        <translation>Chat with %1 deleted</translation>
+        <translation>Чат з %1 выдалены</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1113"/>
         <source>
 Контакт будет добавлен в список блокировки — новые сообщения от него будут отклонены.</source>
         <translation>
-The contact will be added to the block list — new messages from them will be rejected.</translation>
+Кантакт будзе дададзены ў спіс блакавання — новыя паведамленні ад яго будуць адхілены.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1118"/>
         <source>Удалить контакт</source>
-        <translation>Delete contact</translation>
+        <translation>Выдаліць кантакт</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1119"/>
         <source>Удалить контакт %1 и всю переписку?%2
 
 Это действие необратимо.</source>
-        <translation>Delete contact %1 and all messages?%2
+        <translation>Выдаліць кантакт %1 і ўсю перапіску?%2
 
-This action is irreversible.</translation>
+Гэта дзеянне незваротнае.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1140"/>
         <source>Контакт %1 удалён</source>
-        <translation>Contact %1 deleted</translation>
+        <translation>Кантакт %1 выдалены</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1180"/>
         <location filename="../src/ui/mainwindow.cpp" line="1186"/>
         <source>Шелл недоступен</source>
-        <translation>Shell unavailable</translation>
+        <translation>Шэл недаступны</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1181"/>
         <source>E2E-сессия с контактом ещё не установлена.
 Подождите несколько секунд и повторите.</source>
-        <translation>E2E session with the contact is not established yet.
-Wait a few seconds and try again.</translation>
+        <translation>E2E-сесія з кантактам яшчэ не ўсталявана.
+Пачакайце некалькі секунд і паўтарыце.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1187"/>
         <source>Контакт не в сети.</source>
-        <translation>Contact is offline.</translation>
+        <translation>Кантакт не ў сетцы.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1191"/>
         <source>Запрос шелла отправлен...</source>
-        <translation>Shell request sent...</translation>
+        <translation>Запыт шэла адпраўлены...</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1209"/>
         <source>Запрос удалённого шелла</source>
-        <translation>Remote Shell Request</translation>
+        <translation>Запыт аддаленага шэла</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1210"/>
         <source>Контакт &lt;b&gt;%1&lt;/b&gt; запрашивает шелл-сессию на вашем компьютере.&lt;br&gt;&lt;br&gt;Это предоставит ему &lt;b&gt;терминальный доступ&lt;/b&gt; к вашей системе.&lt;br&gt;Вы сможете видеть все команды и завершить сессию в любой момент.&lt;br&gt;&lt;br&gt;Разрешить?</source>
-        <translation>Contact &lt;b&gt;%1&lt;/b&gt; is requesting a shell session on your computer.&lt;br&gt;&lt;br&gt;This will grant them &lt;b&gt;terminal access&lt;/b&gt; to your system.&lt;br&gt;You will be able to see all commands and end the session at any time.&lt;br&gt;&lt;br&gt;Allow?</translation>
+        <translation>Кантакт &lt;b&gt;%1&lt;/b&gt; запытвае шэл-сесію на вашым камп'ютары.&lt;br&gt;&lt;br&gt;Гэта прадасць яму &lt;b&gt;тэрмінальны доступ&lt;/b&gt; да вашай сістэмы.&lt;br&gt;Вы зможаце бачыць усе каманды і завяршыць сесію ў любы момант.&lt;br&gt;&lt;br&gt;Дазволіць?</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1227"/>
         <location filename="../src/ui/mainwindow.cpp" line="1249"/>
         <source>Шелл-сессия с %1 открыта</source>
-        <translation>Shell session with %1 opened</translation>
+        <translation>Шэл-сесія з %1 адкрыта</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1235"/>
         <source>контакт</source>
-        <translation>contact</translation>
+        <translation>кантакт</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1256"/>
         <source>Контакт отклонил запрос шелла.</source>
-        <translation>Contact rejected the shell request.</translation>
+        <translation>Кантакт адхіліў запыт шэла.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1257"/>
         <source>Запрос шелла отклонён: %1</source>
-        <translation>Shell request rejected: %1</translation>
+        <translation>Запыт шэла адхілены: %1</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1258"/>
         <source>Шелл отклонён</source>
-        <translation>Shell rejected</translation>
+        <translation>Шэл адхілены</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1288"/>
         <source>ШЕЛЛ УБИТ: попытка эскалации привилегий!</source>
-        <translation>SHELL KILLED: privilege escalation attempt!</translation>
+        <translation>ШЭЛ ЗАБІТЫ: спроба эскалацыі прывілеяў!</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1290"/>
         <source>Шелл-сессия завершена</source>
-        <translation>Shell session ended</translation>
+        <translation>Шэл-сесія завершана</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1296"/>
         <source>Эскалация привилегий!</source>
-        <translation>Privilege Escalation!</translation>
+        <translation>Эскалацыя прывілеяў!</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.cpp" line="1297"/>
@@ -764,10 +764,10 @@ Wait a few seconds and try again.</translation>
 
 Команды sudo / su / pkexec / runas / gsudo запрещены.
 Шелл-сессия была немедленно уничтожена.</source>
-        <translation>Privilege escalation attempt detected!
+        <translation>Выяўлена спроба эскалацыі прывілеяў!
 
-Commands sudo / su / pkexec / runas / gsudo are forbidden.
-The shell session was immediately terminated.</translation>
+Каманды sudo / su / pkexec / runas / gsudo забаронены.
+Шэл-сесія была неадкладна знішчана.</translation>
     </message>
     <message>
         <location filename="../src/ui/mainwindow.ui" line="9"/>
@@ -780,12 +780,12 @@ The shell session was immediately terminated.</translation>
     <message>
         <location filename="../src/core/network.cpp" line="725"/>
         <source>Подключение отклонено: </source>
-        <translation>Connection rejected: </translation>
+        <translation>Падключэнне адхілена: </translation>
     </message>
     <message>
         <location filename="../src/core/network.cpp" line="1009"/>
         <source>Не удалось переподключиться после %1 попыток</source>
-        <translation>Failed to reconnect after %1 attempts</translation>
+        <translation>Не ўдалося перападключыцца пасля %1 спроб</translation>
     </message>
 </context>
 <context>
@@ -793,42 +793,42 @@ The shell session was immediately terminated.</translation>
     <message>
         <location filename="../src/main.cpp" line="98"/>
         <source>Загрузка настроек...</source>
-        <translation>Loading settings...</translation>
+        <translation>Загрузка налад...</translation>
     </message>
     <message>
         <location filename="../src/main.cpp" line="107"/>
         <source>Инициализация логгера...</source>
-        <translation>Initializing logger...</translation>
+        <translation>Ініцыялізацыя журналіроўшчыка...</translation>
     </message>
     <message>
         <location filename="../src/main.cpp" line="112"/>
         <source>Загрузка языкового пакета...</source>
-        <translation>Loading language pack...</translation>
+        <translation>Загрузка моўнага пакета...</translation>
     </message>
     <message>
         <location filename="../src/main.cpp" line="122"/>
         <source>Загрузка перевода приложения...</source>
-        <translation>Loading app translation...</translation>
+        <translation>Загрузка перакладу праграмы...</translation>
     </message>
     <message>
         <location filename="../src/main.cpp" line="128"/>
         <source>Сбор информации об устройстве...</source>
-        <translation>Collecting device information...</translation>
+        <translation>Збор інфармацыі аб прыладзе...</translation>
     </message>
     <message>
         <location filename="../src/main.cpp" line="148"/>
         <source>Запуск сетевого модуля...</source>
-        <translation>Starting network module...</translation>
+        <translation>Запуск сеткавага модуля...</translation>
     </message>
     <message>
         <location filename="../src/main.cpp" line="152"/>
         <source>Загрузка интерфейса...</source>
-        <translation>Loading interface...</translation>
+        <translation>Загрузка інтэрфейсу...</translation>
     </message>
     <message>
         <location filename="../src/main.cpp" line="157"/>
         <source>Готово!</source>
-        <translation>Ready!</translation>
+        <translation>Гатова!</translation>
     </message>
 </context>
 <context>
@@ -836,132 +836,132 @@ The shell session was immediately terminated.</translation>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="111"/>
         <source>Profile</source>
-        <translation>Profile</translation>
+        <translation>Профіль</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="139"/>
         <source>Display name</source>
-        <translation>Display name</translation>
+        <translation>Адлюстраванае імя</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="153"/>
         <source>Your UUID</source>
-        <translation>Your UUID</translation>
+        <translation>Ваш UUID</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="211"/>
         <source>Network</source>
-        <translation>Network</translation>
+        <translation>Сетка</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="214"/>
         <source>Port</source>
-        <translation>Port</translation>
+        <translation>Порт</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="222"/>
         <source>Bind IP</source>
-        <translation>Bind IP</translation>
+        <translation>IP прывязкі</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="376"/>
         <source>Interface</source>
-        <translation>Interface</translation>
+        <translation>Інтэрфейс</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="387"/>
         <source>B&amp;W</source>
-        <translation>B&amp;W</translation>
+        <translation>Ч/Б</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="388"/>
         <source>Forest</source>
-        <translation>Forest</translation>
+        <translation>Лес</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="389"/>
         <source>Cyberpunk</source>
-        <translation>Cyberpunk</translation>
+        <translation>Кіберпанк</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="390"/>
         <source>Nordic</source>
-        <translation>Nordic</translation>
+        <translation>Нардык</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="391"/>
         <source>Sunset</source>
-        <translation>Sunset</translation>
+        <translation>Захад</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="405"/>
         <source>Требуется перезапуск для применения темы</source>
-        <translation>Restart required to apply theme</translation>
+        <translation>Патрабуецца перазапуск для прымянення тэмы</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="453"/>
         <source>Import theme...</source>
-        <translation>Import theme...</translation>
+        <translation>Імпартаваць тэму...</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="460"/>
         <source>Language</source>
-        <translation>Language</translation>
+        <translation>Мова</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="463"/>
         <source>Russian</source>
-        <translation>Russian</translation>
+        <translation>Руская</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="464"/>
         <source>English</source>
-        <translation>English</translation>
+        <translation>Англійская</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="379"/>
         <source>Theme</source>
-        <translation>Theme</translation>
+        <translation>Тэма</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="82"/>
         <source>Back</source>
-        <translation>Back</translation>
+        <translation>Назад</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="85"/>
         <source>Settings</source>
-        <translation>Settings</translation>
+        <translation>Налады</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="88"/>
         <source>Save</source>
-        <translation>Save</translation>
+        <translation>Захаваць</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="124"/>
         <source>Изменить аватар</source>
-        <translation>Change avatar</translation>
+        <translation>Змяніць аватар</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="131"/>
         <source>Нажмите на аватар или кнопку для выбора изображения</source>
-        <translation>Click the avatar or button to choose an image</translation>
+        <translation>Націсніце на аватар або кнопку для выбару відарыса</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="142"/>
         <source>What is your name?</source>
-        <translation>What is your name?</translation>
+        <translation>Як вас завуць?</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="150"/>
         <source>Everyone who connects to you will see this name</source>
-        <translation>Everyone who connects to you will see this name</translation>
+        <translation>Гэтае імя ўбачаць усе, хто далучыцца да вас</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="160"/>
         <source>Copy connection string</source>
-        <translation>Copy connection string</translation>
+        <translation>Капіяваць радок падключэння</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="181"/>
@@ -969,110 +969,110 @@ The shell session was immediately terminated.</translation>
         <location filename="../src/ui/settingspanel.cpp" line="190"/>
         <location filename="../src/ui/settingspanel.cpp" line="195"/>
         <source>Enable demo mode</source>
-        <translation>Enable demo mode</translation>
+        <translation>Уключыць дэма-рэжым</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="186"/>
         <location filename="../src/ui/settingspanel.cpp" line="190"/>
         <location filename="../src/ui/settingspanel.cpp" line="195"/>
         <source>Demo mode enabled</source>
-        <translation>Demo mode enabled</translation>
+        <translation>Дэма-рэжым уключаны</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="202"/>
         <source>Hides your real data in UI.
 Name -&gt; User-0000  |  UUID -&gt; 00000...  |  IP -&gt; 0.0.0.0
 The other party still sees your real data.</source>
-        <translation>Hides your real data in UI.
-Name -&gt; User-0000  |  UUID -&gt; 00000...  |  IP -&gt; 0.0.0.0
-The other party still sees your real data.</translation>
+        <translation>Хавае вашы рэальныя дадзеныя ў інтэрфейсе.
+Імя → User-0000  |  UUID → 00000...  |  IP → 0.0.0.0
+Субяседнік па-ранейшаму бачыць вашы рэальныя дадзеныя.</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="219"/>
         <source>Requires restart to take effect</source>
-        <translation>Requires restart to take effect</translation>
+        <translation>Патрабуецца перазапуск</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="225"/>
         <source>0.0.0.0  (all interfaces)</source>
-        <translation>0.0.0.0  (all interfaces)</translation>
+        <translation>0.0.0.0  (усе інтэрфейсы)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="227"/>
         <source>Leave empty for all interfaces</source>
-        <translation>Leave empty for all interfaces</translation>
+        <translation>Пакіньце пустым для ўсіх інтэрфейсаў</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="243"/>
         <source>Proxy %1:%2 — NOT used</source>
-        <translation>Proxy %1:%2 — NOT used</translation>
+        <translation>Проксі %1:%2 — НЕ выкарыстоўваецца</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="244"/>
         <source>Direct connection</source>
-        <translation>Direct connection</translation>
+        <translation>Прамое злучэнне</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="254"/>
         <source>Режим проброса портов</source>
-        <translation>Port forwarding mode</translation>
+        <translation>Рэжым перакідвання партоў</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="259"/>
         <source>UPnP (автоматически)</source>
-        <translation>UPnP (automatic)</translation>
+        <translation>UPnP (аўтаматычна)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="260"/>
         <source>Вручную (VPN / статический IP)</source>
-        <translation>Manual (VPN / static IP)</translation>
+        <translation>Уручную (VPN / статычны IP)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="261"/>
         <source>Отключено (только локальная сеть)</source>
-        <translation>Disabled (local network only)</translation>
+        <translation>Адключана (толькі лакальная сетка)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="262"/>
         <source>🖥 Client-Server (ретранслятор)</source>
-        <translation>🖥 Client-Server (relay)</translation>
+        <translation>🖥 Client-Server (рэтранслятар)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="271"/>
         <source>Публичный IP (IPv4)</source>
-        <translation>Public IP (IPv4)</translation>
+        <translation>Публічны IP (IPv4)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="278"/>
         <source>Внешний порт</source>
-        <translation>External port</translation>
+        <translation>Знешні порт</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="285"/>
         <source>Укажите порт, пробрасываемый роутером на ваше устройство.
 Требуется перезапуск для применения изменений.</source>
-        <translation>Enter the port forwarded by your router to this device.
-Restart required for changes to take effect.</translation>
+        <translation>Укажыце порт, які маршрутызатар перакідвае на вашу прыладу.
+Патрабуецца перазапуск для прымянення змяненняў.</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="297"/>
         <source>IP-адрес relay-сервера</source>
-        <translation>relay server IP address</translation>
+        <translation>IP-адрас relay-сервера</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="304"/>
         <source>TCP-порт (сообщения)</source>
-        <translation>TCP port (messages)</translation>
+        <translation>TCP-порт (паведамленні)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="312"/>
         <source>UDP-порт (звонки)</source>
-        <translation>UDP port (calls)</translation>
+        <translation>UDP-порт (звонкі)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="319"/>
         <source>⚠ Требуется перезапуск для применения изменений.</source>
-        <translation>⚠ Restart required for changes to take effect.</translation>
+        <translation>⚠ Патрабуецца перазапуск для прымянення змяненняў.</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="329"/>
@@ -1080,61 +1080,61 @@ Restart required for changes to take effect.</translation>
 Manual — задайте IP и порт вручную (для VPN, static IP, ручного NAT).
 Disabled — только LAN, пиры подключаются напрямую по локальному IP.
 Client-Server — все соединения через ваш relay-сервер (белый IP / VPS).</source>
-        <translation>UPnP — automatic port forwarding through the router.
-Manual — set IP and port manually (for VPN, static IP, manual NAT).
-Disabled — LAN only, peers connect directly via local IP.
-Client-Server — all connections through your relay server (public IP / VPS).</translation>
+        <translation>UPnP — аўтаматычнае перакідванне партоў праз маршрутызатар.
+Manual — задайце IP і порт уручную (для VPN, static IP, ручнога NAT).
+Disabled — толькі LAN, піры далучаюцца напрамую па лакальным IP.
+Client-Server — усе злучэнні праз ваш relay-сервер (белы IP / VPS).</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="347"/>
         <source>Security</source>
-        <translation>Security</translation>
+        <translation>Бяспека</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="351"/>
         <source>Allow remote shell access</source>
-        <translation>Allow remote shell access</translation>
+        <translation>Дазволіць аддалены доступ да тэрмінала</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="356"/>
         <location filename="../src/ui/settingspanel.cpp" line="360"/>
         <location filename="../src/ui/settingspanel.cpp" line="629"/>
         <source>Remote shell allowed</source>
-        <translation>Remote shell allowed</translation>
+        <translation>Аддалены шэл дазволены</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="356"/>
         <location filename="../src/ui/settingspanel.cpp" line="361"/>
         <location filename="../src/ui/settingspanel.cpp" line="629"/>
         <source>Remote shell blocked</source>
-        <translation>Remote shell blocked</translation>
+        <translation>Аддалены шэл заблакаваны</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="368"/>
         <source>Разрешить контактам запрашивать доступ к терминалу на вашем устройстве.
 При отключении все входящие запросы удалённого шелла отклоняются автоматически.</source>
-        <translation>Allow contacts to request terminal access on your device.
-When disabled, all incoming remote shell requests are rejected automatically.</translation>
+        <translation>Дазволіць кантактам запытваць доступ да тэрмінала на вашай прыладзе.
+Пры адключэнні ўсе ўваходныя запыты аддаленага шэла адхіляюцца аўтаматычна.</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="385"/>
         <source>Dark</source>
-        <translation>Dark</translation>
+        <translation>Цёмная</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="386"/>
         <source>Light</source>
-        <translation>Light</translation>
+        <translation>Светлая</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="477"/>
         <source>Current version</source>
-        <translation>Current version</translation>
+        <translation>Бягучая версія</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="490"/>
         <source>Press button to check</source>
-        <translation>Press button to check</translation>
+        <translation>Націсніце кнопку для праверкі</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="494"/>
@@ -1142,166 +1142,166 @@ When disabled, all incoming remote shell requests are rejected automatically.</t
         <location filename="../src/ui/settingspanel.cpp" line="527"/>
         <location filename="../src/ui/settingspanel.cpp" line="536"/>
         <source>Check for updates</source>
-        <translation>Check for updates</translation>
+        <translation>Праверыць абнаўленні</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="501"/>
         <source>Checking...</source>
-        <translation>Checking...</translation>
+        <translation>Праверка...</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="510"/>
         <location filename="../src/ui/settingspanel.cpp" line="528"/>
         <source>Checked: </source>
-        <translation>Checked: </translation>
+        <translation>Правераны: </translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="512"/>
         <source>New version available: &lt;b&gt;%1&lt;/b&gt;</source>
-        <translation>New version available: &lt;b&gt;%1&lt;/b&gt;</translation>
+        <translation>Даступна новая версія: &lt;b&gt;%1&lt;/b&gt;</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="514"/>
         <source>Open release page</source>
-        <translation>Open release page</translation>
+        <translation>Адкрыць старонку рэлізу</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="530"/>
         <source>Version %1 is up to date</source>
-        <translation>Version %1 is up to date</translation>
+        <translation>Версія %1 актуальная</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="537"/>
         <source>Error: </source>
-        <translation>Error: </translation>
+        <translation>Памылка: </translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="553"/>
         <source>Log of network events and errors. Enable verbose mode for more details.</source>
-        <translation>Log of network events and errors. Enable verbose mode for more details.</translation>
+        <translation>Журнал сеткавых падзей і памылак. Уключыце падрабязны рэжым для дэталяў.</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="667"/>
         <location filename="../src/ui/settingspanel.cpp" line="679"/>
         <source>Ошибка ввода</source>
-        <translation>Input error</translation>
+        <translation>Памылка ўводу</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="668"/>
         <source>Некорректный формат IPv4-адреса.
 Пример: 203.0.113.42</source>
-        <translation>Invalid IPv4 address format.
-Example: 203.0.113.42</translation>
+        <translation>Некарэктны фармат IPv4-адраса.
+Прыклад: 203.0.113.42</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="680"/>
         <source>Укажите корректный IPv4-адрес relay-сервера.
 Пример: 203.0.113.10</source>
-        <translation>Enter a valid IPv4 address for the relay server.
-Example: 203.0.113.10</translation>
+        <translation>Укажыце карэктны IPv4-адрас relay-сервера.
+Прыклад: 203.0.113.10</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="709"/>
         <source>Выбрать аватар</source>
-        <translation>Select avatar</translation>
+        <translation>Выбраць аватар</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="711"/>
         <source>Изображения (*.png *.jpg *.jpeg)</source>
-        <translation>Images (*.png *.jpg *.jpeg)</translation>
+        <translation>Відарысы (*.png *.jpg *.jpeg)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="778"/>
         <source>Импортировать тему</source>
-        <translation>Import theme</translation>
+        <translation>Імпартаваць тэму</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="780"/>
         <source>Архивы тем (*.zip *.tar.gz *.tgz *.7z)</source>
-        <translation>Theme archives (*.zip *.tar.gz *.tgz *.7z)</translation>
+        <translation>Архівы тэм (*.zip *.tar.gz *.tgz *.7z)</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="788"/>
         <source>Ошибка импорта</source>
-        <translation>Import error</translation>
+        <translation>Памылка імпарту</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="795"/>
         <source>Тема импортирована</source>
-        <translation>Theme imported</translation>
+        <translation>Тэма імпартавана</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="796"/>
         <source>Тема успешно импортирована.
 Выберите её в списке и перезапустите приложение для применения.</source>
-        <translation>Theme imported successfully.
-Select it in the list and restart the app to apply.</translation>
+        <translation>Тэма паспяхова імпартавана.
+Выберыце яе ў спісе і перазапусціце праграму для прымянення.</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="177"/>
         <source>Demo mode</source>
-        <translation>Demo mode</translation>
+        <translation>Дэма-рэжым</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="466"/>
         <source>Requires restart</source>
-        <translation>Requires restart</translation>
+        <translation>Патрабуецца перазапуск</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="473"/>
         <source>Updates</source>
-        <translation>Updates</translation>
+        <translation>Абнаўленні</translation>
     </message>
     <message>
         <location filename="../src/ui/settingspanel.cpp" line="549"/>
         <source>Debug</source>
-        <translation>Debug</translation>
+        <translation>Адладка</translation>
     </message>
     <message>
         <source>Privacy</source>
-        <translation>Privacy</translation>
+        <translation>Прыватнасць</translation>
     </message>
     <message>
         <source>Все</source>
-        <translation>Everyone</translation>
+        <translation>Усе</translation>
     </message>
     <message>
         <source>Только контакты</source>
-        <translation>Contacts only</translation>
+        <translation>Толькі кантакты</translation>
     </message>
     <message>
         <source>Никто</source>
-        <translation>Nobody</translation>
+        <translation>Ніхто</translation>
     </message>
     <message>
         <source>Кто может писать</source>
-        <translation>Who can message you</translation>
+        <translation>Хто можа пісаць</translation>
     </message>
     <message>
         <source>Кто может отправлять файлы</source>
-        <translation>Who can send files</translation>
+        <translation>Хто можа адпраўляць файлы</translation>
     </message>
     <message>
         <source>Кто может звонить</source>
-        <translation>Who can call you</translation>
+        <translation>Хто можа тэлефанаваць</translation>
     </message>
     <message>
         <source>Кто может слать голосовые</source>
-        <translation>Who can send voice messages</translation>
+        <translation>Хто можа слаць галасавыя</translation>
     </message>
     <message>
         <source>Кто видит аватар</source>
-        <translation>Who can see your avatar</translation>
+        <translation>Хто бачыць аватар</translation>
     </message>
     <message>
         <source>Кто может запросить шелл</source>
-        <translation>Who can request shell access</translation>
+        <translation>Хто можа запытаць шэл</translation>
     </message>
     <message>
         <source>«Только контакты» — разрешает действие только от людей из вашего списка контактов.
 Изменения применяются немедленно, без перезапуска.</source>
-        <translation>&quot;Contacts only&quot; — allows the action only from people in your contact list.
-Changes take effect immediately, no restart needed.</translation>
+        <translation>«Толькі кантакты» — дазваляе дзеянне толькі ад людзей з вашага спісу кантактаў.
+Змяненні прымяняюцца адразу, без перазапуску.</translation>
     </message>
 </context>
 <context>
@@ -1309,38 +1309,38 @@ Changes take effect immediately, no restart needed.</translation>
     <message>
         <location filename="../src/ui/shellmonitor.cpp" line="35"/>
         <source>Активная шелл-сессия от %1  —  только просмотр</source>
-        <translation>Active shell session from %1  —  view only</translation>
+        <translation>Актыўная шэл-сесія ад %1  —  толькі прагляд</translation>
     </message>
     <message>
         <location filename="../src/ui/shellmonitor.cpp" line="51"/>
         <source>ЗАВЕРШИТЬ СЕССИЮ</source>
-        <translation>TERMINATE SESSION</translation>
+        <translation>ЗАВЯРШЫЦЬ СЕСІЮ</translation>
     </message>
     <message>
         <location filename="../src/ui/shellmonitor.cpp" line="88"/>
         <source>
 [СЕССИЯ УБИТА: попытка эскалации привилегий!]</source>
         <translation>
-[SESSION KILLED: privilege escalation attempt!]</translation>
+[СЕСІЯ ЗАБІТА: спроба эскалацыі прывілеяў!]</translation>
     </message>
     <message>
         <location filename="../src/ui/shellmonitor.cpp" line="90"/>
         <source>
 [Шелл-процесс завершился]</source>
         <translation>
-[Shell process exited]</translation>
+[Шэл-працэс завяршыўся]</translation>
     </message>
     <message>
         <location filename="../src/ui/shellmonitor.cpp" line="91"/>
         <source>
 [Сессия завершена: %1]</source>
         <translation>
-[Session ended: %1]</translation>
+[Сесія завершана: %1]</translation>
     </message>
     <message>
         <location filename="../src/ui/shellmonitor.cpp" line="94"/>
         <source>Сессия завершена</source>
-        <translation>Session ended</translation>
+        <translation>Сесія завершана</translation>
     </message>
 </context>
 <context>
@@ -1348,12 +1348,12 @@ Changes take effect immediately, no restart needed.</translation>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="37"/>
         <source>Сессия активна</source>
-        <translation>Session active</translation>
+        <translation>Сесія актыўна</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="58"/>
         <source>Введите команду...</source>
-        <translation>Enter command...</translation>
+        <translation>Увядзіце каманду...</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="61"/>
@@ -1363,45 +1363,45 @@ Changes take effect immediately, no restart needed.</translation>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="63"/>
         <source>Отправить команду</source>
-        <translation>Send command</translation>
+        <translation>Адправіць каманду</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="70"/>
         <source>Завершить сессию</source>
-        <translation>End session</translation>
+        <translation>Завяршыць сесію</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="117"/>
         <source>
 [СЕССИЯ УБИТА: попытка эскалации привилегий]</source>
         <translation>
-[SESSION KILLED: privilege escalation attempt]</translation>
+[СЕСІЯ ЗАБІТА: спроба эскалацыі прывілеяў]</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="119"/>
         <source>
 [Шелл-процесс завершился]</source>
         <translation>
-[Shell process exited]</translation>
+[Шэл-працэс завяршыўся]</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="121"/>
         <source>
 [Не удалось запустить шелл на удалённой машине]</source>
         <translation>
-[Failed to start shell on remote machine]</translation>
+[Не ўдалося запусціць шэл на аддаленай машыне]</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="122"/>
         <source>
 [Сессия завершена: %1]</source>
         <translation>
-[Session ended: %1]</translation>
+[Сесія завершана: %1]</translation>
     </message>
     <message>
         <location filename="../src/ui/shellwindow.cpp" line="125"/>
         <source>Сессия завершена</source>
-        <translation>Session ended</translation>
+        <translation>Сесія завершана</translation>
     </message>
 </context>
 <context>
@@ -1409,7 +1409,7 @@ Changes take effect immediately, no restart needed.</translation>
     <message>
         <location filename="../src/ui/splashscreen.cpp" line="88"/>
         <source>Инициализация...</source>
-        <translation>Initializing...</translation>
+        <translation>Ініцыялізацыя...</translation>
     </message>
 </context>
 <context>
@@ -1418,7 +1418,7 @@ Changes take effect immediately, no restart needed.</translation>
         <location filename="../src/core/systeminfo.cpp" line="94"/>
         <location filename="../src/core/systeminfo.cpp" line="104"/>
         <source>неизвестно</source>
-        <translation>unknown</translation>
+        <translation>невядома</translation>
     </message>
 </context>
 
@@ -1426,55 +1426,55 @@ Changes take effect immediately, no restart needed.</translation>
     <name>DevicePairingDialog</name>
     <message>
         <source>Привязать устройство</source>
-        <translation>Pair Device</translation>
+        <translation>Прывязаць прыладу</translation>
     </message>
     <message>
         <source>Привязка устройства</source>
-        <translation>Device Pairing</translation>
+        <translation>Прывязка прылады</translation>
     </message>
     <message>
         <source>Отсканируйте QR-код на вторичном устройстве или введите код вручную.</source>
-        <translation>Scan the QR code on the secondary device or enter the code manually.</translation>
+        <translation>Адскануйце QR-код на другаснай прыладзе або ўвядзіце код уручную.</translation>
     </message>
     <message>
         <source>Новый код</source>
-        <translation>New Code</translation>
+        <translation>Новы код</translation>
     </message>
     <message>
         <source>Привязанные устройства</source>
-        <translation>Paired Devices</translation>
+        <translation>Прывязаныя прылады</translation>
     </message>
     <message>
         <source>Нет привязанных устройств</source>
-        <translation>No paired devices</translation>
+        <translation>Няма прывязаных прылад</translation>
     </message>
     <message>
         <source>главное</source>
-        <translation>primary</translation>
+        <translation>галоўная</translation>
     </message>
     <message>
         <source>вторичное</source>
-        <translation>secondary</translation>
+        <translation>другасная</translation>
     </message>
     <message>
         <source>Отвязать</source>
-        <translation>Unlink</translation>
+        <translation>Адвязаць</translation>
     </message>
     <message>
         <source>Закрыть</source>
-        <translation>Close</translation>
+        <translation>Закрыць</translation>
     </message>
     <message>
         <source>Действителен %1 сек</source>
-        <translation>Valid for %1 sec</translation>
+        <translation>Дзейнічае %1 сек</translation>
     </message>
     <message>
         <source>— истёк —</source>
-        <translation>— expired —</translation>
+        <translation>— скончыўся —</translation>
     </message>
     <message>
         <source>Нажмите «Новый код»</source>
-        <translation>Click "New Code"</translation>
+        <translation>Націсніце «Новы код»</translation>
     </message>
 </context>
 
@@ -1484,9 +1484,9 @@ Changes take effect immediately, no restart needed.</translation>
         <source>Установите
 libqrencode
 для QR-кода</source>
-        <translation>Install
+        <translation>Усталюйце
 libqrencode
-for QR codes</translation>
+для QR-кода</translation>
     </message>
 </context>
 </TS>
