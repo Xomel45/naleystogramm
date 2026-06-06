@@ -6,8 +6,9 @@
 #include <QVariant>
 #include <QDebug>
 #include <QJsonDocument>
+#include "../crypto/keyprotector.h"
 #ifdef HAVE_SQLCIPHER
-#  include "../crypto/keyprotector.h"
+// KeyProtector уже включён выше — используется и для групповых ключей
 #endif
 
 // Текущая версия приложения — проставляется в version_created при каждой записи.
@@ -152,9 +153,41 @@ void StorageManager::migrate() {
         alter.exec("ALTER TABLE messages ADD COLUMN is_voice INTEGER NOT NULL DEFAULT 0");
     if (!msgCols.contains("voice_duration_ms"))
         alter.exec("ALTER TABLE messages ADD COLUMN voice_duration_ms INTEGER NOT NULL DEFAULT 0");
-    // Версия приложения, сохранившего сообщение
     if (!msgCols.contains("version_created"))
         alter.exec("ALTER TABLE messages ADD COLUMN version_created TEXT NOT NULL DEFAULT '0.1.0'");
+
+    // ── Группы и каналы (добавлено в 0.8.1) ──────────────────────────────────
+    q.exec(R"(
+        CREATE TABLE IF NOT EXISTS groups (
+            id           TEXT PRIMARY KEY,
+            name         TEXT NOT NULL DEFAULT '',
+            type         TEXT NOT NULL DEFAULT 'group',
+            server_url   TEXT NOT NULL DEFAULT '',
+            username     TEXT NOT NULL DEFAULT '',
+            token_enc    BLOB,
+            group_key_enc BLOB,
+            local_priv_key_enc BLOB,
+            local_pub_key BLOB,
+            is_admin     INTEGER NOT NULL DEFAULT 0,
+            joined_at    TEXT NOT NULL DEFAULT ''
+        )
+    )");
+
+    q.exec(R"(
+        CREATE TABLE IF NOT EXISTS group_messages (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id  TEXT NOT NULL,
+            sender    TEXT NOT NULL DEFAULT '',
+            text      TEXT NOT NULL DEFAULT '',
+            ts        INTEGER NOT NULL DEFAULT 0,
+            outgoing  INTEGER NOT NULL DEFAULT 0
+        )
+    )");
+
+    q.exec(R"(
+        CREATE INDEX IF NOT EXISTS idx_grp_msg_group
+        ON group_messages(group_id, ts DESC)
+    )");
 }
 
 // ── Contacts ──────────────────────────────────────────────────────────────
@@ -490,4 +523,184 @@ QDateTime StorageManager::lastMessageTime(const QUuid& peerUuid) const {
     q.exec();
     if (!q.next()) return {};
     return QDateTime::fromString(q.value("timestamp").toString(), Qt::ISODate);
+}
+
+// ── Groups ────────────────────────────────────────────────────────────────────
+
+static Group rowToGroup(QSqlQuery& q) {
+    Group g;
+    g.id          = q.value("id").toString();
+    g.name        = q.value("name").toString();
+    g.type        = q.value("type").toString() == "channel" ? GroupType::Channel : GroupType::Group;
+    g.serverUrl   = q.value("server_url").toString();
+    g.username    = q.value("username").toString();
+    g.isAdmin     = q.value("is_admin").toInt() != 0;
+    const QString jsStr = q.value("joined_at").toString();
+    g.joinedAt    = jsStr.isEmpty() ? QDateTime{} : QDateTime::fromString(jsStr, Qt::ISODate);
+
+    const auto& kp = KeyProtector::instance();
+    if (kp.isReady()) {
+        QByteArray encTok = q.value("token_enc").toByteArray();
+        if (!encTok.isEmpty()) g.token = QString::fromUtf8(kp.decrypt(encTok));
+
+        QByteArray encKey = q.value("group_key_enc").toByteArray();
+        if (!encKey.isEmpty()) g.groupKey = kp.decrypt(encKey);
+
+        QByteArray encPriv = q.value("local_priv_key_enc").toByteArray();
+        if (!encPriv.isEmpty()) g.localPrivKey = kp.decrypt(encPriv);
+    }
+    g.localPubKey = q.value("local_pub_key").toByteArray();
+    return g;
+}
+
+bool StorageManager::saveGroup(const Group& g) {
+    const auto& kp = KeyProtector::instance();
+
+    QByteArray tokenEnc, keyEnc, privEnc;
+    if (kp.isReady()) {
+        if (!g.token.isEmpty())      tokenEnc = kp.encrypt(g.token.toUtf8());
+        if (!g.groupKey.isEmpty())   keyEnc   = kp.encrypt(g.groupKey);
+        if (!g.localPrivKey.isEmpty()) privEnc = kp.encrypt(g.localPrivKey);
+    }
+
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        INSERT OR REPLACE INTO groups
+            (id, name, type, server_url, username, token_enc, group_key_enc,
+             local_priv_key_enc, local_pub_key, is_admin, joined_at)
+        VALUES (:id, :name, :type, :url, :user, :tok, :gkey, :pkey, :pub, :admin, :joined)
+    )");
+    q.bindValue(":id",     g.id);
+    q.bindValue(":name",   g.name);
+    q.bindValue(":type",   g.type == GroupType::Channel ? "channel" : "group");
+    q.bindValue(":url",    g.serverUrl);
+    q.bindValue(":user",   g.username);
+    q.bindValue(":tok",    tokenEnc.isEmpty() ? QVariant() : QVariant(tokenEnc));
+    q.bindValue(":gkey",   keyEnc.isEmpty()   ? QVariant() : QVariant(keyEnc));
+    q.bindValue(":pkey",   privEnc.isEmpty()  ? QVariant() : QVariant(privEnc));
+    q.bindValue(":pub",    g.localPubKey.isEmpty() ? QVariant() : QVariant(g.localPubKey));
+    q.bindValue(":admin",  g.isAdmin ? 1 : 0);
+    q.bindValue(":joined", g.joinedAt.isValid()
+                           ? g.joinedAt.toString(Qt::ISODate)
+                           : QDateTime::currentDateTime().toString(Qt::ISODate));
+    if (!q.exec()) { qWarning("[Storage] saveGroup: %s", qPrintable(q.lastError().text())); return false; }
+    return true;
+}
+
+bool StorageManager::updateGroupToken(const QString& groupId, const QString& token) {
+    const auto& kp = KeyProtector::instance();
+    QByteArray enc = kp.isReady() ? kp.encrypt(token.toUtf8()) : QByteArray();
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE groups SET token_enc=:t WHERE id=:id");
+    q.bindValue(":t",  enc.isEmpty() ? QVariant() : QVariant(enc));
+    q.bindValue(":id", groupId);
+    return q.exec();
+}
+
+bool StorageManager::updateGroupKey(const QString& groupId, const QByteArray& key) {
+    const auto& kp = KeyProtector::instance();
+    QByteArray enc = kp.isReady() ? kp.encrypt(key) : key;
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE groups SET group_key_enc=:k WHERE id=:id");
+    q.bindValue(":k",  enc.isEmpty() ? QVariant() : QVariant(enc));
+    q.bindValue(":id", groupId);
+    return q.exec();
+}
+
+bool StorageManager::updateGroupName(const QString& groupId, const QString& name) {
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE groups SET name=:n WHERE id=:id");
+    q.bindValue(":n",  name);
+    q.bindValue(":id", groupId);
+    return q.exec();
+}
+
+bool StorageManager::setGroupAdmin(const QString& groupId, bool isAdmin) {
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE groups SET is_admin=:v WHERE id=:id");
+    q.bindValue(":v",  isAdmin ? 1 : 0);
+    q.bindValue(":id", groupId);
+    return q.exec();
+}
+
+Group StorageManager::getGroup(const QString& groupId) const {
+    QSqlQuery q(m_db);
+    q.prepare("SELECT * FROM groups WHERE id=:id");
+    q.bindValue(":id", groupId);
+    q.exec();
+    if (q.next()) return rowToGroup(q);
+    return {};
+}
+
+QList<Group> StorageManager::allGroups() const {
+    QSqlQuery q(m_db);
+    q.exec("SELECT * FROM groups ORDER BY name ASC");
+    QList<Group> list;
+    while (q.next()) list.append(rowToGroup(q));
+    return list;
+}
+
+bool StorageManager::deleteGroup(const QString& groupId) {
+    QSqlQuery q(m_db);
+    q.prepare("DELETE FROM group_messages WHERE group_id=:id");
+    q.bindValue(":id", groupId); q.exec();
+    q.prepare("DELETE FROM groups WHERE id=:id");
+    q.bindValue(":id", groupId);
+    return q.exec();
+}
+
+// ── Group Messages ────────────────────────────────────────────────────────────
+
+qint64 StorageManager::saveGroupMessage(const GroupMessage& msg) {
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        INSERT INTO group_messages (group_id, sender, text, ts, outgoing)
+        VALUES (:gid, :sender, :text, :ts, :out)
+    )");
+    q.bindValue(":gid",    msg.groupId);
+    q.bindValue(":sender", msg.sender);
+    q.bindValue(":text",   msg.text);
+    q.bindValue(":ts",     msg.ts);
+    q.bindValue(":out",    msg.outgoing ? 1 : 0);
+    if (!q.exec()) { qWarning("[Storage] saveGroupMessage: %s", qPrintable(q.lastError().text())); return -1; }
+    return q.lastInsertId().toLongLong();
+}
+
+QList<GroupMessage> StorageManager::getGroupMessages(const QString& groupId,
+                                                      int limit, int offset) const {
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        SELECT * FROM (
+            SELECT * FROM group_messages WHERE group_id=:gid
+            ORDER BY ts DESC
+            LIMIT :lim OFFSET :off
+        ) ORDER BY ts ASC
+    )");
+    q.bindValue(":gid", groupId);
+    q.bindValue(":lim", limit);
+    q.bindValue(":off", offset);
+    q.exec();
+    QList<GroupMessage> list;
+    while (q.next()) {
+        GroupMessage m;
+        m.id       = q.value("id").toLongLong();
+        m.groupId  = q.value("group_id").toString();
+        m.sender   = q.value("sender").toString();
+        m.text     = q.value("text").toString();
+        m.ts       = q.value("ts").toLongLong();
+        m.outgoing = q.value("outgoing").toInt() != 0;
+        list.append(m);
+    }
+    return list;
+}
+
+QString StorageManager::lastGroupMessageText(const QString& groupId) const {
+    QSqlQuery q(m_db);
+    q.prepare("SELECT text, sender FROM group_messages WHERE group_id=:gid ORDER BY ts DESC LIMIT 1");
+    q.bindValue(":gid", groupId);
+    q.exec();
+    if (!q.next()) return {};
+    const QString sender = q.value("sender").toString();
+    const QString text   = q.value("text").toString();
+    return sender.isEmpty() ? text : sender + ": " + text;
 }

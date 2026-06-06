@@ -1,5 +1,6 @@
 #include "contactswidget.h"
 #include <QVBoxLayout>
+#include <QHBoxLayout>
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QStyledItemDelegate>
@@ -14,6 +15,8 @@
 #include <QLocale>
 #include <QStyle>
 #include <QFrame>
+#include <QLabel>
+#include <QPushButton>
 #include <QDebug>
 #include "thememanager.h"
 
@@ -175,6 +178,7 @@ ContactsWidget::ContactsWidget(QWidget* parent) : QWidget(parent) {
     layout->setContentsMargins(0, 4, 0, 0);
     layout->setSpacing(0);
 
+    // ── Список контактов ──────────────────────────────────────────────────
     m_list = new QListWidget();
     m_list->setFrameShape(QFrame::NoFrame);
     m_list->setSpacing(0);
@@ -194,6 +198,51 @@ ContactsWidget::ContactsWidget(QWidget* parent) : QWidget(parent) {
             this, &ContactsWidget::onContextMenuRequested);
 
     layout->addWidget(m_list, 1);
+
+    // ── Секция групп и каналов ────────────────────────────────────────────
+    const ThemePalette& p = ThemeManager::instance().palette();
+
+    auto* groupHeader = new QWidget;
+    groupHeader->setFixedHeight(32);
+    groupHeader->setStyleSheet(QString("background:%1;border-top:1px solid %2;")
+                               .arg(p.bgSurface, p.border));
+    auto* ghLay = new QHBoxLayout(groupHeader);
+    ghLay->setContentsMargins(12, 0, 8, 0);
+    ghLay->setSpacing(4);
+
+    auto* ghLabel = new QLabel("Группы и каналы");
+    ghLabel->setStyleSheet(QString("font-size:10px;font-weight:600;color:%1;"
+                                   "letter-spacing:0.6px;text-transform:uppercase;")
+                           .arg(p.textSecondary));
+    auto* joinBtn = new QPushButton("+");
+    joinBtn->setToolTip("Вступить в группу или канал");
+    joinBtn->setFixedSize(22, 22);
+    joinBtn->setObjectName("tinyIconBtn");
+    joinBtn->setStyleSheet(QString(
+        "QPushButton{background:transparent;color:%1;font-size:16px;border:none;padding:0;}"
+        "QPushButton:hover{color:%2;}").arg(p.textSecondary, p.accent));
+
+    ghLay->addWidget(ghLabel, 1);
+    ghLay->addWidget(joinBtn);
+
+    connect(joinBtn, &QPushButton::clicked, this, &ContactsWidget::joinGroupRequested);
+
+    m_groupsList = new QListWidget();
+    m_groupsList->setFrameShape(QFrame::NoFrame);
+    m_groupsList->setSpacing(0);
+    m_groupsList->setMouseTracking(true);
+    m_groupsList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
+    m_groupsList->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_groupsList->setMaximumHeight(0);  // скрыт пока нет групп
+    m_groupsList->setStyleSheet(m_list->styleSheet());
+
+    connect(m_groupsList, &QListWidget::itemClicked, this, &ContactsWidget::onGroupItemClicked);
+    m_groupsList->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_groupsList, &QListWidget::customContextMenuRequested,
+            this, &ContactsWidget::onGroupContextMenu);
+
+    layout->addWidget(groupHeader);
+    layout->addWidget(m_groupsList);
 }
 
 void ContactsWidget::setContacts(const QList<Contact>& contacts) {
@@ -328,7 +377,7 @@ void ContactsWidget::onContextMenuRequested(const QPoint& pos) {
 }
 
 void ContactsWidget::applyTheme() {
-    m_list->setStyleSheet(
+    const QString listSS =
         "QListWidget {"
         "  background: transparent; border: none; padding: 4px 0; outline: none;"
         "}"
@@ -336,6 +385,107 @@ void ContactsWidget::applyTheme() {
         "  background: transparent; border: none; padding: 0; margin: 0;"
         "}"
         "QListWidget::item:hover    { background: transparent; }"
-        "QListWidget::item:selected { background: transparent; }"
-    );
+        "QListWidget::item:selected { background: transparent; }";
+    m_list->setStyleSheet(listSS);
+    if (m_groupsList) m_groupsList->setStyleSheet(listSS);
+}
+
+// ── Groups ──────────────────────────────────────────────────────────────────
+
+static constexpr int kGroupItemRole = Qt::UserRole + 100;
+static constexpr int kGroupConnRole = Qt::UserRole + 101;
+static constexpr int kGroupUnreadRole = Qt::UserRole + 102;
+
+void ContactsWidget::setGroups(const QList<Group>& groups) {
+    m_groups = groups;
+    rebuildGroupList();
+}
+
+void ContactsWidget::rebuildGroupList() {
+    if (!m_groupsList) return;
+    m_groupsList->clear();
+
+    for (const Group& g : m_groups) {
+        const bool connected = m_groupConnected.value(g.id, false);
+        const int unread     = m_groupUnread.value(g.id, 0);
+        const QString lastMsg = m_groupLastMsg.value(g.id);
+
+        const QString icon = g.type == GroupType::Channel ? "📢" : "👥";
+        const QString status = connected ? "●" : "○";
+        const ThemePalette& p = ThemeManager::instance().palette();
+
+        QString label = icon + " " + g.name;
+        if (unread > 0) label += QString("  [%1]").arg(unread);
+        if (!lastMsg.isEmpty()) label += "\n" + lastMsg;
+
+        auto* item = new QListWidgetItem(label, m_groupsList);
+        item->setData(kGroupItemRole, g.id);
+        item->setData(kGroupConnRole, connected);
+        item->setData(kGroupUnreadRole, unread);
+        item->setForeground(connected ? QColor(p.textPrimary) : QColor(p.textSecondary));
+        item->setSizeHint({0, 52});
+    }
+
+    // Высота: 52px * N + немного паддинга, максимум 260px
+    const int h = qMin(52 * m_groups.size() + 4, 260);
+    m_groupsList->setMaximumHeight(m_groups.isEmpty() ? 0 : h);
+    m_groupsList->setMinimumHeight(m_groups.isEmpty() ? 0 : qMin(h, 52));
+}
+
+void ContactsWidget::addOrUpdateGroup(const Group& g) {
+    for (auto& existing : m_groups) {
+        if (existing.id == g.id) { existing = g; rebuildGroupList(); return; }
+    }
+    m_groups.append(g);
+    rebuildGroupList();
+}
+
+void ContactsWidget::removeGroup(const QString& groupId) {
+    m_groups.erase(std::remove_if(m_groups.begin(), m_groups.end(),
+        [&](const Group& g) { return g.id == groupId; }), m_groups.end());
+    m_groupConnected.remove(groupId);
+    m_groupUnread.remove(groupId);
+    m_groupLastMsg.remove(groupId);
+    rebuildGroupList();
+}
+
+void ContactsWidget::setGroupConnected(const QString& groupId, bool connected) {
+    m_groupConnected[groupId] = connected;
+    rebuildGroupList();
+}
+
+void ContactsWidget::incrementGroupUnread(const QString& groupId) {
+    m_groupUnread[groupId]++;
+    rebuildGroupList();
+}
+
+void ContactsWidget::clearGroupUnread(const QString& groupId) {
+    m_groupUnread[groupId] = 0;
+    rebuildGroupList();
+}
+
+void ContactsWidget::updateGroupLastMessage(const QString& groupId, const QString& text) {
+    m_groupLastMsg[groupId] = text.length() > 40 ? text.left(40) + "…" : text;
+    rebuildGroupList();
+}
+
+void ContactsWidget::onGroupItemClicked(QListWidgetItem* item) {
+    if (!item) return;
+    const QString id = item->data(kGroupItemRole).toString();
+    if (!id.isEmpty()) {
+        clearGroupUnread(id);
+        emit groupSelected(id);
+    }
+}
+
+void ContactsWidget::onGroupContextMenu(const QPoint& pos) {
+    QListWidgetItem* item = m_groupsList->itemAt(pos);
+    if (!item) return;
+    const QString id = item->data(kGroupItemRole).toString();
+    if (id.isEmpty()) return;
+
+    QMenu menu(this);
+    const auto* leaveAct = menu.addAction("Покинуть группу");
+    if (menu.exec(m_groupsList->viewport()->mapToGlobal(pos)) == leaveAct)
+        emit leaveGroupRequested(id);
 }

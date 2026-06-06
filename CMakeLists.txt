@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.8.0 LANGUAGES CXX)
+project(naleystogramm VERSION 0.8.1 LANGUAGES CXX)
 
 # RC (Windows Resource Compiler) нужен только при сборке под Windows.
 # На Linux windres не установлен, поэтому включаем язык только там.
@@ -50,6 +50,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Sql
     Concurrent
     LinguistTools
+    WebSockets
     OPTIONAL_COMPONENTS
     Multimedia
 )
@@ -211,6 +212,14 @@ set(SOURCES
     src/ui/shellmonitor.h
     src/ui/shellmonitor.cpp
 
+    # Групповые чаты и каналы
+    src/core/groupmanager.h
+    src/core/groupmanager.cpp
+    src/ui/groupchatwidget.h
+    src/ui/groupchatwidget.cpp
+    src/ui/dialogs/joingroupdialog.h
+    src/ui/dialogs/joingroupdialog.cpp
+
     # Встроенные ресурсы (иконки)
     resources/resources.qrc
 )
@@ -284,6 +293,7 @@ target_link_libraries(naleystogramm PRIVATE
     Qt6::Network
     Qt6::Sql
     Qt6::Concurrent
+    Qt6::WebSockets
     OpenSSL::SSL
     OpenSSL::Crypto
 )

@@ -161,6 +161,53 @@ bool X3DH::verifySpkSig(const QByteArray& ikEdPub,
     return true;
 }
 
+// ── ECIES decrypt ─────────────────────────────────────────────────────────────
+// Формат blob: ephemeral_pub(32) || nonce(12) || ciphertext+tag (N+16 байт)
+// Алгоритм: X25519 DH + HKDF-SHA256 "naleys-group-key-v1" + AES-256-GCM
+
+QByteArray X3DH::eciesDecrypt(const QByteArray& localPrivKey, const QByteArray& blob) {
+    if (localPrivKey.size() != 32 || blob.size() < 32 + 12 + 16) {
+        qWarning("[X3DH] eciesDecrypt: недопустимый blob (size=%d)", blob.size());
+        return {};
+    }
+
+    const QByteArray ephPub  = blob.mid(0, 32);
+    const QByteArray nonce   = blob.mid(32, 12);
+    const QByteArray ctTag   = blob.mid(44);          // ciphertext + tag(16 байт)
+    const QByteArray tag     = ctTag.right(16);
+    const QByteArray ct      = ctTag.left(ctTag.size() - 16);
+
+    const QByteArray shared  = dh(localPrivKey, ephPub);
+    if (shared.isEmpty()) { qWarning("[X3DH] eciesDecrypt: DH провалился"); return {}; }
+
+    const QByteArray key     = kdf(shared, QByteArrayLiteral("naleys-group-key-v1"));
+    if (key.isEmpty()) { qWarning("[X3DH] eciesDecrypt: kdf провалился"); return {}; }
+
+    // AES-256-GCM decrypt via OpenSSL EVP
+    EvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new());
+    if (!ctx) return {};
+    QByteArray plain(ct.size(), '\0');
+    int len = 0;
+
+    if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) <= 0) return {};
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) <= 0) return {};
+    if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr,
+            reinterpret_cast<const unsigned char*>(key.constData()),
+            reinterpret_cast<const unsigned char*>(nonce.constData())) <= 0) return {};
+    if (EVP_DecryptUpdate(ctx.get(), reinterpret_cast<unsigned char*>(plain.data()), &len,
+            reinterpret_cast<const unsigned char*>(ct.constData()), ct.size()) <= 0) return {};
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, 16,
+            const_cast<char*>(tag.constData())) <= 0) return {};
+    int finalLen = 0;
+    if (EVP_DecryptFinal_ex(ctx.get(),
+            reinterpret_cast<unsigned char*>(plain.data()) + len, &finalLen) <= 0) {
+        qWarning("[X3DH] eciesDecrypt: аутентификация GCM не прошла");
+        return {};
+    }
+    plain.resize(len + finalLen);
+    return plain;
+}
+
 // ── Key bundle generation ─────────────────────────────────────────────────
 
 bool X3DH::generateBundle(

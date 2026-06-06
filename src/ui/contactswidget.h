@@ -40,6 +40,16 @@ public:
     void incrementUnread(const QUuid& uuid);
     void clearUnread(const QUuid& uuid);
 
+    // Группы / Каналы
+    void setGroups(const QList<Group>& groups);
+    void addOrUpdateGroup(const Group& g);
+    void removeGroup(const QString& groupId);
+    void setGroupConnected(const QString& groupId, bool connected);
+    void incrementGroupUnread(const QString& groupId);
+    void clearGroupUnread(const QString& groupId);
+    void updateGroupLastMessage(const QString& groupId, const QString& text);
+    bool isGroupConnected(const QString& groupId) const { return m_groupConnected.value(groupId, false); }
+
 public slots:
     void setFilter(const QString& text);
 
@@ -51,14 +61,23 @@ signals:
     void deleteChatRequested(QUuid uuid);
     void contactDeleteRequested(QUuid uuid);
 
+    // Группы
+    void groupSelected(QString groupId);
+    void joinGroupRequested();
+    void leaveGroupRequested(QString groupId);
+
 private slots:
     void onItemClicked(QListWidgetItem* item);
     void onContextMenuRequested(const QPoint& pos);
+    void onGroupItemClicked(QListWidgetItem* item);
+    void onGroupContextMenu(const QPoint& pos);
 
 private:
     void rebuildList();
+    void rebuildGroupList();
     void applyTheme();
 
+    // Контакты
     QListWidget*              m_list        {nullptr};
     QList<Contact>            m_contacts;
     QMap<QUuid, PeerPresence> m_presence;
@@ -66,4 +85,11 @@ private:
     QMap<QUuid, QDateTime>    m_lastMsgTime;
     QMap<QUuid, int>          m_unreadCounts;
     QString                   m_filter;
+
+    // Группы
+    QListWidget*              m_groupsList  {nullptr};
+    QList<Group>              m_groups;
+    QMap<QString, bool>       m_groupConnected;
+    QMap<QString, int>        m_groupUnread;
+    QMap<QString, QString>    m_groupLastMsg;
 };

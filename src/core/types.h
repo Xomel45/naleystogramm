@@ -76,6 +76,35 @@ struct TransferProgress {
     bool     outgoing;
 };
 
+// ── Группа / Канал ────────────────────────────────────────────────────────────
+enum class GroupType {
+    Group,
+    Channel
+};
+
+struct Group {
+    QString    id;              // server URL — уникальный идентификатор
+    QString    name;
+    GroupType  type{GroupType::Group};
+    QString    serverUrl;
+    QString    username;        // наш username на этом сервере
+    QString    token;           // auth token (хранится зашифрованным в DB)
+    QByteArray groupKey;        // расшифрованный AES-256 ключ (32 байта)
+    QByteArray localPrivKey;    // ephemeral X25519 privkey для этой группы
+    QByteArray localPubKey;     // ephemeral X25519 pubkey
+    bool       isAdmin{false};
+    QDateTime  joinedAt;
+};
+
+struct GroupMessage {
+    qint64     id{0};
+    QString    groupId;         // = serverUrl
+    QString    sender;          // username отправителя
+    QString    text;            // расшифрованный текст
+    qint64     ts{0};           // unix timestamp
+    bool       outgoing{false};
+};
+
 // ── Информация об обновлении ─────────────────────────────────────────────────
 struct UpdateInfo {
     QString version;

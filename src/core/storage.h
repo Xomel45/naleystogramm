@@ -45,6 +45,21 @@ public:
     [[nodiscard]] QString     lastMessageText(const QUuid& peerUuid) const;
     [[nodiscard]] QDateTime   lastMessageTime(const QUuid& peerUuid) const;
 
+    // Groups & Channels
+    [[nodiscard]] bool        saveGroup(const Group& g);
+    [[nodiscard]] bool        updateGroupToken(const QString& groupId, const QString& token);
+    [[nodiscard]] bool        updateGroupKey(const QString& groupId, const QByteArray& key);
+    [[nodiscard]] bool        updateGroupName(const QString& groupId, const QString& name);
+    [[nodiscard]] bool        setGroupAdmin(const QString& groupId, bool isAdmin);
+    [[nodiscard]] Group       getGroup(const QString& groupId) const;
+    [[nodiscard]] QList<Group> allGroups() const;
+    [[nodiscard]] bool        deleteGroup(const QString& groupId);
+
+    // Group Messages
+    [[nodiscard]] qint64      saveGroupMessage(const GroupMessage& msg);
+    [[nodiscard]] QList<GroupMessage> getGroupMessages(const QString& groupId, int limit = 50, int offset = 0) const;
+    [[nodiscard]] QString     lastGroupMessageText(const QString& groupId) const;
+
 private:
     void        migrate();
     QSqlDatabase m_db;

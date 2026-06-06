@@ -69,7 +69,7 @@ private:
 };
 
 #ifndef APP_VERSION
-#define APP_VERSION "0.7.5"
+#define APP_VERSION "0.8.1"
 #endif
 #ifndef APP_CODENAME
 #define APP_CODENAME "Хномык"

@@ -19,9 +19,11 @@ class E2EManager;
 class FileTransfer;
 class CallManager;
 class RemoteShellManager;
+class GroupManager;
 class CallWindow;
 class ContactsWidget;
 class ChatWidget;
+class GroupChatWidget;
 class SettingsPanel;
 class UpdateBanner;
 class ContactProfileDialog;
@@ -156,4 +158,10 @@ private:
 
     // Таймеры авто-скрытия typing indicator (per peer)
     QMap<QUuid, QTimer*> m_peerTypingTimers;
+
+    // Группы и каналы
+    GroupManager*    m_groupManager {nullptr};
+    GroupChatWidget* m_groupChat    {nullptr};
+    QStackedWidget*  m_rightStack   {nullptr};
+    QString          m_activeGroup;  // groupId текущей открытой группы
 };

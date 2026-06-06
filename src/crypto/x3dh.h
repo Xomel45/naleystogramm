@@ -62,8 +62,16 @@ public:
                                             const QByteArray& spkPub,
                                             const QByteArray& sig);
 
+    // ECIES расшифровка (X25519+HKDF-SHA256+AES-256-GCM).
+    // Формат входного blob: ephemeral_pub(32) || nonce(12) || ciphertext+tag(N+16)
+    [[nodiscard]] static QByteArray eciesDecrypt(const QByteArray& localPrivKey,
+                                                  const QByteArray& encryptedBlob);
+
+    // Генерация X25519 пары ключей (приватный + публичный, 32 байта каждый).
+    // Нужен GroupManager-у для создания эфемерных ключей группы.
+    [[nodiscard]] static bool generateX25519(QByteArray& priv, QByteArray& pub);
+
 private:
     [[nodiscard]] static QByteArray dh(const QByteArray& privKey, const QByteArray& peerPubKey);
     [[nodiscard]] static QByteArray kdf(const QByteArray& ikm, const QByteArray& info);
-    [[nodiscard]] static bool generateX25519(QByteArray& priv, QByteArray& pub);
 };
