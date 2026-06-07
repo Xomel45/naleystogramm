@@ -1,6 +1,7 @@
 #include "callmanager.h"
 #include "network.h"
 #include "../crypto/e2e.h"
+#include "../crypto/qt_bridge.h"
 #include "sessionmanager.h"
 #include "identity.h"
 #include <QTimer>
@@ -9,6 +10,14 @@
 #include <QUdpSocket>
 #include <QDebug>
 #include <openssl/rand.h>
+
+// Migration helpers — Phase 6 will migrate these call sites fully
+static inline std::string quid2s(const QUuid& u) {
+    return u.toString(QUuid::WithoutBraces).toStdString();
+}
+static inline void netSend(NetworkManager* net, const QUuid& u, const QJsonObject& o) {
+    net->sendFrame(quid2s(u), bridge::fromQJsonObj(o));
+}
 
 // Таймаут ожидания CALL_ACCEPT от вызываемого пира (мс)
 static constexpr int kCallTimeoutMs = 30000;
@@ -57,7 +66,7 @@ void CallManager::initiateCall(const QUuid& peerUuid, const QHostAddress& peerIp
         emit callError("Уже идёт звонок");
         return;
     }
-    if (!m_e2e->hasSession(peerUuid)) {
+    if (!m_e2e->hasSession(bridge::fromQUuid(peerUuid))) {
         emit callError("Нет E2E сессии с пиром — невозможно выполнить звонок");
         return;
     }
@@ -143,7 +152,7 @@ void CallManager::initiateCall(const QUuid& peerUuid, const QHostAddress& peerIp
     invite["udpPort"]      = static_cast<int>(localUdpPort);
     invite["codecs"]       = QJsonArray{"opus"};
     invite["mediaKeySalt"] = QString::fromLatin1(salt.toHex());
-    m_net->sendJson(peerUuid, invite);
+    netSend(m_net, peerUuid, invite);
 
     qDebug("[CallManager] CALL_INVITE отправлен, callId=%s, udpPort=%d",
            qPrintable(m_callId), localUdpPort);
@@ -165,7 +174,7 @@ void CallManager::acceptCall(const QString& callId) {
     accept["type"]    = "CALL_ACCEPT";
     accept["callId"]  = m_callId;
     accept["udpPort"] = static_cast<int>(m_media->localUdpPort());
-    m_net->sendJson(m_peerUuid, accept);
+    netSend(m_net, m_peerUuid, accept);
 
     setState(CallState::InCall);
     emit callAccepted(m_peerUuid);
@@ -182,7 +191,7 @@ void CallManager::rejectCall(const QString& callId, const QString& reason) {
     reject["type"]   = "CALL_REJECT";
     reject["callId"] = callId;
     reject["reason"] = reason;
-    m_net->sendJson(m_peerUuid, reject);
+    netSend(m_net, m_peerUuid, reject);
 
     qDebug("[CallManager] Звонок отклонён: %s", qPrintable(reason));
     resetState();
@@ -202,7 +211,7 @@ void CallManager::endCall() {
         QJsonObject end;
         end["type"]   = "CALL_END";
         end["callId"] = m_callId;
-        m_net->sendJson(m_peerUuid, end);
+        netSend(m_net, m_peerUuid, end);
     }
 
     m_media->endCall();
@@ -226,7 +235,7 @@ void CallManager::handleSignaling(const QUuid& from, const QJsonObject& msg) {
             reject["type"]   = "CALL_REJECT";
             reject["callId"] = callId;
             reject["reason"] = "busy";
-            m_net->sendJson(from, reject);
+            netSend(m_net, from, reject);
             return;
         }
 
@@ -241,11 +250,11 @@ void CallManager::handleSignaling(const QUuid& from, const QJsonObject& msg) {
         m_pendingMediaSalt     = salt;
 
         // Получаем IP пира из NetworkManager
-        const auto peerInfo = m_net->getPeerInfo(from);
-        m_peerIp = QHostAddress(peerInfo.ip);
+        const auto peerInfo = m_net->getPeerInfo(quid2s(from));
+        m_peerIp = QHostAddress(QString::fromStdString(peerInfo.ip));
 
         setState(CallState::Ringing);
-        emit incomingCall(from, peerInfo.name, callId);
+        emit incomingCall(from, QString::fromStdString(peerInfo.name), callId);
 
     } else if (type == "CALL_ACCEPT") {
         if (m_state != CallState::Calling || m_callId != callId) return;
@@ -294,13 +303,16 @@ void CallManager::handleSignaling(const QUuid& from, const QJsonObject& msg) {
 void CallManager::startMedia(const QHostAddress& peerIp, quint16 peerUdpPort,
                                const QString& callId, const QByteArray& salt)
 {
-    if (!m_e2e->hasSession(m_peerUuid)) {
+    if (!m_e2e->hasSession(bridge::fromQUuid(m_peerUuid))) {
         emit callError("Нет E2E сессии — медиа не может быть запущено");
         resetState();
         return;
     }
 
-    const QByteArray mediaKey = m_e2e->snapshotMediaKey(m_peerUuid, callId, salt);
+    const QByteArray mediaKey = bridge::toQBA(
+        m_e2e->snapshotMediaKey(bridge::fromQUuid(m_peerUuid),
+                                callId.toStdString(),
+                                bridge::fromQBA(salt)));
     if (mediaKey.isEmpty()) {
         emit callError("Не удалось вывести медиа-ключ");
         resetState();
@@ -309,9 +321,9 @@ void CallManager::startMedia(const QHostAddress& peerIp, quint16 peerUdpPort,
 
     // В режиме Client-Server — включаем UDP-ретрансляцию до startCall()
     if (SessionManager::instance().portForwardingMode() == PortForwardingMode::ClientServer) {
-        const QString relayIp  = SessionManager::instance().relayServerIp();
+        const QString relayIp  = QString::fromStdString(SessionManager::instance().relayServerIp());
         const quint16 relayUdp = SessionManager::instance().relayUdpPort();
-        const QUuid myUuid     = Identity::instance().uuid();
+        const QUuid myUuid     = QUuid::fromString(QString::fromStdString(Identity::instance().uuid()));
         m_media->enableUdpRelay(relayIp, relayUdp, myUuid, m_peerUuid);
     }
 

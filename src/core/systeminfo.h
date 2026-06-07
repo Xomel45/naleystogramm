@@ -1,7 +1,6 @@
 #pragma once
-#include <QObject>
-#include <QString>
-#include <QJsonObject>
+#include <string>
+#include <nlohmann/json.hpp>
 
 // ── SystemInfo ────────────────────────────────────────────────────────────────
 // Синглтон. Собирает статическую информацию об аппаратуре и ОС один раз
@@ -9,43 +8,30 @@
 // и отображается в ContactProfileDialog.
 //
 // Поддерживаемые платформы:
-//   Linux  — /proc/cpuinfo, /proc/meminfo, QSysInfo
-//   Other  — заглушка через QSysInfo
+//   Linux  — /proc/cpuinfo, /proc/meminfo, /etc/os-release
+//   Other  — compile-time arch macros
 
-class SystemInfo : public QObject {
-    Q_OBJECT
+class SystemInfo {
 public:
-    // Единственный экземпляр (создаётся при первом обращении)
     static SystemInfo& instance();
 
-    // Выполнить сбор данных. Вызывать один раз после запуска приложения.
-    // Повторный вызов перезаписывает данные.
     void collect();
 
-    // Геттеры собранных данных
-    [[nodiscard]] QString deviceType() const { return m_deviceType; }
-    [[nodiscard]] QString cpuModel()   const { return m_cpuModel;   }
-    [[nodiscard]] QString ramAmount()  const { return m_ramAmount;  }
-    [[nodiscard]] QString osName()     const { return m_osName;     }
+    [[nodiscard]] std::string deviceType() const { return m_deviceType; }
+    [[nodiscard]] std::string cpuModel()   const { return m_cpuModel;   }
+    [[nodiscard]] std::string ramAmount()  const { return m_ramAmount;  }
+    [[nodiscard]] std::string osName()     const { return m_osName;     }
 
-    // Сериализация (для локального отображения в ContactProfileDialog)
-    [[nodiscard]] QJsonObject toJson() const;
-
-    // Сериализация для отправки в HANDSHAKE.
-    // Принимает внешний IP — если сеть недоступна, активируется пасхалка.
-    [[nodiscard]] QJsonObject toJsonForHandshake(const QString& externalIp) const;
+    [[nodiscard]] nlohmann::json toJson() const;
+    [[nodiscard]] nlohmann::json toJsonForHandshake(const std::string& externalIp) const;
 
 private:
-    explicit SystemInfo(QObject* parent = nullptr);
-
-    // Сбор данных на Linux через /proc/
+    SystemInfo() = default;
     void collectLinux();
-
-    // Заглушка для не-Linux платформ (Windows, macOS)
     void collectFallback();
 
-    QString m_deviceType {"PC"};
-    QString m_cpuModel   {};
-    QString m_ramAmount  {};
-    QString m_osName     {};
+    std::string m_deviceType{"PC"};
+    std::string m_cpuModel;
+    std::string m_ramAmount;
+    std::string m_osName;
 };

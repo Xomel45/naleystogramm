@@ -1,352 +1,207 @@
 #include "updatechecker.h"
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
 #include "sessionmanager.h"
-#include <QDateTime>
-#include <QUrl>
-#include <QFile>
+#include <nlohmann/json.hpp>
+#include <ctime>
+#include <cstdio>
+#include <fstream>
+#include <sstream>
+#include <thread>
+#include <string>
+#include <string_view>
+#include <initializer_list>
+#include <algorithm>
+#ifdef HAVE_CURL
+#  include <curl/curl.h>
+#endif
 
-// ── Helpers ───────────────────────────────────────────────────────────────
+// ── /etc/os-release reader ────────────────────────────────────────────────────
 
-// Читает /etc/os-release и возвращает {ID, ID_LIKE} в нижнем регистре.
-// ID_LIKE может быть пустым или содержать несколько слов через пробел:
-//   "ubuntu debian", "rhel centos fedora", "arch" и т.п.
-// Благодаря ID_LIKE производные дистрибутивы покрываются автоматически —
-// например, Pop!_OS имеет ID=pop, ID_LIKE="ubuntu debian".
-static std::pair<QString,QString> detectOsRelease() {
-    QString id, idLike;
-    QFile f(QStringLiteral("/etc/os-release"));
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-        return {};
-    while (!f.atEnd()) {
-        const QString line = QString::fromUtf8(f.readLine()).trimmed();
-        const auto val = [&](const QString& key) -> QString {
-            const QString prefix = key + '=';
-            if (!line.startsWith(prefix)) return {};
-            QString v = line.mid(prefix.length());
-            if (v.startsWith('"')) v = v.mid(1, v.length() - 2);
-            return v.toLower();
+static std::pair<std::string, std::string> detectOsRelease() {
+    std::string id, idLike;
+    std::ifstream f("/etc/os-release");
+    if (!f.is_open()) return {};
+    std::string line;
+    while (std::getline(f, line)) {
+        auto parseField = [&](const char* key) -> std::string {
+            const std::string_view prefix{key};
+            if (line.rfind(prefix, 0) != 0 || line.size() <= prefix.size() + 1) return {};
+            if (line[prefix.size()] != '=') return {};
+            std::string v = line.substr(prefix.size() + 1);
+            if (!v.empty() && v.front() == '"') v = v.substr(1);
+            if (!v.empty() && v.back()  == '"') v.pop_back();
+            std::transform(v.begin(), v.end(), v.begin(), ::tolower);
+            return v;
         };
-        if (const auto v = val(QStringLiteral("ID"));      !v.isEmpty()) id     = v;
-        if (const auto v = val(QStringLiteral("ID_LIKE")); !v.isEmpty()) idLike = v;
+        if (const auto v = parseField("ID");      !v.empty()) id     = v;
+        if (const auto v = parseField("ID_LIKE"); !v.empty()) idLike = v;
     }
     return {id, idLike};
 }
 
-// Проверяет принадлежность дистрибутива к семейству.
-// Сначала ищет по ID, потом по каждому токену из ID_LIKE.
-static bool inFamily(const QString& id, const QString& idLike, const QStringList& list) {
-    if (list.contains(id)) return true;
-    for (const auto& token : idLike.split(u' ', Qt::SkipEmptyParts))
-        if (list.contains(token)) return true;
+static bool inFamily(const std::string& id, const std::string& idLike,
+                     std::initializer_list<std::string_view> list) {
+    auto match = [&](std::string_view token) {
+        for (auto s : list) if (token == s) return true;
+        return false;
+    };
+    if (match(id)) return true;
+    std::istringstream ss(idLike);
+    std::string token;
+    while (std::getline(ss, token, ' '))
+        if (!token.empty() && match(token)) return true;
     return false;
 }
 
-// Выбирает лучший ассет из массива по типу дистрибутива.
-// Возвращает {url, name}.
-static std::pair<QString,QString> pickAsset(const QJsonArray& assets) {
+// ── Выбор лучшего ассета ──────────────────────────────────────────────────────
+
+static std::pair<std::string, std::string> pickAsset(const nlohmann::json& assets) {
     const auto [id, idLike] = detectOsRelease();
 
-    QString appUrl, appName;
-    QString debUrl, debName;
-    QString rpmUrl, rpmName;
-    QString pkgUrl, pkgName;
+    std::string appUrl, appName, debUrl, debName, rpmUrl, rpmName, pkgUrl, pkgName;
+
+    auto endsWith = [](const std::string& s, const std::string& suffix) {
+        return s.size() >= suffix.size() &&
+               s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+    };
 
     for (const auto& a : assets) {
-        const QJsonObject obj = a.toObject();
-        const QString name    = obj["name"].toString();
-        const QString url     = obj["browser_download_url"].toString();
-        if      (name.endsWith(".AppImage"))        { appUrl = url; appName = name; }
-        else if (name.endsWith(".deb"))              { debUrl = url; debName = name; }
-        else if (name.endsWith(".rpm"))              { rpmUrl = url; rpmName = name; }
-        else if (name.endsWith(".pkg.tar.zst"))      { pkgUrl = url; pkgName = name; }
+        const auto name = a.value("name", std::string{});
+        const auto url  = a.value("browser_download_url", std::string{});
+        if      (endsWith(name, ".AppImage"))   { appUrl = url; appName = name; }
+        else if (endsWith(name, ".deb"))         { debUrl = url; debName = name; }
+        else if (endsWith(name, ".rpm"))         { rpmUrl = url; rpmName = name; }
+        else if (endsWith(name, ".pkg.tar.zst")) { pkgUrl = url; pkgName = name; }
     }
 
-    // ── Arch и производные (pacman / .pkg.tar.zst) ───────────────────────────
-    static const QStringList kArchFamily {
-        // Базовый дистрибутив
-        "arch",
-        // Прямые производные
-        "artix", "manjaro", "endeavouros", "garuda", "cachyos", "blackarch",
-        "archlabs", "archcraft", "arcolinux", "arcolinuxb", "archman", "archstrike",
-        "bluestar", "crystal", "ctlos", "obarun", "rebornos", "anarchy", "axyl",
-        "steamos", "holo", "parabola", "hyperbola", "kaos", "alci", "blendos",
-        "xerolinux", "athena", "instantos", "mabox", "biglinux", "linhes",
-        "archbang", "alfheim", "librewish", "peux", "pojde", "prism", "archex",
-        "archlinux32", "chakra", "archphile", "archi3", "holographos", "snal",
-        "tarch", "archsway", "antergos", "apricity", "archarm", "alarm",
-        "sirula", "parchlinux", "subliminal", "fenix", "m-os", "mesk",
-        "easy-arch", "bridge", "archlinux-lxqt", "archlinux-arm",
-        "xfce-openrc", "kde-openrc", "gnome-openrc",
-        // SteamOS / gaming
-        "chimeraos", "nobara-arch", "holoiso",
-        // ARM / embedded
-        "archlinuxarm", "alarm-rpi", "monjaro",
-        // Прочие известные форки
-        "archfi", "archinstall", "reclaimedlinux", "paloarch", "vanilla-arch",
-        "arch-anywhere", "archdi", "archdi-portable", "architect", "zen-installer",
-        "archlinux-studio",
-    };
+    if (inFamily(id, idLike, {
+            "arch","artix","manjaro","endeavouros","garuda","cachyos","blackarch",
+            "archlabs","archcraft","arcolinux","arcolinuxb","archman","archstrike",
+            "bluestar","crystal","ctlos","obarun","rebornos","anarchy","axyl",
+            "steamos","holo","parabola","hyperbola","kaos","alci","blendos",
+            "xerolinux","athena","instantos","mabox","biglinux","linhes",
+            "archbang","alfheim","librewish","peux","pojde","prism","archex",
+            "archlinux32","chakra","archphile","archi3","holographos","snal",
+            "tarch","archsway","antergos","apricity","archarm","alarm",
+            "sirula","parchlinux","subliminal","fenix","m-os","mesk",
+            "easy-arch","bridge","chimeraos","holoiso","archlinuxarm"
+        }) && !pkgUrl.empty())
+        return {pkgUrl, pkgName};
 
-    // ── Debian и производные (apt/dpkg / .deb) ───────────────────────────────
-    static const QStringList kDebianFamily {
-        // Базовые
-        "debian", "ubuntu",
-        // Ubuntu-семейство
-        "kubuntu", "lubuntu", "xubuntu", "ubuntu-mate", "ubuntu-budgie",
-        "ubuntukylin", "ubuntu-studio", "edubuntu", "ubuntu-unity",
-        "ubuntu-cinnamon", "ubuntu-gnome", "ubuntu-xfce", "ubuntu-openbox",
-        "ubuntu-sway", "ubuntu-web", "ubuntu-touch",
-        // Mint
-        "linuxmint", "lmde",
-        // Kali / Parrot / пентест
-        "kali", "parrot", "blackbox", "backbox", "tails",
-        // Elementary / Pantheon
-        "elementary",
-        // Zorin
-        "zorin",
-        // Pop!_OS
-        "pop", "popos", "pop_os",
-        // Deepin / UOS / Kylin
-        "deepin", "uos", "kylin", "ubuntukylin", "neokylin",
-        // MX Linux / antiX
-        "mx", "mxlinux", "antix",
-        // Devuan (systemd-free Debian)
-        "devuan",
-        // PureOS / Trisquel / Libre
-        "pureos", "trisquel", "parabola-gnulinux",
-        // Raspberry Pi OS / ARM
-        "raspbian", "raspios", "raspberry-pi-os", "raspberry",
-        // Armbian и встраиваемые
-        "armbian", "dietpi", "dietpi-os", "mobian", "rpi-os",
-        // Sparky / Siduction / Neptune
-        "sparky", "siduction", "neptune", "spiral",
-        // BunsenLabs / CrunchBang
-        "bunsenlabs", "crunchbang", "crunchbangplusplus",
-        // Bodhi / Moksha
-        "bodhi",
-        // Knoppix
-        "knoppix",
-        // SolydXK / SolydK / SolydX
-        "solydxk", "solydk", "solydx",
-        // Netrunner
-        "netrunner",
-        // Nitrux / NX Desktop
-        "nitrux",
-        // Regolith
-        "regolith",
-        // Q4OS / TDE
-        "q4os",
-        // Peppermint
-        "peppermint",
-        // Linux Lite
-        "lite", "linuxlite", "linux-lite",
-        // KDE Neon
-        "neon", "kdeneon",
-        // Endless OS
-        "endless",
-        // Astra Linux
-        "astra", "astra-linux",
-        // Whonix
-        "whonix",
-        // OpenMediaVault / Proxmox
-        "openmediavault", "proxmox", "pve",
-        // GRML
-        "grml",
-        // Kanotix
-        "kanotix",
-        // PinguyOS / Linux Lite / LXLE
-        "pinguyos", "lxle",
-        // Voyager / Emmabuntüs
-        "voyager", "emmabuntus",
-        // Drauger OS (gaming)
-        "drauger",
-        // LinuxFX
-        "linuxfx",
-        // MakuluLinux
-        "makulu",
-        // Bento
-        "bento",
-        // Subgraph OS
-        "subgraph",
-        // Watt OS
-        "watt-os",
-        // Hefftor
-        "hefftor",
-        // TuxedoOS
-        "tuxedo",
-        // Volumio / audio
-        "volumio",
-        // Turnkey Linux
-        "turnkey",
-        // Jolicloud
-        "jolicloud",
-        // SkoleLinux / Debian Edu
-        "skolelinux", "debian-edu",
-        // Vinux (accessibility)
-        "vinux",
-        // Ylmf OS
-        "ylmf",
-        // GeckoLinux (openSUSE spin — но с dpkg?)  — нет, он RPM
-        // NimbleX
-        "nimbleux",
-        // Exe GNU/Linux
-        "exe",
-        // Storm Linux
-        "storm",
-        // Libranet
-        "libranet",
-        // Progeny
-        "progeny",
-        // Xandros
-        "xandros",
-        // LinEx
-        "linex",
-        // Corel Linux
-        "corel",
-        // Fluxbuntu
-        "fluxbuntu",
-        // Ubuntu-based gaming
-        "nobara-ubuntu", "bazzite-ubuntu",
-        // RisiOS
-        "risiOS-debian",
-        // CloudReady / ChromeOS Flex (Chromium OS, Debian base)
-        "chromeos-flex", "cloudready",
-        // DietPi
-        "dietpi",
-        // Raspberry Pi Desktop
-        "rpd",
-        // PiOS / PiOS Lite
-        "pios", "pios-lite",
-        // Kali Purple / NetHunter
-        "kali-last-snapshot", "kali-rolling",
-        // Ubuntu Server / Ubuntu Cloud / Ubuntu Core
-        "ubuntu-server", "ubuntu-cloud", "ubuntu-core",
-    };
+    if (inFamily(id, idLike, {
+            "debian","ubuntu","kubuntu","lubuntu","xubuntu","ubuntu-mate","ubuntu-budgie",
+            "ubuntukylin","ubuntu-studio","edubuntu","linuxmint","lmde",
+            "kali","parrot","blackbox","backbox","tails","elementary","zorin",
+            "pop","popos","pop_os","deepin","uos","kylin","neokylin",
+            "mx","mxlinux","antix","devuan","pureos","trisquel",
+            "raspbian","raspios","raspberry","armbian","dietpi","mobian",
+            "sparky","siduction","neptune","bunsenlabs","bodhi","knoppix",
+            "nitrux","regolith","q4os","peppermint","lite","linuxlite",
+            "neon","kdeneon","endless","astra","astra-linux","whonix",
+            "openmediavault","proxmox","pve","grml","kanotix","pinguyos","lxle",
+            "voyager","emmabuntus","drauger","linuxfx","makulu","bento",
+            "subgraph","hefftor","tuxedo","volumio","turnkey",
+            "skolelinux","debian-edu","vinux","nimbleux","storm","libranet",
+            "xandros","linex","fluxbuntu","nobara-ubuntu","bazzite-ubuntu",
+            "chromeos-flex","cloudready","rpd","pios","pios-lite","risiOS-debian"
+        }) && !debUrl.empty())
+        return {debUrl, debName};
 
-    // ── RPM и производные (rpm/dnf/zypper / .rpm) ────────────────────────────
-    static const QStringList kRpmFamily {
-        // Fedora / Red Hat
-        "fedora", "rhel", "centos", "centos-stream",
-        // Rocky / Alma / Oracle / Scientific — RHEL-клоны
-        "rocky", "almalinux", "oracle", "oraclelinux", "scientific", "sl",
-        "springdale", "eurolinux", "clearos", "cloudlinux",
-        // SUSE семейство
-        "opensuse", "opensuse-leap", "opensuse-tumbleweed", "opensuse-microos",
-        "opensuse-kubic", "microos", "suse", "sle", "sled", "sles",
-        "geckolinux",
-        // Mageia / Mandriva потомки
-        "mageia", "openmandriva", "rosa", "pclinuxos", "turbolinux", "vine",
-        // ALT Linux (российский)
-        "alt", "altlinux", "alt-server", "alt-workstation", "alt-education",
-        "alt-kworkstation", "simply-linux",
-        // Amazon Linux
-        "amzn", "amazon", "amazonlinux",
-        // Nobara / игровые
-        "nobara",
-        // Ultramarine
-        "ultramarine",
-        // Universal Blue (atomic desktops)
-        "bazzite", "aurora", "bluefin", "onyx", "sericea", "vauxite",
-        "lazos", "ublue", "universalblue",
-        // Fedora Atomic / Silverblue / Kinoite
-        "silverblue", "kinoite", "fedora-silverblue", "fedora-kinoite",
-        "fedora-sericea", "fedora-onyx",
-        // CoreOS / FCOS / RHCOS
-        "coreos", "fcos", "rhcos", "fedora-coreos",
-        // Flatcar (Container Linux)
-        "flatcar",
-        // COS (Google Container-Optimized OS)
-        "cos",
-        // Asahi Linux (Apple Silicon)
-        "asahi", "asahi-linux",
-        // Qubes OS (базируется на Fedora)
-        "qubes",
-        // Circle Linux (CentOS Stream клон)
-        "circle",
-        // NavyNix / Berry
-        "navynix", "berry",
-        // RisiOS
-        "risios",
-        // OpenCloud / Anolis / OpenEuler / TencentOS (китайские)
-        "opencloudos", "anolis", "openeuler", "alinux", "tencentos",
-        "tencentlinux", "bigcloud", "openanolis", "eci",
-        // Miracle Linux (Asianux)
-        "miraclelinux",
-        // VineLinux / Turbolinux (японские)
-        "vine", "turbolinux",
-        // Pidora (Raspberry Pi Fedora)
-        "pidora",
-        // EL clones и прочие
-        "eln", "rl", "el", "cs",
-        // Photon OS (VMware)
-        "photon",
-        // CBL-Mariner / Azure Linux (Microsoft)
-        "mariner", "azurelinux",
-        // Fedora IoT
-        "fedora-iot", "iot",
-        // RHEL for Edge / MicroShift
-        "rhel-edge",
-        // Navy Linux
-        "navy",
-        // Eurolinux
-        "eurolinux",
-        // OpenMandriva Lx
-        "openmandriva-lx",
-        // ROSA Fresh / Chrome
-        "rosa-fresh", "rosa-chrome", "rosa-desktop",
-    };
+    if (inFamily(id, idLike, {
+            "fedora","rhel","centos","centos-stream",
+            "rocky","almalinux","oracle","oraclelinux","scientific","sl",
+            "springdale","eurolinux","clearos","cloudlinux",
+            "opensuse","opensuse-leap","opensuse-tumbleweed","opensuse-microos",
+            "opensuse-kubic","microos","suse","sle","sled","sles","geckolinux",
+            "mageia","openmandriva","rosa","pclinuxos","turbolinux","vine",
+            "alt","altlinux","alt-server","alt-workstation","alt-education",
+            "alt-kworkstation","simply-linux",
+            "amzn","amazon","amazonlinux","nobara","ultramarine",
+            "bazzite","aurora","bluefin","onyx","sericea","vauxite","lazos",
+            "silverblue","kinoite","fedora-silverblue","fedora-kinoite",
+            "coreos","fcos","rhcos","fedora-coreos","flatcar","cos",
+            "asahi","asahi-linux","qubes","circle","navynix","berry","risios",
+            "opencloudos","anolis","openeuler","alinux","tencentos","miraclelinux",
+            "pidora","photon","mariner","azurelinux","navy","rosa-fresh"
+        }) && !rpmUrl.empty())
+        return {rpmUrl, rpmName};
 
-    if (inFamily(id, idLike, kArchFamily)  && !pkgUrl.isEmpty()) return {pkgUrl, pkgName};
-    if (inFamily(id, idLike, kDebianFamily) && !debUrl.isEmpty()) return {debUrl, debName};
-    if (inFamily(id, idLike, kRpmFamily)   && !rpmUrl.isEmpty()) return {rpmUrl, rpmName};
     return {appUrl, appName};
 }
 
-// Парсим semver "v1.2.3", "1.2.3-beta", "1.2.3-rc1" → {1, 2, 3}.
-// Суффиксы (-beta, -rc1 и т.п.) отбрасываются перед разбором чисел.
-static std::tuple<int,int,int> parseSemver(const QString& v) {
-    QString s = v;
-    // Убираем ведущий 'v' или 'V'
-    if (s.startsWith('v') || s.startsWith('V'))
-        s = s.mid(1);
-    // Отбрасываем всё после первого дефиса (-beta, -rc1, -stable и т.п.)
-    const int dashPos = s.indexOf('-');
-    if (dashPos != -1)
-        s = s.left(dashPos);
-    const auto parts = s.split('.');
-    const int major = parts.value(0).toInt();
-    const int minor = parts.value(1).toInt();
-    const int patch = parts.value(2).toInt();
-    return {major, minor, patch};
+// ── Semver ────────────────────────────────────────────────────────────────────
+
+static std::tuple<int,int,int> parseSemver(const std::string& v) {
+    std::string s = v;
+    if (!s.empty() && (s[0] == 'v' || s[0] == 'V')) s = s.substr(1);
+    const auto dash = s.find('-');
+    if (dash != std::string::npos) s = s.substr(0, dash);
+    int maj = 0, min = 0, pat = 0;
+    std::sscanf(s.c_str(), "%d.%d.%d", &maj, &min, &pat);
+    return {maj, min, pat};
 }
 
-// ── UpdateChecker ─────────────────────────────────────────────────────────
+// ── Timestamp helpers ─────────────────────────────────────────────────────────
 
-UpdateChecker::UpdateChecker(QObject* parent) : QObject(parent) {}
+static std::string currentIsoTimestamp() {
+    const std::time_t t = std::time(nullptr);
+    struct tm tm_info {};
+#ifdef _WIN32
+    localtime_s(&tm_info, &t);
+#else
+    localtime_r(&t, &tm_info);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm_info);
+    return std::string(buf);
+}
 
-QString UpdateChecker::lastChecked() const {
-    const QString iso = SessionManager::instance().lastUpdateCheck();
-    if (iso.isEmpty()) return "никогда";
-    const auto dt = QDateTime::fromString(iso, Qt::ISODate);
-    if (!dt.isValid()) return "никогда";
-    return dt.toString("dd.MM.yyyy  hh:mm");
+// Parse ISO "YYYY-MM-DDTHH:MM:SS" → time_t (-1 on failure)
+static std::time_t parseIsoTimestamp(const std::string& iso) {
+    if (iso.empty()) return -1;
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0;
+    if (std::sscanf(iso.c_str(), "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &s) < 6) return -1;
+    struct tm tm_info {};
+    tm_info.tm_year  = y - 1900;
+    tm_info.tm_mon   = mo - 1;
+    tm_info.tm_mday  = d;
+    tm_info.tm_hour  = h;
+    tm_info.tm_min   = mi;
+    tm_info.tm_sec   = s;
+    tm_info.tm_isdst = -1;
+    return std::mktime(&tm_info);
+}
+
+// ── libcurl write callback ────────────────────────────────────────────────────
+
+#ifdef HAVE_CURL
+static size_t curlWrite(void* ptr, size_t size, size_t nmemb, std::string* out) {
+    out->append(static_cast<char*>(ptr), size * nmemb);
+    return size * nmemb;
+}
+#endif
+
+// ── UpdateChecker ─────────────────────────────────────────────────────────────
+
+UpdateChecker::UpdateChecker() = default;
+
+UpdateChecker::~UpdateChecker() {
+    m_alive = false;
+}
+
+std::string UpdateChecker::lastChecked() const {
+    return SessionManager::instance().lastUpdateCheck();
+}
+
+UpdateInfo UpdateChecker::cachedResult() const {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    return m_cached;
 }
 
 void UpdateChecker::checkInBackground() {
-    if (!SessionManager::instance().autoCheckUpdates())
-        return;
-    const QString isoStr = SessionManager::instance().lastUpdateCheck();
-    const auto last = isoStr.isEmpty()
-        ? QDateTime()
-        : QDateTime::fromString(isoStr, Qt::ISODate);
-    // Не дёргаем чаще раза в 6 часов
-    if (last.isValid() && last.secsTo(QDateTime::currentDateTime()) < 6 * 3600)
-        return;
+    if (!SessionManager::instance().autoCheckUpdates()) return;
+    const std::string iso = SessionManager::instance().lastUpdateCheck();
+    const std::time_t last = parseIsoTimestamp(iso);
+    if (last != -1 && (std::time(nullptr) - last) < 6 * 3600) return;
     doCheck();
 }
 
@@ -354,80 +209,176 @@ void UpdateChecker::checkNow() {
     doCheck();
 }
 
-void UpdateChecker::doCheck() {
-    emit checkStarted();
+// ── Listener management ───────────────────────────────────────────────────────
 
-    const QString url = QString(
-        "https://api.github.com/repos/%1/%2/releases/latest")
-        .arg(kGitHubOwner, kGitHubRepo);
-
-    auto* nam = new QNetworkAccessManager(this);
-    QNetworkRequest req{QUrl{url}};
-    // GitHub требует User-Agent
-    req.setRawHeader("User-Agent",
-        QByteArray("naleystogramm/") + kCurrentVersion);
-    req.setRawHeader("Accept",
-        "application/vnd.github+json");
-    req.setTransferTimeout(8000);
-
-    auto* reply = nam->get(req);
-
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam]() {
-        reply->deleteLater();
-        nam->deleteLater();
-
-        // Сохраняем время проверки в любом случае
-        SessionManager::instance().setLastUpdateCheck(
-            QDateTime::currentDateTime().toString(Qt::ISODate));
-
-        if (reply->error() != QNetworkReply::NoError) {
-            emit checkFailed(reply->errorString());
-            return;
-        }
-
-        const auto doc = QJsonDocument::fromJson(reply->readAll());
-        if (doc.isNull() || !doc.isObject()) {
-            emit checkFailed("Неверный ответ от GitHub API");
-            return;
-        }
-
-        const QJsonObject obj  = doc.object();
-        const QString tagName  = obj["tag_name"].toString();      // "v1.2.3"
-        const QString htmlUrl  = obj["html_url"].toString();      // страница релиза
-        const QString body     = obj["body"].toString();          // release notes
-
-        if (tagName.isEmpty()) {
-            emit checkFailed("Релизы не найдены");
-            return;
-        }
-
-        // Обрезаем notes до ~280 символов
-        const QString notes = body.length() > 280
-            ? body.left(280) + "…"
-            : body;
-
-        const auto [dlUrl, dlName] = pickAsset(obj["assets"].toArray());
-
-        m_cached = UpdateInfo{
-            .version     = tagName,
-            .url         = htmlUrl,
-            .notes       = notes,
-            .downloadUrl = dlUrl,
-            .assetName   = dlName,
-            .available   = isNewerVersion(tagName, kCurrentVersion),
-        };
-
-        if (m_cached.available)
-            emit updateAvailable(m_cached);
-        else
-            emit noUpdateAvailable(kCurrentVersion);
-    });
+UpdateChecker::Token UpdateChecker::subscribeUpdateAvailable(
+    std::function<void(const UpdateInfo&)> fn) {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    Token t = m_nextToken++;
+    m_onAvailable.emplace_back(t, std::move(fn));
+    return t;
 }
 
-bool UpdateChecker::isNewerVersion(const QString& remote, const QString& local) {
+UpdateChecker::Token UpdateChecker::subscribeNoUpdate(
+    std::function<void(const std::string&)> fn) {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    Token t = m_nextToken++;
+    m_onNoUpdate.emplace_back(t, std::move(fn));
+    return t;
+}
+
+UpdateChecker::Token UpdateChecker::subscribeCheckFailed(
+    std::function<void(const std::string&)> fn) {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    Token t = m_nextToken++;
+    m_onFailed.emplace_back(t, std::move(fn));
+    return t;
+}
+
+UpdateChecker::Token UpdateChecker::subscribeCheckStarted(std::function<void()> fn) {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    Token t = m_nextToken++;
+    m_onStarted.emplace_back(t, std::move(fn));
+    return t;
+}
+
+void UpdateChecker::unsubscribe(Token t) {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    auto rm = [t](auto& v) {
+        v.erase(std::remove_if(v.begin(), v.end(),
+                               [t](const auto& p){ return p.first == t; }), v.end());
+    };
+    rm(m_onAvailable); rm(m_onNoUpdate); rm(m_onFailed); rm(m_onStarted);
+}
+
+void UpdateChecker::notifyAvailable(const UpdateInfo& info) {
+    std::vector<std::pair<Token, std::function<void(const UpdateInfo&)>>> snap;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_cached = info;
+        snap = m_onAvailable;
+    }
+    for (auto& [t, fn] : snap) fn(info);
+}
+
+void UpdateChecker::notifyNoUpdate(const std::string& ver) {
+    std::vector<std::pair<Token, std::function<void(const std::string&)>>> snap;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        snap = m_onNoUpdate;
+    }
+    for (auto& [t, fn] : snap) fn(ver);
+}
+
+void UpdateChecker::notifyFailed(const std::string& err) {
+    std::vector<std::pair<Token, std::function<void(const std::string&)>>> snap;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        snap = m_onFailed;
+    }
+    for (auto& [t, fn] : snap) fn(err);
+}
+
+void UpdateChecker::notifyStarted() {
+    std::vector<std::pair<Token, std::function<void()>>> snap;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        snap = m_onStarted;
+    }
+    for (auto& [t, fn] : snap) fn();
+}
+
+// ── doCheck ───────────────────────────────────────────────────────────────────
+
+void UpdateChecker::doCheck() {
+    notifyStarted();
+
+#ifndef HAVE_CURL
+    notifyFailed("libcurl не найден при сборке");
+    return;
+#else
+    std::thread([this]() {
+        const std::string url = std::string("https://api.github.com/repos/")
+                                + kGitHubOwner + "/" + kGitHubRepo + "/releases/latest";
+
+        std::string body;
+        CURLcode rc = CURLE_FAILED_INIT;
+
+        CURL* curl = curl_easy_init();
+        if (curl) {
+            const std::string ua = std::string("naleystogramm/") + kCurrentVersion;
+            struct curl_slist* hdrs = nullptr;
+            hdrs = curl_slist_append(hdrs, ("User-Agent: " + ua).c_str());
+            hdrs = curl_slist_append(hdrs, "Accept: application/vnd.github+json");
+
+            curl_easy_setopt(curl, CURLOPT_URL,           url.c_str());
+            curl_easy_setopt(curl, CURLOPT_HTTPHEADER,    hdrs);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &body);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT,       8L);
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+
+            rc = curl_easy_perform(curl);
+            curl_slist_free_all(hdrs);
+            curl_easy_cleanup(curl);
+        }
+
+        if (!m_alive) return;
+
+        if (rc != CURLE_OK) {
+            notifyFailed(std::string(curl_easy_strerror(rc)));
+            return;
+        }
+
+        // Сохраняем время проверки (лёгкая гонка с SessionManager — приемлема)
+        SessionManager::instance().setLastUpdateCheck(currentIsoTimestamp());
+
+        const auto doc = nlohmann::json::parse(body, nullptr, false);
+        if (doc.is_discarded() || !doc.is_object()) {
+            notifyFailed("Неверный ответ от GitHub API");
+            return;
+        }
+
+        const std::string tagName = doc.value("tag_name", std::string{});
+        const std::string htmlUrl = doc.value("html_url",  std::string{});
+        std::string       body_s  = doc.value("body",      std::string{});
+
+        if (tagName.empty()) {
+            notifyFailed("Релизы не найдены");
+            return;
+        }
+
+        // Обрезаем notes до ~280 UTF-8 байт
+        if (body_s.size() > 280) {
+            body_s.resize(280);
+            body_s += "…";  // '…'
+        }
+
+        const auto [dlUrl, dlName] = pickAsset(doc.value("assets", nlohmann::json::array()));
+
+        const bool newer = isNewerVersion(tagName, kCurrentVersion);
+        UpdateInfo info{
+            .version     = tagName,
+            .url         = htmlUrl,
+            .notes       = body_s,
+            .downloadUrl = dlUrl,
+            .assetName   = dlName,
+            .available   = newer,
+        };
+
+        if (!m_alive) return;
+
+        if (newer) notifyAvailable(info);
+        else       notifyNoUpdate(std::string(kCurrentVersion));
+
+    }).detach();
+#endif
+}
+
+bool UpdateChecker::isNewerVersion(const std::string& remote, const std::string& local) {
     const auto [rMaj, rMin, rPat] = parseSemver(remote);
     const auto [lMaj, lMin, lPat] = parseSemver(local);
-
     if (rMaj != lMaj) return rMaj > lMaj;
     if (rMin != lMin) return rMin > lMin;
     return rPat > lPat;

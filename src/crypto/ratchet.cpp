@@ -4,29 +4,23 @@
 #include <openssl/kdf.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
-#include <QDebug>
+#include <cstdio>
 
-// Логирует код ошибки OpenSSL и возвращает пустой результат / false.
-// Используется для перехвата сбоев EVP_* функций.
 static void logOpenSSLError(const char* where) {
     const unsigned long err = ERR_get_error();
     char buf[256];
     ERR_error_string_n(err, buf, sizeof(buf));
-    qCritical("[Ratchet] OpenSSL error in %s: %s (code: %lu)", where, buf, err);
+    fprintf(stderr, "[Ratchet] OpenSSL error in %s: %s (code: %lu)\n", where, buf, err);
 }
 
 // ── AES-256-GCM ───────────────────────────────────────────────────────────
 
-QByteArray DoubleRatchet::aesgcmEncrypt(const QByteArray& key,
-                                         const QByteArray& nonce,
-                                         const QByteArray& plaintext,
-                                         QByteArray& outTag) {
+Bytes DoubleRatchet::aesgcmEncrypt(const Bytes& key, const Bytes& nonce,
+                                    const Bytes& plaintext, Bytes& outTag) {
     EvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new());
-    if (!ctx) {
-        qCritical("[Ratchet] aesgcmEncrypt: EVP_CIPHER_CTX_new() вернул NULL");
-        return {};
-    }
-    QByteArray ciphertext(plaintext.size(), '\0');
+    if (!ctx) { logOpenSSLError("aesgcmEncrypt/new"); return {}; }
+
+    Bytes ciphertext(plaintext.size(), 0);
     outTag.resize(16);
     int len = 0;
 
@@ -36,123 +30,103 @@ QByteArray DoubleRatchet::aesgcmEncrypt(const QByteArray& key,
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) <= 0) {
         logOpenSSLError("aesgcmEncrypt/IVLEN"); return {};
     }
-    if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr,
-            reinterpret_cast<const unsigned char*>(key.constData()),
-            reinterpret_cast<const unsigned char*>(nonce.constData())) <= 0) {
+    if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce.data()) <= 0) {
         logOpenSSLError("aesgcmEncrypt/KeyNonce"); return {};
     }
-    if (EVP_EncryptUpdate(ctx.get(), reinterpret_cast<unsigned char*>(ciphertext.data()),
-            &len,
-            reinterpret_cast<const unsigned char*>(plaintext.constData()),
-            plaintext.size()) <= 0) {
+    if (EVP_EncryptUpdate(ctx.get(), ciphertext.data(), &len,
+            plaintext.data(), static_cast<int>(plaintext.size())) <= 0) {
         logOpenSSLError("aesgcmEncrypt/Update"); return {};
     }
     int finalLen = 0;
-    if (EVP_EncryptFinal_ex(ctx.get(),
-            reinterpret_cast<unsigned char*>(ciphertext.data()) + len, &finalLen) <= 0) {
+    if (EVP_EncryptFinal_ex(ctx.get(), ciphertext.data() + len, &finalLen) <= 0) {
         logOpenSSLError("aesgcmEncrypt/Final"); return {};
     }
-    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, 16,
-            reinterpret_cast<unsigned char*>(outTag.data())) <= 0) {
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, 16, outTag.data()) <= 0) {
         logOpenSSLError("aesgcmEncrypt/GetTag"); return {};
     }
     return ciphertext;
 }
 
-std::expected<QByteArray, QString> DoubleRatchet::aesgcmDecrypt(
-    const QByteArray& key, const QByteArray& nonce,
-    const QByteArray& ciphertext, const QByteArray& tag)
+std::expected<Bytes, std::string> DoubleRatchet::aesgcmDecrypt(
+    const Bytes& key, const Bytes& nonce,
+    const Bytes& ciphertext, const Bytes& tag)
 {
     EvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new());
-    if (!ctx) {
-        qCritical("[Ratchet] aesgcmDecrypt: EVP_CIPHER_CTX_new() вернул NULL");
-        return std::unexpected(QStringLiteral("EVP_CIPHER_CTX_new failed"));
-    }
-    QByteArray plaintext(ciphertext.size(), '\0');
+    if (!ctx) return std::unexpected(std::string("EVP_CIPHER_CTX_new failed"));
+
+    Bytes plaintext(ciphertext.size(), 0);
     int len = 0;
 
     if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) <= 0) {
         logOpenSSLError("aesgcmDecrypt/Init");
-        return std::unexpected(QStringLiteral("EVP_DecryptInit_ex failed"));
+        return std::unexpected(std::string("EVP_DecryptInit_ex failed"));
     }
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) <= 0) {
         logOpenSSLError("aesgcmDecrypt/IVLEN");
-        return std::unexpected(QStringLiteral("EVP_CTRL_GCM_SET_IVLEN failed"));
+        return std::unexpected(std::string("EVP_CTRL_GCM_SET_IVLEN failed"));
     }
-    if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr,
-            reinterpret_cast<const unsigned char*>(key.constData()),
-            reinterpret_cast<const unsigned char*>(nonce.constData())) <= 0) {
+    if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce.data()) <= 0) {
         logOpenSSLError("aesgcmDecrypt/KeyNonce");
-        return std::unexpected(QStringLiteral("EVP_DecryptInit_ex KeyNonce failed"));
+        return std::unexpected(std::string("EVP_DecryptInit_ex KeyNonce failed"));
     }
-    if (EVP_DecryptUpdate(ctx.get(), reinterpret_cast<unsigned char*>(plaintext.data()),
-            &len,
-            reinterpret_cast<const unsigned char*>(ciphertext.constData()),
-            ciphertext.size()) <= 0) {
+    if (EVP_DecryptUpdate(ctx.get(), plaintext.data(), &len,
+            ciphertext.data(), static_cast<int>(ciphertext.size())) <= 0) {
         logOpenSSLError("aesgcmDecrypt/Update");
-        return std::unexpected(QStringLiteral("EVP_DecryptUpdate failed"));
+        return std::unexpected(std::string("EVP_DecryptUpdate failed"));
     }
     if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, 16,
-            const_cast<unsigned char*>(
-                reinterpret_cast<const unsigned char*>(tag.constData()))) <= 0) {
+            const_cast<uint8_t*>(tag.data())) <= 0) {
         logOpenSSLError("aesgcmDecrypt/SetTag");
-        return std::unexpected(QStringLiteral("EVP_CTRL_GCM_SET_TAG failed"));
+        return std::unexpected(std::string("EVP_CTRL_GCM_SET_TAG failed"));
     }
     int finalLen = 0;
-    if (EVP_DecryptFinal_ex(ctx.get(),
-            reinterpret_cast<unsigned char*>(plaintext.data()) + len, &finalLen) <= 0) {
-        qWarning("[Ratchet] GCM auth tag mismatch — message tampered!");
-        return std::unexpected(QStringLiteral("GCM authentication failed"));
+    if (EVP_DecryptFinal_ex(ctx.get(), plaintext.data() + len, &finalLen) <= 0) {
+        fprintf(stderr, "[Ratchet] GCM auth tag mismatch\n");
+        return std::unexpected(std::string("GCM authentication failed"));
     }
     return plaintext;
 }
 
-// ── X25519 DH ─────────────────────────────────────────────────────────────
+// ── X25519 ────────────────────────────────────────────────────────────────
 
-bool DoubleRatchet::generateX25519(QByteArray& priv, QByteArray& pub) {
+bool DoubleRatchet::generateX25519(Bytes& priv, Bytes& pub) {
     EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_X25519, nullptr));
     if (!ctx) { logOpenSSLError("generateX25519/ctx_new"); return false; }
     if (EVP_PKEY_keygen_init(ctx.get()) <= 0) {
         logOpenSSLError("generateX25519/keygen_init"); return false;
     }
-
     EVP_PKEY* pkeyRaw = nullptr;
     if (EVP_PKEY_keygen(ctx.get(), &pkeyRaw) <= 0) {
         logOpenSSLError("generateX25519/keygen"); return false;
     }
     EvpPkeyPtr pkey(pkeyRaw);
 
+    priv.resize(32);
+    pub.resize(32);
     size_t len = 32;
-    priv.resize(32); pub.resize(32);
-
-    if (EVP_PKEY_get_raw_private_key(pkey.get(),
-            reinterpret_cast<unsigned char*>(priv.data()), &len) <= 0) {
+    if (EVP_PKEY_get_raw_private_key(pkey.get(), priv.data(), &len) <= 0) {
         logOpenSSLError("generateX25519/get_priv"); return false;
     }
-    if (EVP_PKEY_get_raw_public_key(pkey.get(),
-            reinterpret_cast<unsigned char*>(pub.data()), &len) <= 0) {
+    len = 32;
+    if (EVP_PKEY_get_raw_public_key(pkey.get(), pub.data(), &len) <= 0) {
         logOpenSSLError("generateX25519/get_pub"); return false;
     }
     return true;
 }
 
-QByteArray DoubleRatchet::dh(const QByteArray& priv, const QByteArray& pub) {
-    EvpPkeyPtr pk(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, nullptr,
-        reinterpret_cast<const unsigned char*>(priv.constData()), 32));
-    EvpPkeyPtr pp(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr,
-        reinterpret_cast<const unsigned char*>(pub.constData()), 32));
-
+Bytes DoubleRatchet::dh(const Bytes& priv, const Bytes& pub) {
+    EvpPkeyPtr pk(EVP_PKEY_new_raw_private_key(EVP_PKEY_X25519, nullptr, priv.data(), 32));
+    EvpPkeyPtr pp(EVP_PKEY_new_raw_public_key(EVP_PKEY_X25519, nullptr, pub.data(), 32));
     if (!pk || !pp) { logOpenSSLError("dh/new_key"); return {}; }
 
     EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new(pk.get(), nullptr));
     if (!ctx) { logOpenSSLError("dh/ctx_new"); return {}; }
     if (EVP_PKEY_derive_init(ctx.get()) <= 0) { logOpenSSLError("dh/derive_init"); return {}; }
-    if (EVP_PKEY_derive_set_peer(ctx.get(), pp.get()) <= 0) { logOpenSSLError("dh/derive_set_peer"); return {}; }
+    if (EVP_PKEY_derive_set_peer(ctx.get(), pp.get()) <= 0) { logOpenSSLError("dh/set_peer"); return {}; }
 
     size_t secretLen = 32;
-    QByteArray secret(32, '\0');
-    if (EVP_PKEY_derive(ctx.get(),
-            reinterpret_cast<unsigned char*>(secret.data()), &secretLen) <= 0) {
+    Bytes secret(32, 0);
+    if (EVP_PKEY_derive(ctx.get(), secret.data(), &secretLen) <= 0) {
         logOpenSSLError("dh/derive"); return {};
     }
     return secret;
@@ -160,80 +134,53 @@ QByteArray DoubleRatchet::dh(const QByteArray& priv, const QByteArray& pub) {
 
 // ── HKDF ──────────────────────────────────────────────────────────────────
 
-QByteArray DoubleRatchet::hkdf2(const QByteArray& ikm,
-                                  const QByteArray& info, int outLen) {
-    // Нулевой соль соответствует спецификации Signal Protocol:
-    // доменное разделение обеспечивается параметром info, а не солью.
-    static const QByteArray salt(32, '\0');
+Bytes DoubleRatchet::hkdf2(const Bytes& ikm, const Bytes& info, int outLen) {
+    static const Bytes kSalt(32, 0);
 
     EvpPkeyCtxPtr ctx(EVP_PKEY_CTX_new_id(EVP_PKEY_HKDF, nullptr));
     if (!ctx) { logOpenSSLError("hkdf2/ctx_new"); return {}; }
 
-    QByteArray out(outLen, '\0');
+    Bytes out(static_cast<size_t>(outLen), 0);
 
     if (EVP_PKEY_derive_init(ctx.get()) <= 0 ||
         EVP_PKEY_CTX_set_hkdf_md(ctx.get(), EVP_sha256()) <= 0 ||
-        EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(),
-            reinterpret_cast<const unsigned char*>(salt.constData()),
-            static_cast<int>(salt.size())) <= 0 ||
-        EVP_PKEY_CTX_set1_hkdf_key(ctx.get(),
-            reinterpret_cast<const unsigned char*>(ikm.constData()),
+        EVP_PKEY_CTX_set1_hkdf_salt(ctx.get(), kSalt.data(),
+            static_cast<int>(kSalt.size())) <= 0 ||
+        EVP_PKEY_CTX_set1_hkdf_key(ctx.get(), ikm.data(),
             static_cast<int>(ikm.size())) <= 0 ||
-        EVP_PKEY_CTX_add1_hkdf_info(ctx.get(),
-            reinterpret_cast<const unsigned char*>(info.constData()),
+        EVP_PKEY_CTX_add1_hkdf_info(ctx.get(), info.data(),
             static_cast<int>(info.size())) <= 0)
     {
-        logOpenSSLError("hkdf2/setup");
-        return {};
+        logOpenSSLError("hkdf2/setup"); return {};
     }
 
     size_t s = static_cast<size_t>(outLen);
-    if (EVP_PKEY_derive(ctx.get(),
-            reinterpret_cast<unsigned char*>(out.data()), &s) <= 0) {
-        logOpenSSLError("hkdf2/derive");
-        return {};
+    if (EVP_PKEY_derive(ctx.get(), out.data(), &s) <= 0) {
+        logOpenSSLError("hkdf2/derive"); return {};
     }
     return out;
 }
 
-// ── Chain step: KDF_CK(CK) → (CK', MK) ──────────────────────────────────
+// ── Chain step ────────────────────────────────────────────────────────────
 
-QByteArray DoubleRatchet::chainStep(QByteArray& chainKey) {
-    // KDF_CK(CK) → (CK', MK) через HKDF-SHA256:
-    //   CK' = первые 32 байта HKDF(CK, info="MsgKey")
-    //   MK  = последние 32 байта
-    const QByteArray derived = hkdf2(chainKey, "MsgKey", 64);
-    const QByteArray newCK   = derived.left(32);
-    const QByteArray msgKey  = derived.right(32);
-    chainKey = newCK;
-    return msgKey;
+Bytes DoubleRatchet::chainStep(Bytes& chainKey) {
+    const Bytes derived = hkdf2(chainKey, sv2bytes("MsgKey"), 64);
+    chainKey = bytesLeft(derived, 32);
+    return bytesRight(derived, 32);
 }
 
-// ── Сохранение пропущенных ключей ────────────────────────────────────────
-//
-// Продвигает chainKey и msgNum от текущей позиции до until,
-// сохраняя ключ каждого пропущенного сообщения в state.skippedKeys.
-// Используется при получении сообщения с msgNum > ожидаемого, чтобы
-// расшифровать задержанные сообщения, которые придут позже.
+// ── Skip keys ─────────────────────────────────────────────────────────────
 
-void DoubleRatchet::skipChainKeys(RatchetState& state,
-                                   QByteArray& chainKey,
-                                   const QByteArray& dhPub,
-                                   quint32& msgNum,
-                                   quint32 until) {
+void DoubleRatchet::skipChainKeys(RatchetState& state, Bytes& chainKey,
+                                   const Bytes& dhPub, uint32_t& msgNum, uint32_t until) {
     if (until <= msgNum) return;
-
-    // Защита от исчерпания памяти при очень большом пропуске
     if (until - msgNum > kMaxSkippedKeys) {
-        qWarning("[Ratchet] skipChainKeys: пропуск %u→%u превышает лимит, обрезаем до %u",
-                 msgNum, until, msgNum + kMaxSkippedKeys);
+        fprintf(stderr, "[Ratchet] skipChainKeys: пропуск %u→%u превышает лимит\n", msgNum, until);
         until = msgNum + kMaxSkippedKeys;
     }
-
     while (msgNum < until) {
-        if (state.skippedKeys.size() >= static_cast<int>(kMaxSkippedKeys)) {
-            qWarning("[Ratchet] skipChainKeys: буфер пропущенных ключей переполнен (%lld)",
-                     static_cast<long long>(state.skippedKeys.size()));
+        if (state.skippedKeys.size() >= kMaxSkippedKeys) {
+            fprintf(stderr, "[Ratchet] skipChainKeys: буфер переполнен\n");
             break;
         }
         state.skippedKeys[{dhPub, msgNum}] = chainStep(chainKey);
@@ -241,210 +188,129 @@ void DoubleRatchet::skipChainKeys(RatchetState& state,
     }
 }
 
-// ── DH ratchet step ───────────────────────────────────────────────────────
+// ── DH ratchet ────────────────────────────────────────────────────────────
 
-std::expected<QByteArray, QString> DoubleRatchet::dhRatchet(RatchetState& state,
-                                     const QByteArray& peerDHPub) {
-    // Все вычисления выполняются до изменения state.
-    // Если что-то упало — state остаётся нетронутым (commit on success).
+std::expected<Bytes, std::string> DoubleRatchet::dhRatchet(RatchetState& state,
+                                                             const Bytes& peerDHPub) {
+    const Bytes dhOut1 = dh(state.dhPriv, peerDHPub);
+    if (dhOut1.empty()) return std::unexpected("dhRatchet: DH(1) провалился");
 
-    // Шаг 1: CKr = KDF_RK(RK, DH(наш_текущий_ключ, новый_ключ_пира))
-    const QByteArray dhOut1 = dh(state.dhPriv, peerDHPub);
-    if (dhOut1.isEmpty())
-        return std::unexpected(QStringLiteral("dhRatchet: DH(1) провалился"));
+    const Bytes derived1 = hkdf2(state.rootKey + dhOut1, sv2bytes("RatchetStep"), 64);
+    if (derived1.empty()) return std::unexpected("dhRatchet: HKDF(1) провалился");
 
-    const QByteArray derived1 = hkdf2(state.rootKey + dhOut1, "RatchetStep", 64);
-    if (derived1.isEmpty())
-        return std::unexpected(QStringLiteral("dhRatchet: HKDF(1) провалился"));
-
-    // Шаг 2: генерируем новую DH-пару (во временные переменные)
-    QByteArray newDHPriv, newDHPub;
+    Bytes newDHPriv, newDHPub;
     if (!generateX25519(newDHPriv, newDHPub))
-        return std::unexpected(QStringLiteral("dhRatchet: generateX25519 провалился"));
+        return std::unexpected("dhRatchet: generateX25519 провалился");
 
-    // Шаг 3: CKs = KDF_RK(RK', DH(новый_наш_ключ, новый_ключ_пира))
-    const QByteArray dhOut2 = dh(newDHPriv, peerDHPub);
-    if (dhOut2.isEmpty())
-        return std::unexpected(QStringLiteral("dhRatchet: DH(2) провалился"));
+    const Bytes dhOut2 = dh(newDHPriv, peerDHPub);
+    if (dhOut2.empty()) return std::unexpected("dhRatchet: DH(2) провалился");
 
-    const QByteArray derived2 = hkdf2(derived1.left(32) + dhOut2, "RatchetStep", 64);
-    if (derived2.isEmpty())
-        return std::unexpected(QStringLiteral("dhRatchet: HKDF(2) провалился"));
+    const Bytes derived2 = hkdf2(bytesLeft(derived1, 32) + dhOut2, sv2bytes("RatchetStep"), 64);
+    if (derived2.empty()) return std::unexpected("dhRatchet: HKDF(2) провалился");
 
-    // Всё успешно — коммитим в state
-    state.rootKey      = derived2.left(32);
-    state.sendChainKey = derived2.right(32);
+    state.rootKey      = bytesLeft(derived2, 32);
+    state.sendChainKey = bytesRight(derived2, 32);
     state.peerDHPub    = peerDHPub;
     state.dhPriv       = newDHPriv;
     state.dhPub        = newDHPub;
 
-#ifdef QT_DEBUG
-    qDebug("[Ratchet] dhRatchet: Ns=%u Ns_prev=%u",
-           state.sendMsgNum, state.prevSendMsgNum);
-#endif
-
-    return derived1.right(32); // ckr — цепочка приёма
+    return bytesRight(derived1, 32); // ckr
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
 
-RatchetState DoubleRatchet::initSender(const QByteArray& sharedSecret,
-                                        const QByteArray& peerDHPub) {
+RatchetState DoubleRatchet::initSender(const Bytes& sharedSecret, const Bytes& peerDHPub) {
     RatchetState s;
     s.rootKey   = sharedSecret;
     s.peerDHPub = peerDHPub;
 
-    // Генерируем начальную DH-пару (A1) — она уйдёт в заголовок первых сообщений.
-    // ВАЖНО: dhRatchet() НЕ вызываем — он бы заменил A1 на A2,
-    // после чего получатель использовал бы DH(spkPriv, A2pub), а не DH(spkPriv, A1pub),
-    // что сразу разрывает синхронизацию ключей.
     if (!generateX25519(s.dhPriv, s.dhPub)) {
-        qCritical("[Ratchet] initSender: не удалось сгенерировать DH-пару");
-        return s; // s.initialized остаётся false
+        fprintf(stderr, "[Ratchet] initSender: не удалось сгенерировать DH-пару\n");
+        return s;
     }
 
-    // RK', CKs = KDF_RK(SK, DH(A1_priv, SPK_pub)) — dhPriv/dhPub остаются A1
-    const QByteArray dhOut = dh(s.dhPriv, peerDHPub);
-    if (dhOut.isEmpty()) {
-        qCritical("[Ratchet] initSender: DH провалился");
-        return s;
-    }
-    const QByteArray derived = hkdf2(s.rootKey + dhOut, "RatchetStep", 64);
-    if (derived.isEmpty()) {
-        qCritical("[Ratchet] initSender: HKDF провалился");
-        return s;
-    }
-    s.rootKey      = derived.left(32);
-    s.sendChainKey = derived.right(32);
+    const Bytes dhOut = dh(s.dhPriv, peerDHPub);
+    if (dhOut.empty()) { fprintf(stderr, "[Ratchet] initSender: DH провалился\n"); return s; }
+
+    const Bytes derived = hkdf2(s.rootKey + dhOut, sv2bytes("RatchetStep"), 64);
+    if (derived.empty()) { fprintf(stderr, "[Ratchet] initSender: HKDF провалился\n"); return s; }
+
+    s.rootKey      = bytesLeft(derived, 32);
+    s.sendChainKey = bytesRight(derived, 32);
     s.initialized  = true;
     return s;
 }
 
-RatchetState DoubleRatchet::initReceiver(const QByteArray& sharedSecret,
-                                          const QByteArray& ourDHPriv,
-                                          const QByteArray& ourDHPub) {
+RatchetState DoubleRatchet::initReceiver(const Bytes& sharedSecret,
+                                          const Bytes& ourDHPriv, const Bytes& ourDHPub) {
     RatchetState s;
-    s.rootKey    = sharedSecret;
-    s.dhPriv     = ourDHPriv;
-    s.dhPub      = ourDHPub;
+    s.rootKey     = sharedSecret;
+    s.dhPriv      = ourDHPriv;
+    s.dhPub       = ourDHPub;
     s.initialized = true;
     return s;
 }
 
 // ── Encrypt ───────────────────────────────────────────────────────────────
 
-RatchetMessage DoubleRatchet::encrypt(RatchetState& state,
-                                       const QByteArray& plaintext) {
+RatchetMessage DoubleRatchet::encrypt(RatchetState& state, const Bytes& plaintext) {
     if (!state.initialized) {
-        qCritical("[Ratchet] encrypt: попытка шифровать на неинициализированном state");
+        fprintf(stderr, "[Ratchet] encrypt: неинициализированный state\n");
         return {};
     }
-    // Фиксируем цепочку ДО шага — получатель должен увидеть то же CK_до в своём Decrypt
-#ifdef QT_DEBUG
-    const QByteArray ckBefore = state.sendChainKey.left(4).toHex();
-#endif
-    const QByteArray msgKey   = chainStep(state.sendChainKey);
 
-    const QByteArray aesKey = msgKey.left(32);
-    QByteArray nonce(12, '\0');
-    RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()), 12);
+    const Bytes msgKey = chainStep(state.sendChainKey);
+    const Bytes aesKey = bytesLeft(msgKey, 32);
+
+    Bytes nonce(12, 0);
+    RAND_bytes(nonce.data(), 12);
 
     RatchetMessage msg;
     msg.dhPub        = state.dhPub;
     msg.msgNum       = state.sendMsgNum++;
-    // Сообщаем получателю, сколько сообщений было отправлено
-    // с предыдущим DH-ключом — необходимо для корректного пропуска ключей.
     msg.prevChainLen = state.prevSendMsgNum;
     msg.nonce        = nonce;
     msg.ciphertext   = aesgcmEncrypt(aesKey, nonce, plaintext, msg.tag);
-
-#ifdef QT_DEBUG
-    qDebug("[Ratchet] Encrypt: MsgNum=%u  pN=%u",
-           msg.msgNum, msg.prevChainLen);
-    Q_UNUSED(ckBefore)
-#endif
-
     return msg;
 }
 
 // ── Decrypt ───────────────────────────────────────────────────────────────
 
-std::expected<QByteArray, QString> DoubleRatchet::decrypt(
+std::expected<Bytes, std::string> DoubleRatchet::decrypt(
     RatchetState& state, const RatchetMessage& msg)
 {
-    // 1. Проверяем кеш пропущенных ключей — для сообщений, доставленных не по порядку
-    const QPair<QByteArray, quint32> skippedKey{msg.dhPub, msg.msgNum};
+    // Проверяем кеш пропущенных ключей
+    const std::pair<Bytes, uint32_t> skippedKey{msg.dhPub, msg.msgNum};
     const auto it = state.skippedKeys.find(skippedKey);
     if (it != state.skippedKeys.end()) {
-        // Расшифровываем из кеша пропущенных ключей (сообщение доставлено не по порядку)
-        const QByteArray msgKey = it.value();
+        const Bytes msgKey = it->second;
         state.skippedKeys.erase(it);
-        const QByteArray aesKey = msgKey.left(32);
-        auto result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
-#ifdef QT_DEBUG
-        qDebug("[Ratchet] Decrypt[пропущен]: MsgNum=%u  %s",
-               msg.msgNum, result.has_value() ? "OK" : "ОШИБКА");
-#endif
-        return result;
+        return aesgcmDecrypt(bytesLeft(msgKey, 32), msg.nonce, msg.ciphertext, msg.tag);
     }
 
-    // 2. Новый DH-ключ собеседника → шаг DH-храповика
-    const bool didDHRatchet = (msg.dhPub != state.peerDHPub);
-    if (didDHRatchet) {
-        // Флаг захвачен ДО dhRatchet, потому что dhRatchet обновляет state.peerDHPub.
-        // Используем в финальном логе ниже для поля DH_Step.
-#ifdef QT_DEBUG
-        qDebug("[Ratchet][decrypt] DH-шаг: N=%u  pN=%u",
-               msg.msgNum, msg.prevChainLen);
-#endif
-
-        // Сохраняем ключи оставшихся сообщений старой цепочки.
-        // msg.prevChainLen сообщает, сколько всего сообщений было отправлено
-        // с предыдущим DH-ключом — они могут прийти позже, вне порядка.
-        const QByteArray oldDHPub = state.peerDHPub;
+    // Новый DH-ключ собеседника → шаг DH-храповика
+    if (msg.dhPub != state.peerDHPub) {
+        const Bytes oldDHPub = state.peerDHPub;
         skipChainKeys(state, state.recvChainKey, oldDHPub,
                       state.recvMsgNum, msg.prevChainLen);
 
-        // Запоминаем длину текущей цепочки отправки и сбрасываем счётчик
         state.prevSendMsgNum = state.sendMsgNum;
-        state.sendMsgNum     = 0;  // сброс per Signal Protocol spec (Ns = 0 после DH-шага)
+        state.sendMsgNum     = 0;
 
-        // Выполняем DH-шаг: обновляет peerDHPub, генерирует новую DH-пару,
-        // вычисляет CKr (возврат) и CKs (state.sendChainKey) за два KDF_RK прохода
         auto ckrResult = dhRatchet(state, msg.dhPub);
-        if (!ckrResult)
-            return std::unexpected(ckrResult.error());
+        if (!ckrResult) return std::unexpected(ckrResult.error());
+
         state.recvChainKey = ckrResult.value();
         state.recvMsgNum   = 0;
 
-        // Сохраняем пропущенные ключи в новой цепочке до текущего сообщения
         skipChainKeys(state, state.recvChainKey, msg.dhPub,
                       state.recvMsgNum, msg.msgNum);
     } else {
-        // Тот же DH-ключ — пропускаем до текущего номера сообщения
         skipChainKeys(state, state.recvChainKey, msg.dhPub,
                       state.recvMsgNum, msg.msgNum);
     }
 
-    // 3. Получаем ключ текущего сообщения
-    // КЛЮЧЕВОЙ ЛОГ: CK_до ДОЛЖЕН совпадать с CK_до из Encrypt на отправителе.
-    // Если CK_до расходится — ищите, когда цепочки разошлись в dhRatchet/chainStep.
-    // didDHRatchet захвачен выше, ДО вызова dhRatchet (который изменяет state.peerDHPub).
-#ifdef QT_DEBUG
-    const QByteArray ckBefore = state.recvChainKey.left(4).toHex();
-#endif
-    const QByteArray msgKey = chainStep(state.recvChainKey);
+    const Bytes msgKey = chainStep(state.recvChainKey);
     state.recvMsgNum++;
-
-    const QByteArray aesKey = msgKey.left(32);
-    auto result = aesgcmDecrypt(aesKey, msg.nonce, msg.ciphertext, msg.tag);
-
-#ifdef QT_DEBUG
-    qDebug("[Ratchet] Decrypt: MsgNum=%u  DH_Step=%s  Result=%s",
-           msg.msgNum, didDHRatchet ? "YES" : "NO",
-           result.has_value() ? "OK" : "FAIL");
-    Q_UNUSED(ckBefore)
-#endif
-
-    return result;
+    return aesgcmDecrypt(bytesLeft(msgKey, 32), msg.nonce, msg.ciphertext, msg.tag);
 }

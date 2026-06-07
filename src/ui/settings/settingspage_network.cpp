@@ -166,7 +166,7 @@ SettingsNetworkPage::SettingsNetworkPage(QWidget* parent) : SettingsPageBase(par
 void SettingsNetworkPage::reload() {
     auto& sm = SessionManager::instance();
     m_portSpin->setValue(sm.port());
-    m_ipEdit->setText(sm.bindIp());
+    m_ipEdit->setText(QString::fromStdString(sm.bindIp()));
 
     const int modeVal = static_cast<int>(sm.portForwardingMode());
     for (int i = 0; i < m_pfModeCombo->count(); ++i) {
@@ -175,7 +175,7 @@ void SettingsNetworkPage::reload() {
             break;
         }
     }
-    m_manualIpEdit->setText(sm.manualPublicIp());
+    m_manualIpEdit->setText(QString::fromStdString(sm.manualPublicIp()));
     m_manualPortSpin->setValue(sm.manualPublicPort() > 0 ? sm.manualPublicPort() : 47821);
     m_manualFields->setVisible(sm.portForwardingMode() == PortForwardingMode::Manual);
 
@@ -183,7 +183,7 @@ void SettingsNetworkPage::reload() {
     m_openPortFields->setVisible(sm.portForwardingMode() == PortForwardingMode::OpenPort);
     m_portGroup->setVisible(sm.portForwardingMode() != PortForwardingMode::OpenPort);
 
-    m_relayIpEdit->setText(sm.relayServerIp());
+    m_relayIpEdit->setText(QString::fromStdString(sm.relayServerIp()));
     m_relayTcpPortSpin->setValue(sm.relayTcpPort() > 0 ? sm.relayTcpPort() : 47822);
     m_relayUdpPortSpin->setValue(sm.relayUdpPort() > 0 ? sm.relayUdpPort() : 47823);
     m_relayFields->setVisible(sm.portForwardingMode() == PortForwardingMode::ClientServer);
@@ -194,7 +194,7 @@ bool SettingsNetworkPage::save() {
     const quint16 port = static_cast<quint16>(m_portSpin->value());
     const QString ip   = m_ipEdit->text().trimmed();
     sm.setPort(port);
-    sm.setBindIp(ip);
+    sm.setBindIp(ip.toStdString());
 
     const auto pfMode = static_cast<PortForwardingMode>(m_pfModeCombo->currentData().toInt());
     static const QRegularExpression kIpv4Re(R"(^(\d{1,3}\.){3}\d{1,3}$)");
@@ -206,7 +206,7 @@ bool SettingsNetworkPage::save() {
                 tr("Некорректный формат IPv4-адреса.\nПример: 203.0.113.42"));
             return false;
         }
-        sm.setManualPublicIp(manIp);
+        sm.setManualPublicIp(manIp.toStdString());
         sm.setManualPublicPort(static_cast<quint16>(m_manualPortSpin->value()));
     }
 
@@ -217,7 +217,7 @@ bool SettingsNetworkPage::save() {
                 tr("Укажите корректный IPv4-адрес relay-сервера.\nПример: 203.0.113.10"));
             return false;
         }
-        sm.setRelayServerIp(relayIp);
+        sm.setRelayServerIp(relayIp.toStdString());
         sm.setRelayTcpPort(static_cast<quint16>(m_relayTcpPortSpin->value()));
         sm.setRelayUdpPort(static_cast<quint16>(m_relayUdpPortSpin->value()));
     }

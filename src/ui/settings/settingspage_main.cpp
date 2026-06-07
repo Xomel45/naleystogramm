@@ -138,11 +138,11 @@ SettingsMainPage::SettingsMainPage(SettingsPanel* panel) : QWidget(panel) {
 
 void SettingsMainPage::reload() {
     auto& sm = SessionManager::instance();
-    const QString name = sm.displayName();
+    const QString name = QString::fromStdString(sm.displayName());
     m_name->setText(name.isEmpty() ? tr("(без имени)") : name);
-    m_uuid->setText(sm.uuid().toString(QUuid::WithoutBraces).left(8) + "…");
+    m_uuid->setText(QString::fromStdString(sm.uuid()).left(8) + "…");
 
-    const QString avatarPath = sm.avatarPath();
+    const QString avatarPath = QString::fromStdString(sm.avatarPath());
     if (!avatarPath.isEmpty() && QFile::exists(avatarPath)) {
         QPixmap src(avatarPath);
         const int sz = 52;

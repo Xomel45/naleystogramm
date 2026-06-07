@@ -15,8 +15,12 @@
 
 // ── PluginHost ────────────────────────────────────────────────────────────
 
+static inline void pmLog(const QString& m) {
+    Logger::instance().info(LogComponent::General, m.toStdString());
+}
+
 void PluginHost::log(const QString& msg) {
-    Logger::instance().info(LogComponent::General, msg);
+    pmLog(msg);
 }
 
 QString PluginHost::appVersion() const {
@@ -70,7 +74,7 @@ void PluginManager::loadAll() {
     for (const QFileInfo& fi : d.entryInfoList({QStringLiteral("*.plugin")}, QDir::Files)) {
         const PluginMeta meta = PluginFormat::readMeta(fi.absoluteFilePath());
         if (!meta.isValid()) {
-            Logger::instance().info(LogComponent::General,
+            pmLog(
                 QStringLiteral("[PluginManager] Невалидный .plugin: %1 — %2")
                     .arg(fi.fileName(), PluginFormat::lastError()));
             continue;
@@ -78,7 +82,7 @@ void PluginManager::loadAll() {
 
         // Проверяем id безопасен для использования как имя директории
         if (extractedDir(meta.id).isEmpty()) {
-            Logger::instance().info(LogComponent::General,
+            pmLog(
                 QStringLiteral("[PluginManager] Недопустимый id плагина (path traversal?): %1")
                     .arg(meta.id));
             continue;
@@ -109,7 +113,7 @@ void PluginManager::loadAll() {
         }
 
         m_plugins.append(entry);
-        Logger::instance().info(LogComponent::General,
+        pmLog(
             QStringLiteral("[PluginManager] %1: %2 v%3")
                 .arg(stateToStr(entry.state), meta.name, meta.version));
     }
@@ -143,7 +147,7 @@ void PluginManager::reload() {
 
 bool PluginManager::unlock(const QString& id, const QString& key) {
     if (!PluginFormat::verifyKey(pluginFilePath(id), key)) {
-        Logger::instance().info(LogComponent::General,
+        pmLog(
             QStringLiteral("[PluginManager] Неверный ключ для плагина: ") + id);
         return false;
     }
@@ -245,7 +249,7 @@ bool PluginManager::extractAndLoad(PluginEntry& entry, const QString& key) {
 
     if (needExtract) {
         if (!PluginFormat::extract(entry.filePath, destDir, key)) {
-            Logger::instance().info(LogComponent::General,
+            pmLog(
                 QStringLiteral("[PluginManager] Ошибка распаковки %1: %2")
                     .arg(entry.meta.id, PluginFormat::lastError()));
             return false;
@@ -253,7 +257,7 @@ bool PluginManager::extractAndLoad(PluginEntry& entry, const QString& key) {
     }
 
     if (!QFileInfo::exists(soPath)) {
-        Logger::instance().info(LogComponent::General,
+        pmLog(
             QStringLiteral("[PluginManager] .so не найден после распаковки: ") + soPath);
         return false;
     }
@@ -263,7 +267,7 @@ bool PluginManager::extractAndLoad(PluginEntry& entry, const QString& key) {
     auto* plugin = obj ? qobject_cast<IPlugin*>(obj) : nullptr;
 
     if (!plugin) {
-        Logger::instance().info(LogComponent::General,
+        pmLog(
             QStringLiteral("[PluginManager] Не IPlugin (%1): %2")
                 .arg(entry.meta.id, loader->errorString()));
         loader->unload();

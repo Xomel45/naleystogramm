@@ -2,441 +2,349 @@
 #include "securedata.h"
 #include "keyprotector.h"
 #include "x3dh.h"
-#include <QStandardPaths>
-#include <QDir>
-#include <QFile>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QDebug>
-#include <QCryptographicHash>
-#include <QMutexLocker>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
+#include <fstream>
+#include <algorithm>
+#include <cstdio>
 
 static constexpr int kOtpkPoolSize = 100;
 
-E2EManager::E2EManager(QObject* parent) : QObject(parent) {}
-
 E2EManager::~E2EManager() {
-    // Удаляем мьютексы до обнуления ключей (ни один поток не должен их держать при дестрое)
-    qDeleteAll(m_sessionMutexes);
     m_sessionMutexes.clear();
-
-    // Гарантированно обнуляем весь приватный ключевой материал при уничтожении.
-    // Предотвращает утечку ключей через освобождённую память (heap/swap).
     secureZero(m_ikPriv);
     secureZero(m_spkPriv);
-    for (auto& kp : m_otpks)
-        secureZero(kp.first);
+    for (auto& kp : m_otpks) secureZero(kp.first);
     m_otpks.clear();
 }
 
-void E2EManager::init(const QUuid& ourUuid) {
-    const QString dir = QStandardPaths::writableLocation(
-        QStandardPaths::AppDataLocation) + "/keys";
-    QDir().mkpath(dir);
-    m_keysPath = dir + "/" + ourUuid.toString(QUuid::WithoutBraces) + ".json";
+void E2EManager::init(const std::string& ourUuid, const std::filesystem::path& dataDir) {
+    const std::filesystem::path keysDir = dataDir / "keys";
+    std::error_code ec;
+    std::filesystem::create_directories(keysDir, ec);
+    m_keysPath = keysDir / (ourUuid + ".json");
     loadOrGenerateKeys();
 }
 
 // ── Key persistence ───────────────────────────────────────────────────────
 
 void E2EManager::loadOrGenerateKeys() {
-    QFile f(m_keysPath);
-    if (f.exists()) {
-        if (!f.open(QIODevice::ReadOnly)) {
-            qCritical("[E2E] Не удалось открыть %s", qPrintable(m_keysPath));
+    if (std::filesystem::exists(m_keysPath)) {
+        std::ifstream f(m_keysPath, std::ios::binary);
+        if (!f) {
+            fprintf(stderr, "[E2E] Не удалось открыть %s\n", m_keysPath.c_str());
             return;
         }
-        const QByteArray raw = f.readAll();
-        f.close();
-
-        // Зашифрованный блоб начинается со случайного nonce — не с '{' (0x7B).
-        const bool looksLikeJson = !raw.isEmpty() && raw[0] == '{';
+        Bytes raw(std::istreambuf_iterator<char>(f), {});
 
         if (!KeyProtector::instance().isReady()) {
-            qCritical("[E2E] KeyProtector не готов — отказываемся загружать ключи!");
+            fprintf(stderr, "[E2E] KeyProtector не готов — отказываемся загружать ключи\n");
             return;
         }
 
-        QByteArray jsonBytes;
+        const bool looksLikeJson = !raw.empty() && raw[0] == static_cast<uint8_t>('{');
+
+        Bytes jsonBytes;
         if (looksLikeJson) {
-            // Plaintext на диске: однократная миграция — шифруем и пересохраняем.
-            qWarning("[E2E] keys.json в открытом виде — выполняем миграцию в зашифрованный формат");
+            fprintf(stderr, "[E2E] keys.json в открытом виде — выполняем миграцию\n");
             jsonBytes = raw;
-            // Пересохраняем немедленно в зашифрованном виде (saveKeys вызовется после parse).
         } else {
             jsonBytes = KeyProtector::instance().decrypt(raw);
-            if (jsonBytes.isEmpty()) {
-                qCritical("[E2E] Не удалось расшифровать keys.json — ключ повреждён?");
+            if (jsonBytes.empty()) {
+                fprintf(stderr, "[E2E] Не удалось расшифровать keys.json\n");
                 return;
             }
-            qDebug("[E2E] keys.json расшифрован успешно");
         }
 
-        const auto obj = QJsonDocument::fromJson(jsonBytes).object();
-        m_ikPriv = QByteArray::fromHex(obj["ik_priv"].toString().toLatin1());
-        m_ikPub  = QByteArray::fromHex(obj["ik_pub"].toString().toLatin1());
-        m_spkPriv= QByteArray::fromHex(obj["spk_priv"].toString().toLatin1());
-        m_spkPub = QByteArray::fromHex(obj["spk_pub"].toString().toLatin1());
-        m_spkSig = QByteArray::fromHex(obj["spk_sig"].toString().toLatin1());
+        nlohmann::json obj;
+        try {
+            obj = nlohmann::json::parse(jsonBytes.begin(), jsonBytes.end());
+        } catch (...) {
+            fprintf(stderr, "[E2E] Невалидный JSON в keys.json\n");
+            return;
+        }
+
+        m_ikPriv  = bytesFromHex(obj.value("ik_priv",  std::string{}));
+        m_ikPub   = bytesFromHex(obj.value("ik_pub",   std::string{}));
+        m_spkPriv = bytesFromHex(obj.value("spk_priv", std::string{}));
+        m_spkPub  = bytesFromHex(obj.value("spk_pub",  std::string{}));
+        m_spkSig  = bytesFromHex(obj.value("spk_sig",  std::string{}));
 
         m_otpks.clear();
-        for (const auto& v : obj["otpks"].toArray()) {
-            const auto o = v.toObject();
-            m_otpks.append({
-                QByteArray::fromHex(o["priv"].toString().toLatin1()),
-                QByteArray::fromHex(o["pub"].toString().toLatin1())
-            });
+        if (obj.contains("otpks") && obj["otpks"].is_array()) {
+            for (const auto& v : obj["otpks"]) {
+                m_otpks.push_back({
+                    bytesFromHex(v.value("priv", std::string{})),
+                    bytesFromHex(v.value("pub",  std::string{}))
+                });
+            }
         }
 
-        if (!m_ikPriv.isEmpty() && !m_spkPriv.isEmpty()) {
+        if (!m_ikPriv.empty() && !m_spkPriv.empty()) {
             m_ikEdPub = X3DH::ikPrivToEdPub(m_ikPriv);
             if (looksLikeJson) {
-                // Завершаем миграцию: перезаписываем файл в зашифрованном виде
                 saveKeys();
-                qDebug("[E2E] Миграция keys.json завершена — файл теперь зашифрован");
+                fprintf(stderr, "[E2E] Миграция keys.json завершена\n");
             }
-            qDebug("[E2E] Ключи загружены с диска (ikEdPub: %s)",
-                   m_ikEdPub.isEmpty() ? "отсутствует" : "ОК");
             return;
         }
     }
 
     // Generate fresh bundle
-    // FIX: раньше было *new QByteArray() — утечка памяти
-    QByteArray dummyPriv, dummyPub;
+    Bytes dummyPriv, dummyPub;
     if (!X3DH::generateBundle(m_ikPriv, m_ikPub,
                                m_spkPriv, m_spkPub, m_spkSig,
                                dummyPriv, dummyPub))
     {
-        qCritical("[E2E] Key generation failed!");
+        fprintf(stderr, "[E2E] Key generation failed\n");
         return;
     }
 
-    // Generate OTPKs
     m_otpks.clear();
     for (int i = 0; i < kOtpkPoolSize; ++i) {
-        QByteArray priv, pub;
-        QByteArray dummy1, dummy2, dummy3;
-        // Результат намеренно игнорируется — при ошибке просто пустые ключи
+        Bytes priv, pub, d1, d2, d3;
         [[maybe_unused]] const bool ok =
-            X3DH::generateBundle(dummy1, dummy2, dummy3, dummy3, dummy3, priv, pub);
-        m_otpks.append({priv, pub});
+            X3DH::generateBundle(d1, d2, d3, d3, d3, priv, pub);
+        m_otpks.push_back({priv, pub});
     }
 
-    // Вычисляем Ed25519 публичный ключ для верификации SPK подписей
     m_ikEdPub = X3DH::ikPrivToEdPub(m_ikPriv);
-
     saveKeys();
-    qDebug("[E2E] Новые ключи сгенерированы (ikEdPub: %s)",
-           m_ikEdPub.isEmpty() ? "отсутствует" : "ОК");
 }
 
 void E2EManager::saveKeys() {
-    QJsonObject obj;
-    obj["ik_priv"]  = QString::fromLatin1(m_ikPriv.toHex());
-    obj["ik_pub"]   = QString::fromLatin1(m_ikPub.toHex());
-    obj["spk_priv"] = QString::fromLatin1(m_spkPriv.toHex());
-    obj["spk_pub"]  = QString::fromLatin1(m_spkPub.toHex());
-    obj["spk_sig"]  = QString::fromLatin1(m_spkSig.toHex());
+    if (!KeyProtector::instance().isReady()) {
+        fprintf(stderr, "[E2E] KeyProtector не готов — keys.json НЕ сохранён\n");
+        std::filesystem::remove(m_keysPath);
+        return;
+    }
 
-    QJsonArray arr;
+    nlohmann::json obj;
+    obj["ik_priv"]  = bytesToHex(m_ikPriv);
+    obj["ik_pub"]   = bytesToHex(m_ikPub);
+    obj["spk_priv"] = bytesToHex(m_spkPriv);
+    obj["spk_pub"]  = bytesToHex(m_spkPub);
+    obj["spk_sig"]  = bytesToHex(m_spkSig);
+
+    nlohmann::json arr = nlohmann::json::array();
     for (const auto& kp : m_otpks) {
-        QJsonObject o;
-        o["priv"] = QString::fromLatin1(kp.first.toHex());
-        o["pub"]  = QString::fromLatin1(kp.second.toHex());
-        arr.append(o);
+        nlohmann::json o;
+        o["priv"] = bytesToHex(kp.first);
+        o["pub"]  = bytesToHex(kp.second);
+        arr.push_back(o);
     }
     obj["otpks"] = arr;
 
-    QFile f(m_keysPath);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qWarning("[E2E] Failed to save keys to %s", qPrintable(m_keysPath));
+    const std::string jsonStr = obj.dump();
+    const Bytes jsonBytes(jsonStr.begin(), jsonStr.end());
+    const Bytes encrypted = KeyProtector::instance().encrypt(jsonBytes);
+    if (encrypted.empty()) {
+        fprintf(stderr, "[E2E] Шифрование keys.json провалилось\n");
+        std::filesystem::remove(m_keysPath);
         return;
     }
 
-    const QByteArray jsonBytes = QJsonDocument(obj).toJson();
-
-    if (!KeyProtector::instance().isReady()) {
-        qCritical("[E2E] KeyProtector не готов — keys.json НЕ сохранён (отказ от plaintext)");
-        f.close();
-        QFile::remove(m_keysPath);  // не оставляем пустой/битый файл
+    std::ofstream f(m_keysPath, std::ios::binary | std::ios::trunc);
+    if (!f) {
+        fprintf(stderr, "[E2E] Не удалось открыть keys.json для записи\n");
         return;
     }
-
-    const QByteArray encrypted = KeyProtector::instance().encrypt(jsonBytes);
-    if (encrypted.isEmpty()) {
-        qCritical("[E2E] Шифрование keys.json провалилось — keys.json НЕ сохранён");
-        f.close();
-        QFile::remove(m_keysPath);
-        return;
-    }
-
-    f.write(encrypted);
-    qDebug("[E2E] keys.json сохранён в зашифрованном виде");
+    f.write(reinterpret_cast<const char*>(encrypted.data()),
+            static_cast<std::streamsize>(encrypted.size()));
 }
 
 // ── Bundle serialization ──────────────────────────────────────────────────
 
-QJsonObject E2EManager::ourBundleJson() const {
-    QJsonObject bundle;
-    bundle["ik"]      = QString::fromLatin1(m_ikPub.toHex());
-    bundle["spk"]     = QString::fromLatin1(m_spkPub.toHex());
-    bundle["spk_sig"] = QString::fromLatin1(m_spkSig.toHex());
-    // Ed25519 публичный ключ для верификации подписи SPK на стороне пира
-    if (!m_ikEdPub.isEmpty())
-        bundle["ik_ed"] = QString::fromLatin1(m_ikEdPub.toHex());
-
-    if (!m_otpks.isEmpty()) {
-        bundle["otpk"] = QString::fromLatin1(m_otpks.first().second.toHex());
-    }
+nlohmann::json E2EManager::ourBundleJson() const {
+    nlohmann::json bundle;
+    bundle["ik"]      = bytesToHex(m_ikPub);
+    bundle["spk"]     = bytesToHex(m_spkPub);
+    bundle["spk_sig"] = bytesToHex(m_spkSig);
+    if (!m_ikEdPub.empty())
+        bundle["ik_ed"] = bytesToHex(m_ikEdPub);
+    if (!m_otpks.empty())
+        bundle["otpk"] = bytesToHex(m_otpks.front().second);
     return bundle;
 }
 
 // ── Session establishment ─────────────────────────────────────────────────
 
-QJsonObject E2EManager::initiateSession(const QUuid& peerUuid,
-                                         const QJsonObject& theirBundle) {
+nlohmann::json E2EManager::initiateSession(const std::string& peerUuid,
+                                             const nlohmann::json& theirBundle) {
     X3DHKeyBundle b;
-    b.identityKey    = QByteArray::fromHex(theirBundle["ik"].toString().toLatin1());
-    b.signedPreKey   = QByteArray::fromHex(theirBundle["spk"].toString().toLatin1());
-    b.signedPreKeySig= QByteArray::fromHex(theirBundle["spk_sig"].toString().toLatin1());
-    // Ed25519 ключ верификации SPK — присутствует у клиентов v0.2.2+
+    b.identityKey     = bytesFromHex(theirBundle.value("ik",      std::string{}));
+    b.signedPreKey    = bytesFromHex(theirBundle.value("spk",     std::string{}));
+    b.signedPreKeySig = bytesFromHex(theirBundle.value("spk_sig", std::string{}));
     if (theirBundle.contains("ik_ed"))
-        b.ikEdPub = QByteArray::fromHex(theirBundle["ik_ed"].toString().toLatin1());
+        b.ikEdPub = bytesFromHex(theirBundle["ik_ed"].get<std::string>());
     if (theirBundle.contains("otpk"))
-        b.oneTimePreKey = QByteArray::fromHex(theirBundle["otpk"].toString().toLatin1());
+        b.oneTimePreKey = bytesFromHex(theirBundle["otpk"].get<std::string>());
 
-    QByteArray ephPub;
+    Bytes ephPub;
     auto secret = X3DH::initiatorAgreement(m_ikPriv, m_ikPub, b, ephPub);
     if (!secret) {
-        qWarning("[E2E] initiatorAgreement failed");
-        return {};
+        fprintf(stderr, "[E2E] initiatorAgreement failed\n");
+        return nullptr;
     }
 
-    // Сохраняем публичный identity-ключ пира для Safety Numbers
     m_peerIdentityKeys[peerUuid] = b.identityKey;
-
-    // Init ratchet as sender — use their SPK as initial ratchet pub
     m_sessions[peerUuid] = DoubleRatchet::initSender(*secret, b.signedPreKey);
 
-    // ДИАГНОСТИКА: логируем начальное состояние ratchet на стороне инициатора.
-    // CKs (цепочка отправки) и peerDH (SPK пира) у отправителя ДОЛЖНЫ совпадать
-    // с CKr (ckr в dhRatchet), который вычислит получатель на первом сообщении.
-#ifdef QT_DEBUG
-    qDebug("[E2E][initSender] uuid=%s  сессия инициализирована",
-           qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)));
-
-#endif
-
-    QJsonObject msg;
+    nlohmann::json msg;
     msg["type"]   = "KEY_INIT";
-    msg["ik"]     = QString::fromLatin1(m_ikPub.toHex());
-    msg["ek"]     = QString::fromLatin1(ephPub.toHex());
-    msg["otpk"]   = QString::fromLatin1(b.oneTimePreKey.toHex());
-    msg["bundle"] = ourBundleJson(); // also send our bundle so they can reply
+    msg["ik"]     = bytesToHex(m_ikPub);
+    msg["ek"]     = bytesToHex(ephPub);
+    msg["otpk"]   = bytesToHex(b.oneTimePreKey);
+    msg["bundle"] = ourBundleJson();
 
-    emit sessionEstablished(peerUuid);
+    if (onSessionEstablished) onSessionEstablished(peerUuid);
     return msg;
 }
 
-QJsonObject E2EManager::acceptSession(const QUuid& peerUuid,
-                                       const QJsonObject& initMsg) {
+nlohmann::json E2EManager::acceptSession(const std::string& peerUuid,
+                                          const nlohmann::json& initMsg) {
     X3DHInitMessage alice;
-    alice.identityKey  = QByteArray::fromHex(initMsg["ik"].toString().toLatin1());
-    alice.ephemeralKey = QByteArray::fromHex(initMsg["ek"].toString().toLatin1());
+    alice.identityKey  = bytesFromHex(initMsg.value("ik", std::string{}));
+    alice.ephemeralKey = bytesFromHex(initMsg.value("ek", std::string{}));
 
-    QByteArray otpkPriv;
-    if (initMsg.contains("otpk") && !initMsg["otpk"].toString().isEmpty()) {
-        const QByteArray otpkPub =
-            QByteArray::fromHex(initMsg["otpk"].toString().toLatin1());
-        otpkPriv = consumeOtpkPriv(otpkPub);
+    Bytes otpkPriv;
+    if (initMsg.contains("otpk")) {
+        const std::string otpkHex = initMsg["otpk"].get<std::string>();
+        if (!otpkHex.empty())
+            otpkPriv = consumeOtpkPriv(bytesFromHex(otpkHex));
     }
 
     auto secret = X3DH::responderAgreement(m_ikPriv, m_spkPriv, otpkPriv, alice);
     if (!secret) {
-        qWarning("[E2E] responderAgreement failed");
-        return {};
+        fprintf(stderr, "[E2E] responderAgreement failed\n");
+        return nullptr;
     }
 
-    // Сохраняем публичный identity-ключ пира для Safety Numbers
     m_peerIdentityKeys[peerUuid] = alice.identityKey;
+    m_sessions[peerUuid] = DoubleRatchet::initReceiver(*secret, m_spkPriv, m_spkPub);
 
-    // Init ratchet as receiver — use our SPK as initial DH key pair
-    m_sessions[peerUuid] = DoubleRatchet::initReceiver(
-        *secret, m_spkPriv, m_spkPub);
+    if (onSessionEstablished) onSessionEstablished(peerUuid);
 
-    // ДИАГНОСТИКА: логируем начальное состояние ratchet на стороне получателя.
-    // SK должен совпадать с SK у инициатора. CKs пока пуст — заполнится в dhRatchet
-    // при первом входящем сообщении. dhPub = наш SPK (будет меняться после первого decrypt).
-#ifdef QT_DEBUG
-    {
-        const auto& s = m_sessions[peerUuid];
-        qDebug("[E2E][initReceiver] uuid=%s  SK=%s  dhPub(SPK)=%s  CKs=%s  CKr=%s",
-               qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)),
-               secret->left(4).toHex().constData(),
-               s.dhPub.left(4).toHex().constData(),
-               s.sendChainKey.isEmpty() ? "пуст" : s.sendChainKey.left(4).toHex().constData(),
-               s.recvChainKey.isEmpty() ? "пуст" : s.recvChainKey.left(4).toHex().constData());
-    }
-#endif
-
-    emit sessionEstablished(peerUuid);
-
-    // Return our bundle so initiator knows our ratchet key
-    QJsonObject reply;
+    nlohmann::json reply;
     reply["type"]   = "KEY_ACK";
     reply["bundle"] = ourBundleJson();
     return reply;
 }
 
-void E2EManager::processInitMessage(const QUuid& peerUuid,
-                                     const QJsonObject& msg) {
-    if (msg["type"] == "KEY_INIT") {
-        const auto reply = acceptSession(peerUuid, msg);
-        // Caller is responsible for sending reply back to peer
-        Q_UNUSED(reply)
+void E2EManager::processInitMessage(const std::string& peerUuid,
+                                     const nlohmann::json& initMsg) {
+    if (initMsg.value("type", std::string{}) == "KEY_INIT") {
+        [[maybe_unused]] const auto reply = acceptSession(peerUuid, initMsg);
     }
+}
+
+// ── Per-peer mutex ─────────────────────────────────────────────────────────
+
+std::mutex* E2EManager::mutexFor(const std::string& uuid) {
+    std::lock_guard<std::mutex> mapLock(m_mapMutex);
+    if (!m_sessionMutexes.count(uuid))
+        m_sessionMutexes[uuid] = std::make_unique<std::mutex>();
+    return m_sessionMutexes[uuid].get();
 }
 
 // ── Encrypt / Decrypt ─────────────────────────────────────────────────────
 
-// Возвращает (создаёт при необходимости) мьютекс для конкретного пира.
-// L-1: доступ к m_sessionMutexes защищён m_mapMutex, чтобы одновременные вызовы
-// из разных потоков не гонялись на вставке в HashMap.
-QMutex* E2EManager::mutexFor(const QUuid& uuid) {
-    QMutexLocker<QMutex> mapLock(&m_mapMutex);
-    if (!m_sessionMutexes.contains(uuid))
-        m_sessionMutexes[uuid] = new QMutex();
-    return m_sessionMutexes[uuid];
-}
+nlohmann::json E2EManager::encrypt(const std::string& peerUuid, const Bytes& plaintext) {
+    std::lock_guard<std::mutex> lock(*mutexFor(peerUuid));
 
-QJsonObject E2EManager::encrypt(const QUuid& peerUuid,
-                                  const QByteArray& plaintext) {
-    QMutexLocker<QMutex> lock(mutexFor(peerUuid));
-
-    if (!m_sessions.contains(peerUuid)) {
-        qWarning("[E2E] No session for %s", qPrintable(peerUuid.toString()));
-        return {};
+    if (!m_sessions.count(peerUuid)) {
+        fprintf(stderr, "[E2E] No session for %s\n", peerUuid.c_str());
+        return nullptr;
     }
 
     auto& state = m_sessions[peerUuid];
     const RatchetMessage rm = DoubleRatchet::encrypt(state, plaintext);
 
-    QJsonObject env;
-    env["type"]       = "CHAT";
-    env["dh"]         = QString::fromLatin1(rm.dhPub.toHex());
-    env["n"]          = static_cast<int>(rm.msgNum);
-    env["pn"]         = static_cast<int>(rm.prevChainLen); // длина предыдущей цепочки (для пропущенных ключей)
-    env["ct"]         = QString::fromLatin1(rm.ciphertext.toHex());
-    env["nonce"]      = QString::fromLatin1(rm.nonce.toHex());
-    env["tag"]        = QString::fromLatin1(rm.tag.toHex());
-
-    // Лог заголовка — для сверки с [E2E][←...] на стороне получателя
-#ifdef QT_DEBUG
-    qDebug("[E2E][→%s] отправка CHAT: dh=%s  n=%d  pn=%d",
-           qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)),
-           rm.dhPub.left(4).toHex().constData(),
-           static_cast<int>(rm.msgNum),
-           static_cast<int>(rm.prevChainLen));
-#endif
-
+    nlohmann::json env;
+    env["type"]  = "CHAT";
+    env["dh"]    = bytesToHex(rm.dhPub);
+    env["n"]     = rm.msgNum;
+    env["pn"]    = rm.prevChainLen;
+    env["ct"]    = bytesToHex(rm.ciphertext);
+    env["nonce"] = bytesToHex(rm.nonce);
+    env["tag"]   = bytesToHex(rm.tag);
     return env;
 }
 
-std::expected<QByteArray, QString> E2EManager::decrypt(const QUuid& peerUuid,
-                                                        const QJsonObject& envelope)
+std::expected<Bytes, std::string> E2EManager::decrypt(const std::string& peerUuid,
+                                                        const nlohmann::json& envelope)
 {
-    QMutexLocker<QMutex> lock(mutexFor(peerUuid));
+    std::lock_guard<std::mutex> lock(*mutexFor(peerUuid));
 
-    if (!m_sessions.contains(peerUuid)) {
-        qWarning("[E2E] No session for %s", qPrintable(peerUuid.toString()));
-        return std::unexpected(QStringLiteral("no session"));
+    if (!m_sessions.count(peerUuid)) {
+        fprintf(stderr, "[E2E] No session for %s\n", peerUuid.c_str());
+        return std::unexpected(std::string("no session"));
     }
 
     RatchetMessage rm;
-    rm.dhPub        = QByteArray::fromHex(envelope["dh"].toString().toLatin1());
-    rm.msgNum       = static_cast<quint32>(envelope["n"].toInt());
-    rm.prevChainLen = static_cast<quint32>(envelope["pn"].toInt(0)); // 0 для обратной совместимости
-    rm.ciphertext   = QByteArray::fromHex(envelope["ct"].toString().toLatin1());
-    rm.nonce        = QByteArray::fromHex(envelope["nonce"].toString().toLatin1());
-    rm.tag          = QByteArray::fromHex(envelope["tag"].toString().toLatin1());
-
-    // Лог входящего заголовка — dh/n/pn ДОЛЖНЫ совпадать с [E2E][→...] на отправителе
-#ifdef QT_DEBUG
-    qDebug("[E2E][←%s] получен CHAT:   dh=%s  n=%d  pn=%d",
-           qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)),
-           rm.dhPub.left(4).toHex().constData(),
-           static_cast<int>(rm.msgNum),
-           static_cast<int>(rm.prevChainLen));
-#endif
+    rm.dhPub        = bytesFromHex(envelope.value("dh",    std::string{}));
+    rm.msgNum       = static_cast<uint32_t>(envelope.value("n", 0));
+    rm.prevChainLen = static_cast<uint32_t>(envelope.value("pn", 0));
+    rm.ciphertext   = bytesFromHex(envelope.value("ct",    std::string{}));
+    rm.nonce        = bytesFromHex(envelope.value("nonce", std::string{}));
+    rm.tag          = bytesFromHex(envelope.value("tag",   std::string{}));
 
     auto& state = m_sessions[peerUuid];
     auto result = DoubleRatchet::decrypt(state, rm);
     if (!result.has_value())
-        qWarning("[E2E] ❌ расшифровка провалилась (dh=%s  n=%d): %s",
-                 rm.dhPub.left(4).toHex().constData(), static_cast<int>(rm.msgNum),
-                 qPrintable(result.error()));
+        fprintf(stderr, "[E2E] расшифровка провалилась (n=%u): %s\n",
+                rm.msgNum, result.error().c_str());
     return result;
 }
 
-bool E2EManager::hasSession(const QUuid& peerUuid) const {
-    return m_sessions.contains(peerUuid);
+bool E2EManager::hasSession(const std::string& peerUuid) const {
+    return m_sessions.count(peerUuid) > 0;
 }
 
-// ── Media Key (для голосовых звонков) ─────────────────────────────────────
-//
-// Оба пира получат одинаковый 32-байтный ключ при одинаковых callId+salt,
-// т.к. rootKey идентичен на обоих концах (после X3DH/DR инициализации).
-// salt отправляется открыто в CALL_INVITE, но rootKey не раскрывается.
+// ── Media Key ─────────────────────────────────────────────────────────────
 
-QByteArray E2EManager::snapshotMediaKey(const QUuid& peerUuid,
-                                          const QString& callId,
-                                          const QByteArray& salt)
+Bytes E2EManager::snapshotMediaKey(const std::string& peerUuid,
+                                    const std::string& callId,
+                                    const Bytes& salt)
 {
-    QMutexLocker lock(mutexFor(peerUuid));
-    const auto it = m_sessions.constFind(peerUuid);
-    if (it == m_sessions.constEnd() || !it->initialized) return {};
+    std::lock_guard<std::mutex> lock(*mutexFor(peerUuid));
+    const auto it = m_sessions.find(peerUuid);
+    if (it == m_sessions.end() || !it->second.initialized) return {};
 
-    // info = "naleystogramm-media-v1:" + callId + ":" + salt (hex)
-    const QByteArray info = QByteArrayLiteral("naleystogramm-media-v1:")
-                          + callId.toUtf8()
-                          + ":"
-                          + salt.toHex();
-    return DoubleRatchet::hkdf2(it->rootKey, info, 32);
+    // info = "naleystogramm-media-v1:" + callId + ":" + salt_hex
+    const std::string saltHex = bytesToHex(salt);
+    const std::string infoStr = "naleystogramm-media-v1:" + callId + ":" + saltHex;
+    const Bytes info(infoStr.begin(), infoStr.end());
+    return DoubleRatchet::hkdf2(it->second.rootKey, info, 32);
 }
 
 // ── Safety Numbers ────────────────────────────────────────────────────────
-//
-// «Номер безопасности» = SHA-256(нашIKpub || ихIKpub).
-// Позволяет пользователям верифицировать сессию голосом/видео
-// и убедиться, что нет атаки «человек посередине» (MITM).
 
-QString E2EManager::getSafetyNumber(const QUuid& peerUuid) const {
-    if (m_ikPub.isEmpty() || !m_peerIdentityKeys.contains(peerUuid))
-        return {};
+std::string E2EManager::getSafetyNumber(const std::string& peerUuid) const {
+    if (m_ikPub.empty() || !m_peerIdentityKeys.count(peerUuid)) return {};
 
-    // Конкатенируем наш и их identity-ключ, хэшируем SHA-256
-    const QByteArray combined = m_ikPub + m_peerIdentityKeys[peerUuid];
-    const QByteArray hash = QCryptographicHash::hash(combined,
-                                                      QCryptographicHash::Sha256);
+    const Bytes combined = m_ikPub + m_peerIdentityKeys.at(peerUuid);
+    Bytes hash(32, 0);
+    SHA256(combined.data(), combined.size(), hash.data());
 
-    // Форматируем как 5 групп по 8 hex-символов (160 бит = 20 байт)
-    const QString hex = QString::fromLatin1(hash.left(20).toHex());
-    QString result;
+    // 5 групп по 8 hex-символов (первые 20 байт = 40 hex = 5×8)
+    std::string hex = bytesToHex(bytesLeft(hash, 20));
+    for (char& c : hex) if (c >= 'a' && c <= 'f') c = static_cast<char>(c - 32);
+
+    std::string result;
     for (int i = 0; i < 5; ++i) {
         if (i > 0) result += ' ';
-        result += hex.mid(i * 8, 8).toUpper();
+        result += hex.substr(static_cast<size_t>(i) * 8, 8);
     }
     return result;
 }
 
-QByteArray E2EManager::consumeOtpkPriv(const QByteArray& pub) {
-    for (int i = 0; i < m_otpks.size(); ++i) {
+Bytes E2EManager::consumeOtpkPriv(const Bytes& pub) {
+    for (size_t i = 0; i < m_otpks.size(); ++i) {
         if (m_otpks[i].second == pub) {
-            const QByteArray priv = m_otpks[i].first;
-            m_otpks.removeAt(i);
-            saveKeys(); // consumed — update disk
+            const Bytes priv = m_otpks[i].first;
+            m_otpks.erase(m_otpks.begin() + static_cast<ptrdiff_t>(i));
+            saveKeys();
             return priv;
         }
     }

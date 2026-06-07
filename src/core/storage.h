@@ -1,66 +1,62 @@
 #pragma once
-#include <QObject>
-#include <QSqlDatabase>
-#include <QList>
-#include <QJsonObject>
 #include "types.h"
+#include <vector>
+#include <cstdint>
+#include <string>
 
-class StorageManager : public QObject {
-    Q_OBJECT
+struct sqlite3;   // opaque — не тянем sqlite3.h в заголовок
+
+class StorageManager {
 public:
-    explicit StorageManager(QObject* parent = nullptr);
+    StorageManager();
     ~StorageManager();
 
-    bool        open();
+    bool open();
 
     // Contacts
-    [[nodiscard]] bool        addContact(const Contact& c);
-    [[nodiscard]] bool        updateContactAddress(const QUuid& uuid, const QString& ip, quint16 port);
-    [[nodiscard]] bool        updateContactKey(const QUuid& uuid, const QByteArray& identityKey);
-    [[nodiscard]] bool        updateAvatar(const QUuid& uuid, const QString& hash, const QString& path);
-    [[nodiscard]] bool        updateContactName(const QUuid& uuid, const QString& name);
-    // Сохранить снимок системной информации пира (CPU/RAM/OS) — для показа в профиле офлайн
-    [[nodiscard]] bool        updateContactSystemInfo(const QUuid& uuid, const QJsonObject& info);
-    [[nodiscard]] bool        updateContactBirthday(const QUuid& uuid, const QString& birthday);
-    // Установить/снять блокировку контакта (все сообщения от него игнорируются)
-    [[nodiscard]] bool        blockContact(const QUuid& uuid, bool blocked);
-    // Включить/отключить уведомления от контакта
-    [[nodiscard]] bool        setContactMuted(const QUuid& uuid, bool muted);
-    // Записать текущее время как «последний раз онлайн» для контакта
-    bool        updateLastSeen(const QUuid& uuid);
-    [[nodiscard]] Contact     getContact(const QUuid& uuid) const;
-    [[nodiscard]] QList<Contact> allContacts() const;
-    // Удалить контакт и переписку. Если был заблокирован — UUID сохраняется в blocked_list.
-    [[nodiscard]] bool        deleteContact(const QUuid& uuid);
-    // Проверить заблокирован ли UUID (существует ли в blocked_list — для удалённых контактов)
-    [[nodiscard]] bool        isUuidBlocked(const QUuid& uuid) const;
-    // Удалить только переписку, не удаляя сам контакт
-    [[nodiscard]] bool        clearMessages(const QUuid& uuid);
+    [[nodiscard]] bool addContact(const Contact& c);
+    [[nodiscard]] bool updateContactAddress(const std::string& uuid, const std::string& ip, uint16_t port);
+    [[nodiscard]] bool updateContactKey(const std::string& uuid, const std::vector<uint8_t>& identityKey);
+    [[nodiscard]] bool updateAvatar(const std::string& uuid, const std::string& hash, const std::string& path);
+    [[nodiscard]] bool updateContactName(const std::string& uuid, const std::string& name);
+    [[nodiscard]] bool updateContactSystemInfo(const std::string& uuid, const std::string& infoJson);
+    [[nodiscard]] bool updateContactBirthday(const std::string& uuid, const std::string& birthday);
+    [[nodiscard]] bool blockContact(const std::string& uuid, bool blocked);
+    [[nodiscard]] bool setContactMuted(const std::string& uuid, bool muted);
+    bool               updateLastSeen(const std::string& uuid);
+    [[nodiscard]] Contact              getContact(const std::string& uuid) const;
+    [[nodiscard]] std::vector<Contact> allContacts() const;
+    [[nodiscard]] bool deleteContact(const std::string& uuid);
+    [[nodiscard]] bool isUuidBlocked(const std::string& uuid) const;
+    [[nodiscard]] bool clearMessages(const std::string& uuid);
 
     // Messages
-    [[nodiscard]] qint64      saveMessage(const Message& msg);
-    // limit=50 — последние N сообщений; offset — сколько с конца пропустить (для lazy loading)
-    [[nodiscard]] QList<Message> getMessages(const QUuid& peerUuid, int limit = 50, int offset = 0) const;
-    [[nodiscard]] bool        markDelivered(qint64 msgId);
-    [[nodiscard]] QString     lastMessageText(const QUuid& peerUuid) const;
-    [[nodiscard]] QDateTime   lastMessageTime(const QUuid& peerUuid) const;
+    [[nodiscard]] int64_t              saveMessage(const Message& msg);
+    [[nodiscard]] std::vector<Message> getMessages(const std::string& peerUuid,
+                                                   int limit = 50, int offset = 0) const;
+    [[nodiscard]] bool        markDelivered(int64_t msgId);
+    [[nodiscard]] std::string lastMessageText(const std::string& peerUuid) const;
+    [[nodiscard]] int64_t     lastMessageTime(const std::string& peerUuid) const;  // epoch ms; 0 = none
 
     // Groups & Channels
-    [[nodiscard]] bool        saveGroup(const Group& g);
-    [[nodiscard]] bool        updateGroupToken(const QString& groupId, const QString& token);
-    [[nodiscard]] bool        updateGroupKey(const QString& groupId, const QByteArray& key);
-    [[nodiscard]] bool        updateGroupName(const QString& groupId, const QString& name);
-    [[nodiscard]] bool        setGroupAdmin(const QString& groupId, bool isAdmin);
-    [[nodiscard]] Group       getGroup(const QString& groupId) const;
-    [[nodiscard]] QList<Group> allGroups() const;
-    [[nodiscard]] bool        deleteGroup(const QString& groupId);
+    [[nodiscard]] bool saveGroup(const Group& g);
+    [[nodiscard]] bool updateGroupToken(const std::string& groupId, const std::string& token);
+    [[nodiscard]] bool updateGroupKey(const std::string& groupId, const std::vector<uint8_t>& key);
+    [[nodiscard]] bool updateGroupName(const std::string& groupId, const std::string& name);
+    [[nodiscard]] bool setGroupAdmin(const std::string& groupId, bool isAdmin);
+    [[nodiscard]] Group              getGroup(const std::string& groupId) const;
+    [[nodiscard]] std::vector<Group> allGroups() const;
+    [[nodiscard]] bool deleteGroup(const std::string& groupId);
 
     // Group Messages
-    [[nodiscard]] qint64      saveGroupMessage(const GroupMessage& msg);
-    [[nodiscard]] QList<GroupMessage> getGroupMessages(const QString& groupId, int limit = 50, int offset = 0) const;
-    [[nodiscard]] QString     lastGroupMessageText(const QString& groupId) const;
+    [[nodiscard]] int64_t                   saveGroupMessage(const GroupMessage& msg);
+    [[nodiscard]] std::vector<GroupMessage> getGroupMessages(const std::string& groupId,
+                                                             int limit = 50, int offset = 0) const;
+    [[nodiscard]] std::string lastGroupMessageText(const std::string& groupId) const;
 
 private:
-    void        migrate();
-    QSqlDatabase m_db;
+    void migrate();
+    bool hasColumn(const char* table, const char* col) const;
+
+    sqlite3* m_db{nullptr};
 };

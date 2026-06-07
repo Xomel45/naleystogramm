@@ -1,6 +1,6 @@
 #pragma once
 #include <QWidget>
-#include "../core/types.h"
+#include "../core/logger.h"
 
 class QPlainTextEdit;
 class QPushButton;
@@ -14,6 +14,7 @@ class LogPanel : public QWidget {
     Q_OBJECT
 public:
     explicit LogPanel(QWidget* parent = nullptr);
+    ~LogPanel();
 
     // Добавить запись в отображение
     void appendEntry(const LogEntry& entry);
@@ -41,6 +42,9 @@ private:
     QPushButton*    m_clearBtn  {nullptr};
     QPushButton*    m_exportBtn {nullptr};
     QCheckBox*      m_verboseCheck {nullptr};
+
+    Logger::Token m_logToken  {0};
+    Logger::Token m_clearToken{0};
 
     static constexpr int kMaxLines = 1000;
 };

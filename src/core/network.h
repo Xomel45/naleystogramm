@@ -1,261 +1,249 @@
 #pragma once
-#include <QObject>
-#include <QTcpServer>
-#include <QTcpSocket>
-#include <QMap>
-#include <QQueue>
-#include <QSet>
-#include <QUuid>
-#include <QDateTime>
-#include <QTimer>
-#include <QElapsedTimer>
-#include <QJsonObject>
+#include "types.h"
 #include "identity.h"
+#include <nlohmann/json.hpp>
+#include <asio.hpp>
+#include <memory>
+#include <string>
+#include <thread>
+#include <mutex>
+#include <chrono>
+#include <cstdint>
+#include <functional>
+#include <unordered_map>
+#include <unordered_set>
+#include <queue>
+#include <vector>
+#include <utility>
+#include <atomic>
 
-// Состояние подключения к пиру
+// ── Состояние подключения ─────────────────────────────────────────────────────
+
 enum class ConnectionState {
-    Disconnected,   // Нет подключения
-    Connecting,     // Попытка подключения
-    Connected,      // Подключено и работает
-    Reconnecting    // Переподключение после разрыва
+    Disconnected,
+    Connecting,
+    Connected,
+    Reconnecting
 };
 
-// Один подключённый пир с расширенным отслеживанием состояния
+// ── Пир ───────────────────────────────────────────────────────────────────────
+
 struct PeerConnection {
-    QUuid            uuid           {};
-    QString          name           {};
-    QString          ip             {};
-    quint16          port           {0};
-    quint16          serverPort     {0};    // Слушающий порт пира (получен из HANDSHAKE)
-    QTcpSocket*      socket         {nullptr};
-    QByteArray       readBuf        {};
+    std::string uuid           {};
+    std::string name           {};
+    std::string ip             {};
+    uint16_t    port           {0};
+    uint16_t    serverPort     {0};
 
-    // Расширенные поля для надёжности подключения
-    ConnectionState  state          {ConnectionState::Disconnected};
-    int              reconnectAttempts {0};  // Устарело: используем m_reconnectAttempts
-    QDateTime        lastActivity   {};
-    QTimer*          reconnectTimer {nullptr};  // Устарело: используем m_reconnectTimers
-    QTimer*          pingTimer        {nullptr};
-    QTimer*          pongTimeoutTimer {nullptr}; // Таймер ожидания PONG (kPongTimeout мс)
-    QElapsedTimer    pingStopwatch    {};
-    bool             awaitingPong     {false};
+    std::shared_ptr<asio::ip::tcp::socket> socket;
+    std::string readBuf;
 
-    // Rate limiting: скользящее окно 1 сек / kMaxFramesPerSecond фреймов
-    QElapsedTimer    rateWindow       {};
-    quint32          rateCount        {0};
+    ConnectionState state             {ConnectionState::Disconnected};
+    int             reconnectAttempts {0};
+    int64_t         lastActivity      {0};   // epoch ms
 
-    // Профиль пира (заполняется из CLIENT_HELLO / HANDSHAKE)
-    qint64           latencyMs        {-1};       // Последний пинг, мс (-1 = нет данных)
-    QDateTime        connectedSince   {};          // Момент установки соединения
-    QJsonObject      systemInfo       {};          // Системная информация пира
-    QString          avatarHash       {};          // SHA-256 hex аватара пира
-    QString          birthday         {};          // ДР пира "yyyy-MM-dd" или пусто
+    std::shared_ptr<asio::steady_timer> pingTimer;
+    std::shared_ptr<asio::steady_timer> pongTimeoutTimer;
+    std::chrono::steady_clock::time_point pingStart {};
+    bool            awaitingPong      {false};
 
-    // Заполняется из CLIENT_HELLO / SERVER_HELLO (до HANDSHAKE)
-    QString          helloName        {};          // Имя пира из приветствия
-    QString          helloVersion     {};          // Версия пира из приветствия
-    bool             isLinkedDevice   {false};     // true = привязанный девайс, не контакт
+    // Rate limiting
+    std::chrono::steady_clock::time_point rateWindowStart {};
+    bool     rateWindowValid {false};
+    uint32_t rateCount       {0};
 
-    // Если непусто — после HANDSHAKE_ACK отправляем DEVICE_PAIR_REQUEST с этим кодом
-    QString          pendingPairCode  {};
+    int64_t     latencyMs      {-1};
+    int64_t     connectedSince {0};  // epoch ms
+    std::string systemInfoJson {};
+    std::string avatarHash     {};
+    std::string birthday       {};
+    std::string helloName      {};
+    std::string helloVersion   {};
+    bool        isLinkedDevice {false};
+    std::string pendingPairCode{};
 };
 
-// Публичная информация о пире — безопасная копия для UI и диалогов
+// ── Публичная информация о пире ───────────────────────────────────────────────
+
 struct PeerPublicInfo {
-    QString         name;
-    QString         ip;
-    quint16         serverPort     {0};
+    std::string     name;
+    std::string     ip;
+    uint16_t        serverPort     {0};
     ConnectionState state          {ConnectionState::Disconnected};
-    qint64          latencyMs      {-1};
-    QDateTime       connectedSince {};
-    QJsonObject     systemInfo     {};
-    QString         avatarHash     {};
-    QString         birthday       {};
+    int64_t         latencyMs      {-1};
+    int64_t         connectedSince {0};  // epoch ms
+    std::string     systemInfoJson {};
+    std::string     avatarHash     {};
+    std::string     birthday       {};
 };
 
-class NetworkManager : public QObject {
-    Q_OBJECT
+// ── NetworkEvent (callbacks вместо Qt-сигналов) ───────────────────────────────
+// Вызываются на io_context-потоке. Bridge-слой должен перепоставить
+// на Qt-поток через QMetaObject::invokeMethod(..., Qt::QueuedConnection).
+// Незаполненные поля оставлять nullptr.
+
+struct NetworkEvent {
+    std::function<void(const std::string& ip, uint16_t port, bool upnpOk)> onReady;
+    std::function<void(const std::string& ip)>                              onExternalIp;
+    std::function<void(bool ok)>                                            onUpnpResult;
+    std::function<void(bool open)>                                          onOpenPortResult;
+    std::function<void()>                                                   onRelayConnected;
+    std::function<void()>                                                   onRelayDisconnected;
+    std::function<void(const std::string& uuid,
+                       const std::string& name,
+                       const std::string& ip)>                              onIncomingRequest;
+    std::function<void(const std::string& uuid,
+                       const nlohmann::json& msg)>                          onMessage;
+    std::function<void(const std::string& uuid,
+                       const std::string& name)>                            onPeerConnected;
+    std::function<void(const std::string& uuid)>                            onPeerDisconnected;
+    std::function<void(const std::string& uuid,
+                       const std::string& name)>                            onNameUpdated;
+    std::function<void(const std::string& uuid,
+                       const std::string& name,
+                       bool isPrimary)>                                      onDeviceLinked;
+    std::function<void(const std::string& uuid)>                            onPeerInfoUpdated;
+    std::function<void(const std::string& uuid,
+                       ConnectionState state)>                               onStateChanged;
+    std::function<void(const std::string& msg)>                             onLog;
+    std::function<void(const std::string& msg)>                             onError;
+    // Bridge must implement: create UpnpMapper, map port, call notifyUpnpResult()
+    std::function<void(uint16_t port)>                                      onNeedUpnpMapping;
+};
+
+// ── NetworkManager ────────────────────────────────────────────────────────────
+
+class NetworkManager {
 public:
-    explicit NetworkManager(QObject* parent = nullptr);
+    NetworkManager();
     ~NetworkManager();
 
-    // Запуск сервера + обнаружение внешнего IP + попытка UPnP
-    void        init();
+    void init();
 
-    [[nodiscard]] QString  externalIp()     const noexcept { return m_externalIp; }
-    [[nodiscard]] quint16  localPort()      const noexcept { return m_localPort; }
-    [[nodiscard]] quint16  advertisedPort() const noexcept { return m_advertisedPort ? m_advertisedPort : m_localPort; }
-    [[nodiscard]] bool     upnpMapped()     const noexcept { return m_upnpMapped; }
+    [[nodiscard]] std::string externalIp()     const noexcept { return m_externalIp; }
+    [[nodiscard]] uint16_t    localPort()      const noexcept { return m_localPort; }
+    [[nodiscard]] uint16_t    advertisedPort() const noexcept {
+        return m_advertisedPort ? m_advertisedPort : m_localPort;
+    }
+    [[nodiscard]] bool        upnpMapped()     const noexcept { return m_upnpMapped; }
 
-    static constexpr quint16 kDefaultPort = 47821;
+    static constexpr uint16_t kDefaultPort = 47821;
 
-    // Определяет лучший LAN IP этой машины (192.168.x / 10.x, без VPN/loopback).
-    [[nodiscard]] static QString detectLocalLanIp();
+    [[nodiscard]] static std::string detectLocalLanIp();
 
-    // Инициировать исходящее подключение
-    void        connectToPeer(const PeerInfo& peer);
-
-    // Подключиться к главному устройству и отправить запрос на привязку
-    void        connectToDevice(const QString& host, quint16 port, const QString& code);
-
-    // Разослать фрейм всем подключённым вторичным устройствам (кроме exceptUuid)
-    void        relayToLinkedDevices(const QUuid& exceptUuid, const QJsonObject& frame);
-
-    // UUID главного устройства среди подключённых пиров (null если нет)
-    [[nodiscard]] QUuid primaryDeviceUuid() const;
-
-    // Повторная попытка пробросить порты через UPnP
-    void        retryUpnp();
-
-    // Проверить доступность открытого порта (режим OpenPort)
-    void        checkOpenPort();
-
-    // Разослать всем подключённым пирам обновлённое имя пользователя
-    void        broadcastProfileUpdate(const QString& name);
-
-    // Принять/отклонить входящее подключение
-    void        acceptIncoming(const QUuid& peerUuid);
-    void        rejectIncoming(const QUuid& peerUuid);
-
-    // Отправить JSON подключённому пиру
-    void        sendJson(const QUuid& peerUuid, const QJsonObject& obj);
-
-    bool        isOnline(const QUuid& uuid) const;
-
-    // Получить публичную информацию о пире (для диалога профиля)
-    [[nodiscard]] PeerPublicInfo   getPeerInfo(const QUuid& uuid) const;
-
-    // Получить состояние подключения к пиру
-    [[nodiscard]] ConnectionState connectionState(const QUuid& uuid) const;
-
-    // Включить/выключить подробное логирование
-    void        setVerboseLogging(bool enabled);
+    // Публичные методы — thread-safe через asio::post()
+    void connectToPeer   (const PeerInfo& peer);
+    void connectToDevice (const std::string& host, uint16_t port, const std::string& code);
+    void relayToLinkedDevices(const std::string& exceptUuid, const nlohmann::json& frame);
+    [[nodiscard]] std::string primaryDeviceUuid() const;
+    void retryUpnp();
+    void checkOpenPort();
+    void broadcastProfileUpdate(const std::string& name);
+    void acceptIncoming  (const std::string& peerUuid);
+    void rejectIncoming  (const std::string& peerUuid);
+    void sendFrame       (const std::string& peerUuid, const nlohmann::json& obj);
+    bool isOnline        (const std::string& uuid) const;
+    [[nodiscard]] PeerPublicInfo   getPeerInfo      (const std::string& uuid) const;
+    [[nodiscard]] ConnectionState  connectionState  (const std::string& uuid) const;
+    void setVerboseLogging(bool enabled);
     [[nodiscard]] bool verboseLogging() const { return m_verboseLogging; }
 
-signals:
-    void        ready(const QString& externalIp, quint16 port, bool upnpOk);
-    void        externalIpDiscovered(const QString& ip);
-    void        upnpMappingResult(bool ok);  // Результат UPnP (асинхронный)
-    void        openPortCheckResult(bool open); // Результат проверки открытого порта
-    void        relayConnected();            // Ретранслятор: соединение установлено
-    void        relayDisconnected();         // Ретранслятор: соединение разорвано
+    // ── Listener API ─────────────────────────────────────────────────────
+    using Token = uint32_t;
+    Token addListener   (NetworkEvent ev);
+    void  removeListener(Token t);
 
-    // Кто-то хочет подключиться — показать диалог подтверждения
-    void        incomingRequest(QUuid peerUuid, QString peerName, QString peerIp);
-
-    // JSON сообщение от пира
-    void        messageReceived(QUuid fromUuid, QJsonObject msg);
-
-    void        peerConnected(QUuid uuid, QString name);
-    void        peerDisconnected(QUuid uuid);
-
-    // Пир прислал PROFILE_UPDATE с новым именем
-    void        contactNameUpdated(QUuid uuid, QString name);
-
-    // Паринг девайсов: успешная привязка
-    // isPrimary=true  — мы вторичный, привязали главный
-    // isPrimary=false — мы главный, привязали вторичный
-    void        deviceLinked(QUuid uuid, QString name, bool isPrimary);
-
-    // Системная информация / хэш аватара пира обновлены (из HANDSHAKE)
-    void        peerInfoUpdated(QUuid uuid);
-
-    // Изменение состояния подключения (для UI)
-    void        connectionStateChanged(QUuid uuid, ConnectionState state);
-
-    // Лог-сообщение (для UI и файла)
-    void        connectionLog(const QString& message);
-
-    void        error(const QString& msg);
-
-private slots:
-    void        onNewConnection();
-    void        onSocketReadyRead();
-    void        onSocketDisconnected();
-    void        onRelayReadyRead();
-    void        onRelayConnected();
-    void        onRelayDisconnected();
+    // Called by bridge after UpnpMapper completes (thread-safe via asio::post)
+    void notifyUpnpResult(bool ok);
 
 private:
-    void        startServer();
-    void        discoverExternalIp();
-    void        tryUpnp();
+    // ── Asio ─────────────────────────────────────────────────────────────────
+    asio::io_context    m_io;
+    std::unique_ptr<asio::executor_work_guard<asio::io_context::executor_type>> m_work;
+    asio::ip::tcp::acceptor m_acceptor;
+    std::thread         m_ioThread;
 
-    // ── Ретранслятор (Client-Server режим) ───────────────────────────────────
-    void        connectToRelay();
-    void        sendViaRelay(const QUuid& targetUuid, const QJsonObject& obj);
-    void        handleRelayFrame(const QUuid& fromUuid, const QJsonObject& innerObj);
+    // ── Listener storage ─────────────────────────────────────────────────────
+    mutable std::mutex  m_listenerMutex;
+    std::vector<std::pair<Token, NetworkEvent>> m_listeners;
+    Token               m_nextToken{0};
 
-    void        handleFrame(PeerConnection& peer, const QJsonObject& obj);
-    void        sendClientHello(QTcpSocket* socket);
-    void        sendHandshake(QTcpSocket* socket);
-    void        tryParseFrames(PeerConnection& conn, bool isPending);
+    // ── Peer state (accessed only on io_context thread) ───────────────────────
+    std::unordered_map<std::string, PeerConnection>  m_peers;
+    std::unordered_map<std::string, PeerConnection>  m_pending;
 
-    // Логирование с условной детализацией
-    void        log(const QString& message, bool forceVerbose = false);
+    struct PeerReconnectInfo { std::string name, ip; uint16_t port{0}; };
+    std::unordered_map<std::string, PeerReconnectInfo>                  m_reconnectInfo;
+    std::unordered_map<std::string, int>                                m_reconnectAttempts;
+    std::unordered_map<std::string, std::shared_ptr<asio::steady_timer>> m_reconnectTimers;
+    std::unordered_map<std::string, std::queue<nlohmann::json>>         m_messageQueues;
 
-    // Переподключение с экспоненциальным откатом
-    void        scheduleReconnect(const QUuid& uuid);
-    void        attemptReconnect(const QUuid& uuid);
-    void        resetReconnectState(const QUuid& uuid);
-    int         calculateBackoffMs(int attempts) const;
+    // ── Network params ────────────────────────────────────────────────────────
+    std::string  m_externalIp;
+    uint16_t     m_localPort      {47821};
+    uint16_t     m_advertisedPort {0};
+    bool         m_upnpMapped     {false};
+    bool         m_verboseLogging {false};
 
-    // Keepalive (PING/PONG)
-    void        startKeepalive(const QUuid& uuid);
-    void        stopKeepalive(const QUuid& uuid);
-    void        sendPing(const QUuid& uuid);
-    void        handlePing(PeerConnection& peer, const QJsonObject& obj);
-    void        handlePong(PeerConnection& peer, const QJsonObject& obj);
+    // ── Relay ─────────────────────────────────────────────────────────────────
+    std::shared_ptr<asio::ip::tcp::socket>       m_relaySocket;
+    std::string                                  m_relayReadBuf;
+    bool                                         m_relayRegistered    {false};
+    std::unordered_set<std::string>              m_relayPeers;
+    std::shared_ptr<asio::steady_timer>          m_relayReconnectTimer;
+    std::shared_ptr<asio::steady_timer>          m_upnpRefreshTimer;
 
-    // Очередь сообщений: если пир временно недоступен — сообщения ждут
-    void        drainMessageQueue(const QUuid& uuid);
+    // ── Internal methods ──────────────────────────────────────────────────────
+    void startServer();
+    void startAccept();
+    void startAsyncRead    (const std::string& peerId, bool isPending);
+    void startRelayRead    ();
+    void handleDisconnect  (const std::string& uuid);
 
-    // Хранение данных пиров для переподключения
-    struct PeerReconnectInfo {
-        QString name;
-        QString ip;
-        quint16 port;
-    };
-    QMap<QUuid, PeerReconnectInfo>       m_reconnectInfo;     // Адрес для переподключения
-    QMap<QUuid, int>                     m_reconnectAttempts; // Счётчики попыток
-    QMap<QUuid, QTimer*>                 m_reconnectTimers;   // Таймеры (не теряются при erase)
-    QMap<QUuid, QQueue<QJsonObject>>     m_messageQueues;     // Очереди сообщений по пирам
+    void discoverExternalIp();
+    void tryUpnp();
+    void connectToRelay();
+    void sendViaRelay      (const std::string& targetUuid, const nlohmann::json& obj);
+    void handleRelayFrame  (const std::string& fromUuid, const nlohmann::json& innerObj);
+    void handleFrame       (PeerConnection& peer, const nlohmann::json& obj);
+    void sendClientHello   (asio::ip::tcp::socket& sock);
+    void sendHandshake     (asio::ip::tcp::socket& sock);
+    void tryParseFrames    (PeerConnection& conn, bool isPending);
+    void log               (const std::string& message, bool forceVerbose = false);
+    void scheduleReconnect (const std::string& uuid);
+    void attemptReconnect  (const std::string& uuid);
+    void resetReconnectState(const std::string& uuid);
+    int  calculateBackoffMs(int attempts) const;
+    void startKeepalive    (const std::string& uuid);
+    void stopKeepalive     (const std::string& uuid);
+    void schedulePing      (const std::string& uuid);
+    void sendPing          (const std::string& uuid);
+    void handlePing        (PeerConnection& peer, const nlohmann::json& obj);
+    void handlePong        (PeerConnection& peer, const nlohmann::json& obj);
+    void drainMessageQueue (const std::string& uuid);
 
-    QTcpServer*                  m_server{nullptr};
-    QMap<QUuid, PeerConnection>  m_peers;       // подтверждённые подключения
-    QMap<QUuid, PeerConnection>  m_pending;     // ожидание подтверждения
+    // Helper: notify all listeners (must not hold m_listenerMutex)
+    // Named "fire" to avoid collision with Qt's "emit" macro.
+    template<typename Fn>
+    void fire(Fn&& invoke) const {
+        std::vector<std::pair<Token, NetworkEvent>> snap;
+        {
+            std::lock_guard<std::mutex> lk(m_listenerMutex);
+            snap = m_listeners;
+        }
+        for (auto& [tok, ev] : snap)
+            invoke(ev);
+    }
 
-    QString     m_externalIp;
-    quint16     m_localPort      {47821};
-    // Порт, анонсируемый пирам в HANDSHAKE (= localPort в UPnP-режиме,
-    // = manualPublicPort в Manual-режиме).
-    quint16     m_advertisedPort {0};
-    bool        m_upnpMapped{false};
-    bool        m_verboseLogging{false};
-
-    // Relay (Client-Server)
-    QTcpSocket* m_relaySocket         {nullptr};
-    QByteArray  m_relayReadBuf        {};
-    bool        m_relayRegistered     {false};
-    QSet<QUuid> m_relayPeers;                   // UUID пиров подключённых через ретранслятор
-    QTimer*     m_relayReconnectTimer {nullptr};
-
-    // Периодический рефреш UPnP-маппинга. UPnP IGD lease = kUpnpLeaseSeconds (3600с);
-    // без рефреша порт перестаёт пробрасываться через час непрерывной работы.
-    QTimer*     m_upnpRefreshTimer    {nullptr};
-
-    static constexpr int     kConnectionTimeout    = 10000;   // 10 секунд на подключение
-    static constexpr int     kMaxReconnectDelay    = 30000;   // Макс. задержка переподключения
-    static constexpr int     kPingInterval         = 30000;   // Интервал PING (30 сек)
-    static constexpr int     kPongTimeout          = 10000;   // Таймаут PONG (10 сек)
-    static constexpr int     kMaxReconnectAttempts = 50;      // Макс. попыток (~25 минут backoff)
-    static constexpr int     kMaxQueueSize         = 100;     // Макс. сообщений в очереди пира
-    // Защита от DoS: если readBuf пира превышает 16 МБ, соединение обрывается.
-    // Легитимные сообщения (JSON) никогда не достигают этого размера.
-    static constexpr int     kMaxBufferSize        = 16 * 1024 * 1024; // 16 МБ
-    static constexpr quint32 kMaxFramesPerSecond   = 200;              // Макс. фреймов в секунду от пира
-    static constexpr const char* kMinPeerVersion   = "0.7.4";         // Минимальная версия пира для соединения
-    // Рефреш UPnP-маппинга. Lease в SOAP AddPortMapping = 3600с; перепробрасываем
-    // через 30 минут, с запасом, чтобы не упереться в момент истечения.
-    static constexpr int     kUpnpRefreshIntervalMs = 30 * 60 * 1000;  // 30 минут
+    // ── Constants ─────────────────────────────────────────────────────────────
+    static constexpr int     kConnectionTimeout    = 10000;
+    static constexpr int     kMaxReconnectDelay    = 30000;
+    static constexpr int     kPingInterval         = 30000;
+    static constexpr int     kPongTimeout          = 10000;
+    static constexpr int     kMaxReconnectAttempts = 50;
+    static constexpr int     kMaxQueueSize         = 100;
+    static constexpr int     kMaxBufferSize        = 16 * 1024 * 1024;
+    static constexpr uint32_t kMaxFramesPerSecond  = 200;
+    static constexpr const char* kMinPeerVersion   = "0.7.4";
+    static constexpr int     kUpnpRefreshIntervalMs = 30 * 60 * 1000;
 };

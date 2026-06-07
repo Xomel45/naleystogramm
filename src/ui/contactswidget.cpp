@@ -1,4 +1,6 @@
 #include "contactswidget.h"
+// Core std::string → Qt bridge helpers
+static inline QUuid c2q(const std::string& s) { return QUuid::fromString(QString::fromStdString(s)); }
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QListWidget>
@@ -245,7 +247,7 @@ ContactsWidget::ContactsWidget(QWidget* parent) : QWidget(parent) {
     layout->addWidget(m_groupsList);
 }
 
-void ContactsWidget::setContacts(const QList<Contact>& contacts) {
+void ContactsWidget::setContacts(const std::vector<Contact>& contacts) {
     m_contacts = contacts;
     rebuildList();
 }
@@ -268,7 +270,7 @@ void ContactsWidget::updateLastMessage(const QUuid& uuid, const QString& text) {
 
 void ContactsWidget::updateContactName(const QUuid& uuid, const QString& name) {
     for (auto& c : m_contacts) {
-        if (c.uuid == uuid) { c.name = name; break; }
+        if (c2q(c.uuid) == uuid) { c.name = name.toStdString(); break; }
     }
     rebuildList();
 }
@@ -291,34 +293,34 @@ void ContactsWidget::setFilter(const QString& text) {
 void ContactsWidget::rebuildList() {
     m_list->clear();
     for (const auto& c : m_contacts) {
-        if (!m_filter.isEmpty() && !c.name.contains(m_filter, Qt::CaseInsensitive))
+        if (!m_filter.isEmpty() && !QString::fromStdString(c.name).contains(m_filter, Qt::CaseInsensitive))
             continue;
 
         auto* item = new QListWidgetItem();
-        item->setText(c.name);
+        item->setText(QString::fromStdString(c.name));
 
         int statusVal = 0;
         if (c.isBlocked) {
             statusVal = 3;
         } else {
-            switch (m_presence.value(c.uuid, PeerPresence::Offline)) {
+            switch (m_presence.value(c2q(c.uuid), PeerPresence::Offline)) {
             case PeerPresence::Online:       statusVal = 1; break;
             case PeerPresence::Reconnecting: statusVal = 2; break;
             default:                         statusVal = 0; break;
             }
         }
 
-        const bool avatarOk = !c.avatarPath.isEmpty() && QFile::exists(c.avatarPath);
-        item->setData(UuidRole,       c.uuid.toString());
+        const bool avatarOk = !c.avatarPath.empty() && QFile::exists(QString::fromStdString(c.avatarPath));
+        item->setData(UuidRole,       QString::fromStdString(c.uuid));
         item->setData(StatusRole,     statusVal);
-        item->setData(PreviewRole,    m_lastMsg.value(c.uuid));
-        item->setData(UnreadRole,     m_unreadCounts.value(c.uuid, 0));
+        item->setData(PreviewRole,    m_lastMsg.value(c2q(c.uuid)));
+        item->setData(UnreadRole,     m_unreadCounts.value(c2q(c.uuid), 0));
         item->setData(IsMutedRole,    c.isMuted);
-        item->setData(AvatarPathRole, avatarOk ? c.avatarPath
+        item->setData(AvatarPathRole, avatarOk ? QString::fromStdString(c.avatarPath)
                                                : QString(":/icons/not-avatar.png"));
 
         // Форматируем время последнего сообщения
-        const QDateTime dt = m_lastMsgTime.value(c.uuid);
+        const QDateTime dt = m_lastMsgTime.value(c2q(c.uuid));
         QString dateStr;
         if (dt.isValid()) {
             const qint64 days = dt.daysTo(QDateTime::currentDateTime());
@@ -347,7 +349,7 @@ void ContactsWidget::onContextMenuRequested(const QPoint& pos) {
 
     bool isBlocked = false, isMuted = false;
     for (const auto& c : m_contacts) {
-        if (c.uuid == uuid) { isBlocked = c.isBlocked; isMuted = c.isMuted; break; }
+        if (c2q(c.uuid) == uuid) { isBlocked = c.isBlocked; isMuted = c.isMuted; break; }
     }
 
     auto* menu = new QMenu(this);
@@ -396,7 +398,7 @@ static constexpr int kGroupItemRole = Qt::UserRole + 100;
 static constexpr int kGroupConnRole = Qt::UserRole + 101;
 static constexpr int kGroupUnreadRole = Qt::UserRole + 102;
 
-void ContactsWidget::setGroups(const QList<Group>& groups) {
+void ContactsWidget::setGroups(const std::vector<Group>& groups) {
     m_groups = groups;
     rebuildGroupList();
 }
@@ -406,20 +408,21 @@ void ContactsWidget::rebuildGroupList() {
     m_groupsList->clear();
 
     for (const Group& g : m_groups) {
-        const bool connected = m_groupConnected.value(g.id, false);
-        const int unread     = m_groupUnread.value(g.id, 0);
-        const QString lastMsg = m_groupLastMsg.value(g.id);
+        const QString qgid = QString::fromStdString(g.id);
+        const bool connected = m_groupConnected.value(qgid, false);
+        const int unread     = m_groupUnread.value(qgid, 0);
+        const QString lastMsg = m_groupLastMsg.value(qgid);
 
         const QString icon = g.type == GroupType::Channel ? "📢" : "👥";
         const QString status = connected ? "●" : "○";
         const ThemePalette& p = ThemeManager::instance().palette();
 
-        QString label = icon + " " + g.name;
+        QString label = icon + " " + QString::fromStdString(g.name);
         if (unread > 0) label += QString("  [%1]").arg(unread);
         if (!lastMsg.isEmpty()) label += "\n" + lastMsg;
 
         auto* item = new QListWidgetItem(label, m_groupsList);
-        item->setData(kGroupItemRole, g.id);
+        item->setData(kGroupItemRole, qgid);
         item->setData(kGroupConnRole, connected);
         item->setData(kGroupUnreadRole, unread);
         item->setForeground(connected ? QColor(p.textPrimary) : QColor(p.textSecondary));
@@ -427,16 +430,16 @@ void ContactsWidget::rebuildGroupList() {
     }
 
     // Высота: 52px * N + немного паддинга, максимум 260px
-    const int h = qMin(52 * m_groups.size() + 4, 260);
-    m_groupsList->setMaximumHeight(m_groups.isEmpty() ? 0 : h);
-    m_groupsList->setMinimumHeight(m_groups.isEmpty() ? 0 : qMin(h, 52));
+    const int h = qMin(52 * static_cast<int>(m_groups.size()) + 4, 260);
+    m_groupsList->setMaximumHeight(m_groups.empty() ? 0 : h);
+    m_groupsList->setMinimumHeight(m_groups.empty() ? 0 : qMin(h, 52));
 }
 
 void ContactsWidget::addOrUpdateGroup(const Group& g) {
     for (auto& existing : m_groups) {
         if (existing.id == g.id) { existing = g; rebuildGroupList(); return; }
     }
-    m_groups.append(g);
+    m_groups.push_back(g);
     rebuildGroupList();
 }
 

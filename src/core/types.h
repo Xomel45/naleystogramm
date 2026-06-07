@@ -1,43 +1,43 @@
 #pragma once
 // Чистые типы данных — передаются между core и UI.
 // Не содержит сервисных классов (QObject, сигналов, методов).
-// UI-заголовки включают этот файл вместо полных service-заголовков.
-#include <QUuid>
-#include <QString>
-#include <QByteArray>
-#include <QDateTime>
+// Не зависит от Qt — только std C++.
+// UI-код включает src/ui/qt_bridge.h для конвертаций std ↔ Qt.
+#include <string>
+#include <vector>
+#include <cstdint>
 
 // ── Контакт ──────────────────────────────────────────────────────────────────
 struct Contact {
-    QUuid      uuid;
-    QString    name;
-    QString    ip;
-    quint16    port{0};
-    QByteArray identityKey;
-    QString    avatarHash {};
-    QString    avatarPath {};
-    bool       isBlocked {false};
-    bool       isMuted   {false};
-    QDateTime  lastSeen  {};
-    QString    systemInfoJson {};
-    QString    birthday       {};   // ISO date "yyyy-MM-dd" or empty
-    QString    versionCreated {"0.1.0"};
+    std::string          uuid;
+    std::string          name;
+    std::string          ip;
+    uint16_t             port{0};
+    std::vector<uint8_t> identityKey;
+    std::string          avatarHash {};
+    std::string          avatarPath {};
+    bool                 isBlocked {false};
+    bool                 isMuted   {false};
+    int64_t              lastSeen  {0};    // epoch ms; 0 = never
+    std::string          systemInfoJson {};
+    std::string          birthday       {};   // ISO date "yyyy-MM-dd" or empty
+    std::string          versionCreated {"0.1.0"};
 };
 
 // ── Сообщение ─────────────────────────────────────────────────────────────────
 struct Message {
-    qint64     id{0};
-    QUuid      peerUuid;
-    bool       outgoing{false};
-    QString    text;
-    QString    fileName;
-    qint64     fileSize{0};
-    QByteArray ciphertext;
-    QDateTime  timestamp;
-    bool       delivered{false};
-    bool       isVoice{false};
-    int        voiceDurationMs{0};
-    QString    versionCreated {"0.1.0"};
+    int64_t              id{0};
+    std::string          peerUuid;
+    bool                 outgoing{false};
+    std::string          text;
+    std::string          fileName;
+    int64_t              fileSize{0};
+    std::vector<uint8_t> ciphertext;
+    int64_t              timestamp{0};    // epoch ms; 0 = not set
+    bool                 delivered{false};
+    bool                 isVoice{false};
+    int                  voiceDurationMs{0};
+    std::string          versionCreated {"0.1.0"};
 };
 
 // ── Логирование ───────────────────────────────────────────────────────────────
@@ -58,22 +58,22 @@ enum class LogComponent {
 };
 
 struct LogEntry {
-    QDateTime    timestamp;
+    int64_t      timestamp{0};   // epoch ms
     LogLevel     level;
     LogComponent component;
-    QString      message;
+    std::string  message;
 };
 
 // ── Прогресс передачи файла ──────────────────────────────────────────────────
 struct TransferProgress {
-    QString  id;
-    QString  fileName;
-    qint64   bytesTransferred;
-    qint64   totalBytes;
-    double   speedBytesPerSec;
-    int      etaSeconds;
-    int      percent;
-    bool     outgoing;
+    std::string  id;
+    std::string  fileName;
+    int64_t      bytesTransferred{0};
+    int64_t      totalBytes{0};
+    double       speedBytesPerSec{0.0};
+    int          etaSeconds{0};
+    int          percent{0};
+    bool         outgoing{false};
 };
 
 // ── Группа / Канал ────────────────────────────────────────────────────────────
@@ -83,34 +83,34 @@ enum class GroupType {
 };
 
 struct Group {
-    QString    id;              // server URL — уникальный идентификатор
-    QString    name;
-    GroupType  type{GroupType::Group};
-    QString    serverUrl;
-    QString    username;        // наш username на этом сервере
-    QString    token;           // auth token (хранится зашифрованным в DB)
-    QByteArray groupKey;        // расшифрованный AES-256 ключ (32 байта)
-    QByteArray localPrivKey;    // ephemeral X25519 privkey для этой группы
-    QByteArray localPubKey;     // ephemeral X25519 pubkey
-    bool       isAdmin{false};
-    QDateTime  joinedAt;
+    std::string          id;              // server URL — уникальный идентификатор
+    std::string          name;
+    GroupType            type{GroupType::Group};
+    std::string          serverUrl;
+    std::string          username;        // наш username на этом сервере
+    std::string          token;           // auth token (хранится зашифрованным в DB)
+    std::vector<uint8_t> groupKey;        // расшифрованный AES-256 ключ (32 байта)
+    std::vector<uint8_t> localPrivKey;    // ephemeral X25519 privkey для этой группы
+    std::vector<uint8_t> localPubKey;     // ephemeral X25519 pubkey
+    bool                 isAdmin{false};
+    int64_t              joinedAt{0};     // epoch ms
 };
 
 struct GroupMessage {
-    qint64     id{0};
-    QString    groupId;         // = serverUrl
-    QString    sender;          // username отправителя
-    QString    text;            // расшифрованный текст
-    qint64     ts{0};           // unix timestamp
-    bool       outgoing{false};
+    int64_t     id{0};
+    std::string groupId;         // = serverUrl
+    std::string sender;          // username отправителя
+    std::string text;            // расшифрованный текст
+    int64_t     ts{0};           // unix timestamp ms
+    bool        outgoing{false};
 };
 
 // ── Информация об обновлении ─────────────────────────────────────────────────
 struct UpdateInfo {
-    QString version;
-    QString url;         // HTML-страница релиза
-    QString notes;
-    QString downloadUrl; // прямая ссылка на пакет (пусто — только HTML-страница)
-    QString assetName;   // имя файла (определяет тип пакета)
-    bool    available{false};
+    std::string version;
+    std::string url;         // HTML-страница релиза
+    std::string notes;
+    std::string downloadUrl; // прямая ссылка на пакет (пусто — только HTML-страница)
+    std::string assetName;   // имя файла (определяет тип пакета)
+    bool        available{false};
 };

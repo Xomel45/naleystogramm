@@ -1,79 +1,78 @@
 #pragma once
-#include <QObject>
-#include <QFile>
-#include <QMutex>
 #include "types.h"
+#include <string>
+#include <vector>
+#include <functional>
+#include <utility>
+#include <cstdint>
+#include <mutex>
+#include <fstream>
 
 // ── Logger ──────────────────────────────────────────────────────────────────
-// Централизованная система логирования с записью в файл и сигналами для UI.
-//
 // Путь к файлу:
 //   Windows: %LOCALAPPDATA%\naleystogramm\debug.log
 //   Linux:   ~/.cache/naleystogramm/debug.log
+// Формат записи: [2026-02-21 12:34:56.789] [INFO] [NETWORK] Сообщение
 //
-// Формат записи:
-//   [2026-02-21 12:34:56.789] [INFO] [NETWORK] Сообщение
-//
-class Logger : public QObject {
-    Q_OBJECT
+class Logger {
 public:
     static Logger& instance();
 
-    // Инициализация — открывает файл лога
     void init();
 
-    // Основные методы логирования
-    void debug(LogComponent comp, const QString& message);
-    void info(LogComponent comp, const QString& message);
-    void warning(LogComponent comp, const QString& message);
-    void error(LogComponent comp, const QString& message);
+    void debug  (LogComponent comp, const std::string& message);
+    void info   (LogComponent comp, const std::string& message);
+    void warning(LogComponent comp, const std::string& message);
+    void error  (LogComponent comp, const std::string& message);
 
-    // Универсальный метод
-    void log(LogLevel level, LogComponent comp, const QString& message);
+    void log(LogLevel level, LogComponent comp, const std::string& message);
 
-    // Включить/выключить подробный режим (debug сообщения)
     void setVerbose(bool enabled);
     [[nodiscard]] bool isVerbose() const { return m_verbose; }
 
-    // Получить путь к файлу лога
-    [[nodiscard]] QString logFilePath() const { return m_filePath; }
+    [[nodiscard]] std::string logFilePath() const { return m_filePath; }
 
-    // Очистить файл лога
     void clearLog();
 
-    // Получить последние N записей
-    [[nodiscard]] QList<LogEntry> recentEntries(int count = 100) const;
+    [[nodiscard]] std::vector<LogEntry> recentEntries(int count = 100) const;
 
-signals:
-    // Новая запись в логе (для UI)
-    void logEntry(LogEntry entry);
+    // ── Listener API (вместо Qt-сигналов) ────────────────────────────────
+    using Token = uint32_t;
+    // Вызывается на потоке вызова Logger::log().
+    // Из UI: обернуть в QMetaObject::invokeMethod(..., Qt::QueuedConnection).
+    Token subscribe  (std::function<void(const LogEntry&)> fn);
+    void  unsubscribe(Token t);
 
-    // Файл лога очищен
-    void logCleared();
+    Token subscribeClear  (std::function<void()> fn);
+    void  unsubscribeClear(Token t);
 
 private:
-    explicit Logger(QObject* parent = nullptr);
+    Logger();
     ~Logger();
 
     void initFilePath();
     void rotateIfNeeded();
     void writeToFile(const LogEntry& entry);
-    QString formatEntry(const LogEntry& entry) const;
-    QString levelToString(LogLevel level) const;
-    QString componentToString(LogComponent comp) const;
+    std::string formatEntry(const LogEntry& entry) const;
+    static const char* levelToString     (LogLevel     level);
+    static const char* componentToString (LogComponent comp);
 
-    QString m_filePath;
-    QFile*  m_file{nullptr};
-    QMutex  m_mutex;
-    bool    m_verbose{false};
+    std::string   m_filePath;
+    std::ofstream m_file;
+    mutable std::mutex m_mutex;
+    bool m_verbose{false};
 
-    QList<LogEntry> m_recentEntries;
-    static constexpr int kMaxRecentEntries = 1000;
-    static constexpr qint64 kMaxFileSize = 5 * 1024 * 1024;  // 5 МБ
+    std::vector<LogEntry> m_recentEntries;
+    static constexpr int     kMaxRecentEntries = 1000;
+    static constexpr int64_t kMaxFileSize      = 5LL * 1024 * 1024;
+
+    std::vector<std::pair<Token, std::function<void(const LogEntry&)>>> m_entryListeners;
+    std::vector<std::pair<Token, std::function<void()>>>                m_clearListeners;
+    Token m_nextToken{0};
 };
 
-// Удобные макросы для логирования
-#define LOG_DEBUG(comp, msg)   Logger::instance().debug(LogComponent::comp, msg)
-#define LOG_INFO(comp, msg)    Logger::instance().info(LogComponent::comp, msg)
+// Удобные макросы для логирования (принимают std::string или const char*)
+#define LOG_DEBUG(comp, msg)   Logger::instance().debug  (LogComponent::comp, msg)
+#define LOG_INFO(comp, msg)    Logger::instance().info   (LogComponent::comp, msg)
 #define LOG_WARNING(comp, msg) Logger::instance().warning(LogComponent::comp, msg)
-#define LOG_ERROR(comp, msg)   Logger::instance().error(LogComponent::comp, msg)
+#define LOG_ERROR(comp, msg)   Logger::instance().error  (LogComponent::comp, msg)

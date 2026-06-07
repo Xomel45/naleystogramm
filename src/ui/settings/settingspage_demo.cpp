@@ -5,6 +5,10 @@
 #include <QPushButton>
 #include <QHBoxLayout>
 
+SettingsDemoPage::~SettingsDemoPage() {
+    DemoMode::instance().unsubscribe(m_demoToken);
+}
+
 SettingsDemoPage::SettingsDemoPage(QWidget* parent) : SettingsPageBase(parent) {
     auto* demoRow = new QHBoxLayout();
     auto* toggle = new QPushButton();
@@ -18,7 +22,7 @@ SettingsDemoPage::SettingsDemoPage(QWidget* parent) : SettingsPageBase(parent) {
         DemoMode::instance().setEnabled(checked);
         toggle->setText(checked ? tr("Demo mode enabled") : tr("Enable demo mode"));
     });
-    connect(&DemoMode::instance(), &DemoMode::toggled, toggle, [toggle](bool on) {
+    m_demoToken = DemoMode::instance().subscribe([toggle](bool on) {
         toggle->setChecked(on);
         toggle->setText(on ? tr("Demo mode enabled") : tr("Enable demo mode"));
     });

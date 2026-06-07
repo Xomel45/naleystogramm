@@ -1,77 +1,55 @@
 #pragma once
-#include <QByteArray>
+#include "bytes.h"
 #include <optional>
 
-// X3DH (Extended Triple Diffie-Hellman) key agreement
-// Used to establish a shared secret between two parties.
-//
-// Alice (initiator) uses Bob's pre-key bundle to compute:
-//   masterSecret = KDF( DH(IK_A, SPK_B) || DH(EK_A, IK_B) ||
-//                       DH(EK_A, SPK_B) || DH(EK_A, OPK_B) )
-//
-// Bob (responder) mirrors the computation with his private keys.
-//
+// X3DH (Extended Triple Diffie-Hellman) key agreement.
 // All keys are Curve25519 (X25519) via OpenSSL EVP_PKEY.
 
 struct X3DHKeyBundle {
-    QByteArray identityKey;       // IK pub (32 bytes, raw X25519)
-    QByteArray ikEdPub;           // Ed25519 pub ключ (для верификации SPK подписи, может отсутствовать у старых клиентов)
-    QByteArray signedPreKey;      // SPK pub
-    QByteArray signedPreKeySig;   // Ed25519 подпись SPK (через IK_priv as Ed25519)
-    QByteArray oneTimePreKey;     // OPK pub (may be empty)
+    Bytes identityKey;      // IK pub (32 bytes, raw X25519)
+    Bytes ikEdPub;          // Ed25519 pub для верификации SPK подписи
+    Bytes signedPreKey;     // SPK pub
+    Bytes signedPreKeySig;  // Ed25519 подпись SPK
+    Bytes oneTimePreKey;    // OPK pub (may be empty)
 };
 
 struct X3DHInitMessage {
-    QByteArray identityKey;       // IK_A pub
-    QByteArray ephemeralKey;      // EK_A pub
-    QByteArray usedOtpkId;        // which OPK was consumed (hex id)
-    QByteArray initialCiphertext; // first encrypted message payload
+    Bytes identityKey;      // IK_A pub
+    Bytes ephemeralKey;     // EK_A pub
+    Bytes usedOtpkId;       // which OPK was consumed (hex id)
+    Bytes initialCiphertext;
 };
 
 class X3DH {
 public:
     [[nodiscard]] static bool generateBundle(
-        QByteArray& outIdentityPriv,
-        QByteArray& outIdentityPub,
-        QByteArray& outSignedPrePriv,
-        QByteArray& outSignedPrePub,
-        QByteArray& outSignedPreSig,
-        QByteArray& outOtpkPriv,
-        QByteArray& outOtpkPub);
+        Bytes& outIdentityPriv, Bytes& outIdentityPub,
+        Bytes& outSignedPrePriv, Bytes& outSignedPrePub,
+        Bytes& outSignedPreSig,
+        Bytes& outOtpkPriv, Bytes& outOtpkPub);
 
-    [[nodiscard]] static std::optional<QByteArray> initiatorAgreement(
-        const QByteArray& aliceIKPriv,
-        const QByteArray& aliceIKPub,
+    [[nodiscard]] static std::optional<Bytes> initiatorAgreement(
+        const Bytes& aliceIKPriv, const Bytes& aliceIKPub,
         const X3DHKeyBundle& bobBundle,
-        QByteArray& outEphemeralPub);
+        Bytes& outEphemeralPub);
 
-    [[nodiscard]] static std::optional<QByteArray> responderAgreement(
-        const QByteArray& bobIKPriv,
-        const QByteArray& bobSPKPriv,
-        const QByteArray& bobOTPKPriv,
+    [[nodiscard]] static std::optional<Bytes> responderAgreement(
+        const Bytes& bobIKPriv, const Bytes& bobSPKPriv,
+        const Bytes& bobOTPKPriv,
         const X3DHInitMessage& aliceMsg);
 
-    // Вычислить Ed25519 публичный ключ из тех же байт, что используются как X25519 приватный ключ.
-    // Оба алгоритма используют Curve25519 — разница только в интерпретации точки.
-    // Используется для получения ключа верификации SPK-подписи.
-    [[nodiscard]] static QByteArray ikPrivToEdPub(const QByteArray& ikPriv);
+    [[nodiscard]] static Bytes ikPrivToEdPub(const Bytes& ikPriv);
+    [[nodiscard]] static bool  verifySpkSig(const Bytes& ikEdPub,
+                                             const Bytes& spkPub,
+                                             const Bytes& sig);
 
-    // Верифицировать Ed25519 подпись SPK (signedPreKey) ключом ikEdPub.
-    // Возвращает false и пишет в лог при любой ошибке.
-    [[nodiscard]] static bool verifySpkSig(const QByteArray& ikEdPub,
-                                            const QByteArray& spkPub,
-                                            const QByteArray& sig);
+    // ECIES decrypt: ephemeral_pub(32) || nonce(12) || ciphertext+tag(N+16)
+    [[nodiscard]] static Bytes eciesDecrypt(const Bytes& localPrivKey,
+                                             const Bytes& encryptedBlob);
 
-    // ECIES расшифровка (X25519+HKDF-SHA256+AES-256-GCM).
-    // Формат входного blob: ephemeral_pub(32) || nonce(12) || ciphertext+tag(N+16)
-    [[nodiscard]] static QByteArray eciesDecrypt(const QByteArray& localPrivKey,
-                                                  const QByteArray& encryptedBlob);
-
-    // Генерация X25519 пары ключей (приватный + публичный, 32 байта каждый).
-    // Нужен GroupManager-у для создания эфемерных ключей группы.
-    [[nodiscard]] static bool generateX25519(QByteArray& priv, QByteArray& pub);
+    [[nodiscard]] static bool generateX25519(Bytes& priv, Bytes& pub);
 
 private:
-    [[nodiscard]] static QByteArray dh(const QByteArray& privKey, const QByteArray& peerPubKey);
-    [[nodiscard]] static QByteArray kdf(const QByteArray& ikm, const QByteArray& info);
+    [[nodiscard]] static Bytes dh(const Bytes& privKey, const Bytes& peerPubKey);
+    [[nodiscard]] static Bytes kdf(const Bytes& ikm, const Bytes& info);
 };

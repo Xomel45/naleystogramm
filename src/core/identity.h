@@ -1,15 +1,13 @@
 #pragma once
-#include <QString>
-#include <QUuid>
+#include <string>
 #include <optional>
+#include <cstdint>
 
-// C++20: поддержка designated initializers:
-//   PeerInfo{ .name = "Bob", .uuid = ..., .ip = "1.2.3.4", .port = 47821 }
 struct PeerInfo {
-    QString name;
-    QUuid   uuid;
-    QString ip;
-    quint16 port{0};
+    std::string name;
+    std::string uuid;
+    std::string ip;
+    uint16_t    port{0};
 
     [[nodiscard]] bool operator==(const PeerInfo& o) const noexcept {
         return uuid == o.uuid;
@@ -21,23 +19,22 @@ public:
     static Identity& instance();
 
     // Load from disk or generate on first launch
-    void        load();
-    void        save() const;
+    void load();
+    void save() const;
 
-    QUuid       uuid()        const { return m_uuid; }
-    QString     displayName() const { return m_name; }
-    void        setDisplayName(const QString& name);
+    [[nodiscard]] std::string uuid()        const { return m_uuid; }
+    [[nodiscard]] std::string displayName() const { return m_name; }
+    void setDisplayName(const std::string& name);
 
-    // "UUID@IP:Port" — share this with contacts (name is fetched automatically via HANDSHAKE)
-    QString     connectionString(const QString& externalIp, quint16 port) const;
+    // "UUID@IP:Port" — share this with contacts
+    [[nodiscard]] std::string connectionString(const std::string& externalIp, uint16_t port) const;
 
     // Parse a connection string received from a contact
-    // Returns nullopt if format is invalid
-    static std::optional<PeerInfo> parseConnectionString(const QString& str);
+    static std::optional<PeerInfo> parseConnectionString(const std::string& str);
 
 private:
     Identity() = default;
-    QString m_filePath;
-    QUuid   m_uuid;
-    QString m_name;
+    std::string m_filePath;
+    std::string m_uuid;
+    std::string m_name;
 };

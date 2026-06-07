@@ -7,6 +7,7 @@
 #include "../core/callmanager.h"
 #include "../core/remoteshellmanager.h"
 #include "../crypto/e2e.h"
+#include "../crypto/qt_bridge.h"
 #include "callwindow.h"
 #ifdef Q_OS_WIN
 #include "../platform/windowsfirewall.h"
@@ -33,6 +34,7 @@
 #include "../core/demomode.h"
 #include "../core/sessionmanager.h"
 #include "../core/logger.h"
+#include <QJsonDocument>
 #include <QTimer>
 #include <QSplitter>
 #include <QStyle>
@@ -306,7 +308,11 @@ MainWindow::MainWindow(App& app, QWidget* parent)
                       "Попробуйте подключиться с другого устройства чтобы убедиться\n"
                       "что порт реально открыт в роутере.").arg(port));
     });
-    connect(m_e2e,     &E2EManager::sessionEstablished,    this, &MainWindow::onSessionEstablished);
+    m_e2e->onSessionEstablished = [this](const std::string& id) {
+        QMetaObject::invokeMethod(this, [this, id]() {
+            onSessionEstablished(QUuid::fromString(QString::fromStdString(id)));
+        });
+    };
     connect(m_contacts, &ContactsWidget::contactSelected,  this, &MainWindow::onContactSelected);
 
     // Профиль контакта — кнопки в двух местах UI
@@ -334,8 +340,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
             this, [this](Theme) { applyTheme(); });
 
     // При переключении demo-mode обновляем всё что показывает наши данные
-    connect(&DemoMode::instance(), &DemoMode::toggled,
-            this, [this](bool) { refreshOwnDisplay(); });
+    m_demoToken = DemoMode::instance().subscribe([this](bool) { refreshOwnDisplay(); });
 
     m_network->init();
     m_contacts->setContacts(m_storage->allContacts());
@@ -392,7 +397,10 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     });
 }
 
-MainWindow::~MainWindow() { delete ui; }
+MainWindow::~MainWindow() {
+    DemoMode::instance().unsubscribe(m_demoToken);
+    delete ui;
+}
 
 void MainWindow::closeEvent(QCloseEvent* event) {
     if (m_tray && m_tray->isVisible()) {
@@ -457,7 +465,7 @@ void MainWindow::setupUi() {
     // Гамбургер → боковой ящик
     connect(m_hamburgerBtn, &QPushButton::clicked, this, [this]() {
         const QString name = Identity::instance().displayName();
-        const QString ownPath = SessionManager::instance().avatarPath();
+        const QString ownPath = QString::fromStdString(SessionManager::instance().avatarPath());
         QPixmap avatar((!ownPath.isEmpty() && QFile::exists(ownPath))
                        ? ownPath : ":/icons/not-avatar.png");
         m_sideDrawer->open(name, avatar);
@@ -513,7 +521,7 @@ void MainWindow::setupUi() {
         const int newOffset = m_chat->historyOffset() + 50;
         m_chat->setHistoryOffset(newOffset);
         const auto older = m_storage->getMessages(m_activePeer, 50, newOffset);
-        m_chat->prependHistory(older);  // сбрасывает m_loadingMore даже при пустом результате
+        m_chat->prependHistory(QList<Message>(older.begin(), older.end()));
     });
 
     // GroupChatWidget — добавляем рядом с m_chat в стек
@@ -587,7 +595,7 @@ void MainWindow::setupUi() {
 
     // Подключаем signals из ContactsWidget для групп
     connect(m_contacts, &ContactsWidget::joinGroupRequested, this, [this]() {
-        const QString myName = SessionManager::instance().displayName();
+        const QString myName = QString::fromStdString(SessionManager::instance().displayName());
         auto* dlg = new JoinGroupDialog(myName, this);
         if (dlg->exec() == QDialog::Accepted)
             m_groupManager->joinGroup(dlg->serverUrl(), dlg->username());
@@ -602,8 +610,8 @@ void MainWindow::setupUi() {
         m_groupChat->setConnected(m_contacts->isGroupConnected(gid));
 
         // Загружаем историю из БД
-        const auto hist = m_storage->getGroupMessages(gid, 50, 0);
-        m_groupChat->loadHistory(hist);
+        const auto histVec = m_storage->getGroupMessages(gid, 50, 0);
+        m_groupChat->loadHistory(QList<GroupMessage>(histVec.begin(), histVec.end()));
         m_contacts->clearGroupUnread(gid);
 
         // Переключить правую панель на группу
@@ -709,7 +717,7 @@ void MainWindow::closeSettings() {
 void MainWindow::loadOwnAvatar() {
     if (!m_myAvatar) return;
 
-    const QString ownPath = SessionManager::instance().avatarPath();
+    const QString ownPath = QString::fromStdString(SessionManager::instance().avatarPath());
     const QString path = (!ownPath.isEmpty() && QFile::exists(ownPath))
         ? ownPath
         : QStringLiteral(":/icons/not-avatar.png");
@@ -773,7 +781,7 @@ void MainWindow::applyTheme() {
 
 void MainWindow::updateStatusBar(const QString& ip, quint16 port, bool upnp) {
     auto& dm = DemoMode::instance();
-    const QString showIp   = dm.ip(ip.isEmpty() ? tr("Нет IP") : ip);
+    const QString showIp   = QString::fromStdString(dm.ip((ip.isEmpty() ? tr("Нет IP") : ip).toStdString()));
     const QString showPort = (dm.enabled() && port != 0)
         ? "00000"
         : (port == 0 ? "—" : QString::number(port));
@@ -793,7 +801,7 @@ void MainWindow::refreshOwnDisplay() {
     auto& dm = DemoMode::instance();
     auto& id = Identity::instance();
     if (m_nameLabel)
-        m_nameLabel->setText(dm.displayName(id.displayName()));
+        m_nameLabel->setText(QString::fromStdString(dm.displayName(id.displayName().toStdString())));
     updateStatusBar(m_lastIp, m_lastPort, m_lastUpnp);
 }
 
@@ -871,13 +879,15 @@ void MainWindow::onPeerConnected(QUuid uuid, QString name) {
 
     QJsonObject keyMsg;
     keyMsg["type"]   = "KEY_BUNDLE";
-    keyMsg["bundle"] = m_e2e->ourBundleJson();
+    keyMsg["bundle"] = bridge::toQJsonObj(m_e2e->ourBundleJson());
     m_network->sendJson(uuid, keyMsg);
 
     // Сохраняем системную информацию пира в БД — чтобы показывалась и когда пир офлайн
     const auto info    = m_network->getPeerInfo(uuid);
     if (!info.systemInfo.isEmpty()) {
-        if (!m_storage->updateContactSystemInfo(uuid, info.systemInfo))
+        const std::string infoJson = QString::fromUtf8(
+            QJsonDocument(info.systemInfo).toJson(QJsonDocument::Compact)).toStdString();
+        if (!m_storage->updateContactSystemInfo(uuid, infoJson))
             qWarning("[Main] Не удалось сохранить systemInfo для %s",
                      qPrintable(name));
     }
@@ -904,7 +914,7 @@ void MainWindow::onPeerDisconnected(QUuid uuid) {
     m_storage->updateLastSeen(uuid);
     m_contacts->setPeerOnline(uuid, false);
     // Перезагружаем контакты чтобы обновить lastSeen в списке
-    const QList<Contact> updated = m_storage->allContacts();
+    const auto updated = m_storage->allContacts();
     m_contacts->setContacts(updated);
     if (m_activePeer == uuid)
         m_chat->setPeerStatus(tr("offline"));
@@ -984,14 +994,14 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
     // decrypt() игнорирует поле type — поэтому можно безопасно переиспользовать
     // механизм E2E для любого outer type.
     if (type == "SHELL_DATA" || type == "SHELL_INPUT") {
-        const auto plain = m_e2e->decrypt(from, msg);
+        const auto plain = m_e2e->decrypt(bridge::fromQUuid(from), bridge::fromQJsonObj(msg));
         if (plain.has_value())
-            m_shellManager->handleDecryptedData(from, *plain);
+            m_shellManager->handleDecryptedData(from, bridge::toQBA(*plain));
         return;
     }
 
     if (type == "KEY_BUNDLE") {
-        if (!m_e2e->hasSession(from)) {
+        if (!m_e2e->hasSession(bridge::fromQUuid(from))) {
             // Детерминированное соглашение: инициирует тот, чей UUID меньше.
             // Это гарантирует что ровно одна сторона вызовет initiateSession
             // даже при одновременном взаимном подключении (= один initiator, один responder).
@@ -1000,7 +1010,9 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
             const QUuid ours = Identity::instance().uuid();
             if (ours < from) {
                 // Наш UUID меньше — мы инициируем X3DH-сессию
-                const QJsonObject initMsg = m_e2e->initiateSession(from, msg["bundle"].toObject());
+                const QJsonObject initMsg = bridge::toQJsonObj(
+                    m_e2e->initiateSession(bridge::fromQUuid(from),
+                                           bridge::fromQJsonObj(msg["bundle"].toObject())));
                 if (!initMsg.isEmpty()) m_network->sendJson(from, initMsg);
             }
             // Иначе — наш UUID больше, ждём KEY_INIT от пира (он инициатор)
@@ -1008,7 +1020,8 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         return;
     }
     if (type == "KEY_INIT") {
-        const QJsonObject reply = m_e2e->acceptSession(from, msg);
+        const QJsonObject reply = bridge::toQJsonObj(
+            m_e2e->acceptSession(bridge::fromQUuid(from), bridge::fromQJsonObj(msg)));
         if (!reply.isEmpty()) m_network->sendJson(from, reply);
         return;
     }
@@ -1023,7 +1036,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         }
 
         // Пир просит наш аватар — отправляем если он есть
-        const QString ownPath = SessionManager::instance().avatarPath();
+        const QString ownPath = QString::fromStdString(SessionManager::instance().avatarPath());
         if (ownPath.isEmpty() || !QFile::exists(ownPath)) return;
 
         QPixmap src(ownPath);
@@ -1039,8 +1052,8 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         scaled.save(&buf, "PNG");
         buf.close();
 
-        const QString hash = QString::fromLatin1(
-            SessionManager::computeAvatarHash(ownPath));
+        const QString hash = QString::fromStdString(
+            SessionManager::computeAvatarHash(ownPath.toStdString()));
 
         m_network->sendJson(from, QJsonObject{
             {"type", "AVATAR_DATA"},
@@ -1063,9 +1076,10 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         const QString text = msg["text"].toString();
         const QString msgId = msg["msg_id"].toString();
         if (toUuid.isNull() || text.isEmpty()) return;
-        if (!m_e2e->hasSession(toUuid)) return;
+        if (!m_e2e->hasSession(bridge::fromQUuid(toUuid))) return;
 
-        QJsonObject env = m_e2e->encrypt(toUuid, text.toUtf8());
+        QJsonObject env = bridge::toQJsonObj(
+            m_e2e->encrypt(bridge::fromQUuid(toUuid), bridge::fromQBA(text.toUtf8())));
         if (env.isEmpty()) return;
         env["msg_id"] = msgId.isEmpty()
             ? QUuid::createUuid().toString(QUuid::WithoutBraces) : msgId;
@@ -1154,7 +1168,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
             qDebug("[Main] Авто-добавлен неизвестный отправитель: %s", qPrintable(tmp.name));
         }
 
-        const auto plain = m_e2e->decrypt(from, msg);
+        const auto plain = m_e2e->decrypt(bridge::fromQUuid(from), bridge::fromQJsonObj(msg));
         if (!plain.has_value()) {
             // Ключи не совпадают — показываем системное сообщение вместо тихого падения
             qWarning("[Main] Ошибка расшифровки от %s",
@@ -1166,7 +1180,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
                     false, QDateTime::currentDateTime());
             return;
         }
-        const QString text = QString::fromUtf8(*plain);
+        const QString text = QString::fromUtf8(bridge::toQBA(*plain));
 
         // Отправляем ACK чтобы отправитель увидел иконку доставки
         const QString ackId = msg["msg_id"].toString();
@@ -1279,13 +1293,13 @@ void MainWindow::onContactSelected(QUuid uuid) {
     m_chat->openConversation(c.name, m_network->isOnline(uuid));
 
     // Предобработка истории: заменяем текст сообщений из будущих версий заглушкой
-    QList<Message> msgs = m_storage->getMessages(uuid, 50);
+    auto msgs = m_storage->getMessages(uuid, 50);
     const QString current = QLatin1String(UpdateChecker::kCurrentVersion);
     for (auto& msg : msgs) {
         if (!msg.isVoice && VersionUtils::isNewerThan(msg.versionCreated, current))
             msg.text = tr("[Сообщение из более новой версии — обновите приложение]");
     }
-    m_chat->loadHistory(msgs);
+    m_chat->loadHistory(QList<Message>(msgs.begin(), msgs.end()));
 
     // Передаём UUID для сигнала openProfileRequested (клик по аватару)
     m_chat->setPeerUuid(uuid);
@@ -1318,14 +1332,15 @@ void MainWindow::onSendMessage(const QString& text) {
         return;
     }
 
-    if (!m_e2e->hasSession(m_activePeer)) {
+    if (!m_e2e->hasSession(bridge::fromQUuid(m_activePeer))) {
         QMessageBox::warning(this, tr("E2E not ready"),
             tr("Encryption session is not established yet. Wait a moment."));
         return;
     }
 
     const QString msgId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    QJsonObject env = m_e2e->encrypt(m_activePeer, text.toUtf8());
+    QJsonObject env = bridge::toQJsonObj(
+        m_e2e->encrypt(bridge::fromQUuid(m_activePeer), bridge::fromQBA(text.toUtf8())));
     if (env.isEmpty()) return;
     env["msg_id"] = msgId;
     m_network->sendJson(m_activePeer, env);
@@ -1655,7 +1670,8 @@ void MainWindow::onOpenProfile(QUuid uuid) {
     dlg->setProperty("peerUuid", uuid);
 
     // Устанавливаем номер безопасности (Safety Number) если сессия уже установлена
-    dlg->setSafetyNumber(m_e2e->getSafetyNumber(uuid));
+    dlg->setSafetyNumber(QString::fromStdString(
+        m_e2e->getSafetyNumber(bridge::fromQUuid(uuid))));
 
     // Обновляем виджет когда пришла новая информация о пире
     connect(m_network, &NetworkManager::peerInfoUpdated,
@@ -1678,7 +1694,7 @@ void MainWindow::onOpenProfile(QUuid uuid) {
 
 // Кнопка ">_" нажата в диалоге профиля — проверяем E2E и запрашиваем шелл
 void MainWindow::onShellRequestedFromProfile(QUuid peerUuid) {
-    if (!m_e2e->hasSession(peerUuid)) {
+    if (!m_e2e->hasSession(bridge::fromQUuid(peerUuid))) {
         QMessageBox::warning(this, tr("Шелл недоступен"),
             tr("E2E-сессия с контактом ещё не установлена.\n"
                "Подождите несколько секунд и повторите."));

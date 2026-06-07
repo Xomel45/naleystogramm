@@ -1,19 +1,13 @@
 #pragma once
-#include <QByteArray>
+#include "bytes.h"
 #include <openssl/crypto.h>
 
 // Безопасное обнуление ключевого материала.
-//
-// Обычный QByteArray::clear() освобождает память, но не гарантирует
-// перезапись байт — данные могут остаться в куче и быть считаны через
-// memory-dump или swap. OPENSSL_cleanse() выполняет гарантированную
-// запись нулей, которую компилятор не оптимизирует.
-//
-// Использовать для всех долгоживущих приватных ключей (IK, SPK, OTPK).
+// OPENSSL_cleanse() выполняет гарантированную запись нулей,
+// которую компилятор не оптимизирует (в отличие от memset/fill).
 
-// Безопасно обнуляет содержимое QByteArray и очищает буфер.
-inline void secureZero(QByteArray& data) {
-    if (!data.isEmpty())
-        OPENSSL_cleanse(data.data(), static_cast<size_t>(data.size()));
+inline void secureZero(Bytes& data) {
+    if (!data.empty())
+        OPENSSL_cleanse(data.data(), data.size());
     data.clear();
 }

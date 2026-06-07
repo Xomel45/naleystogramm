@@ -1,128 +1,88 @@
 #pragma once
 #include "device_pairing.h"
-#include <QObject>
+#include <string>
+#include <vector>
 #include <optional>
-#include <QString>
-#include <QUuid>
-#include <QJsonObject>
-#include <QByteArray>
+#include <cstdint>
+#include <filesystem>
 
-class QTimer;
-
-// Уровень конфиденциальности — кто может совершать то или иное действие
+// Уровень конфиденциальности
 enum class PrivacyLevel : int {
-    Everyone     = 0,  // Все (любой пир)
-    ContactsOnly = 1,  // Только контакты (UUID есть в списке контактов)
-    Nobody       = 2,  // Никто (полный запрет)
+    Everyone     = 0,
+    ContactsOnly = 1,
+    Nobody       = 2,
 };
 
-// Режим проброса портов — определяет, как приложение рекламирует свой адрес пирам
+// Режим проброса портов
 enum class PortForwardingMode : int {
-    UpnpAuto     = 0,  // UPnP (автоматический, по умолчанию)
-    Manual       = 1,  // Ручной (VPN / статический IP + внешний порт)
-    Disabled     = 2,  // Отключено (только локальная сеть, без проброса)
-    ClientServer = 3,  // Ретрансляция через выделенный сервер (TCP+UDP relay)
-    OpenPort     = 4,  // Разблокированный порт (ручной проброс, IP авто-discovery)
+    UpnpAuto     = 0,
+    Manual       = 1,
+    Disabled     = 2,
+    ClientServer = 3,
+    OpenPort     = 4,
 };
 
-// ── SessionManager ─────────────────────────────────────────────────────────
-// Единое хранилище всех пользовательских настроек в session.json
-//
-// Путь:
-//   Windows : %LOCALAPPDATA%\naleystogramm\session.json
-//   Linux   : ~/.cache/naleystogramm/session.json
-//   macOS   : ~/Library/Caches/naleystogramm/session.json
-//
-// Формат файла:
-// {
-//   "identity": {
-//     "uuid": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-//     "name": "Xomel"
-//   },
-//   "network": {
-//     "port": 47821,
-//     "bindIp": ""
-//   },
-//   "ui": {
-//     "theme": "dark",
-//     "language": "ru",
-//     "demoMode": false
-//   },
-//   "updates": {
-//     "lastChecked": "2026-02-14T12:00:00"
-//   },
-//   "meta": {
-//     "version": "0.1.2",
-//     "savedAt": "2026-02-14T12:00:00"
-//   }
-// }
-
-class SessionManager : public QObject {
-    Q_OBJECT
+// ── SessionManager ─────────────────────────────────────────────────────────────
+class SessionManager {
 public:
     static SessionManager& instance();
 
-    // Загружает session.json, создаёт если нет
     void load();
-
-    // Сохраняет всё в session.json
     void save();
 
-    // Путь до файла (для отображения в UI)
-    [[nodiscard]] QString filePath() const { return m_filePath; }
+    [[nodiscard]] std::string filePath() const { return m_filePath; }
 
     // ── Identity ──────────────────────────────────────────────────────────
-    [[nodiscard]] QUuid   uuid()        const { return m_uuid; }
-    [[nodiscard]] QString displayName() const { return m_displayName; }
-    [[nodiscard]] QString bio()         const { return m_bio; }
-    [[nodiscard]] QString birthday()    const { return m_birthday; }
-    void setUuid(const QUuid& uuid);
-    void setDisplayName(const QString& name);
-    void setBio(const QString& b);
-    void setBirthday(const QString& d);
+    [[nodiscard]] std::string uuid()        const { return m_uuid; }
+    [[nodiscard]] std::string displayName() const { return m_displayName; }
+    [[nodiscard]] std::string bio()         const { return m_bio; }
+    [[nodiscard]] std::string birthday()    const { return m_birthday; }
+    void setUuid(const std::string& uuid);
+    void setDisplayName(const std::string& name);
+    void setBio(const std::string& b);
+    void setBirthday(const std::string& d);
 
     // ── Network ───────────────────────────────────────────────────────────
-    [[nodiscard]] quint16 port()        const { return m_port; }
-    [[nodiscard]] QString bindIp()      const { return m_bindIp; }
-    void setPort(quint16 port);
-    void setBindIp(const QString& ip);
+    [[nodiscard]] uint16_t    port()        const { return m_port; }
+    [[nodiscard]] std::string bindIp()      const { return m_bindIp; }
+    void setPort(uint16_t port);
+    void setBindIp(const std::string& ip);
 
     // ── UI ────────────────────────────────────────────────────────────────
-    [[nodiscard]] QString theme()          const { return m_theme; }
-    [[nodiscard]] QString language()       const { return m_language; }
-    [[nodiscard]] bool    demoMode()       const { return m_demoMode; }
-    [[nodiscard]] int     leftPanelWidth() const { return m_leftPanelWidth; }
-    void setTheme(const QString& theme);
-    void setLanguage(const QString& lang);
+    [[nodiscard]] std::string theme()          const { return m_theme; }
+    [[nodiscard]] std::string language()       const { return m_language; }
+    [[nodiscard]] bool        demoMode()       const { return m_demoMode; }
+    [[nodiscard]] int         leftPanelWidth() const { return m_leftPanelWidth; }
+    [[nodiscard]] bool        enterSends()     const { return m_enterSends; }
+    void setTheme(const std::string& theme);
+    void setLanguage(const std::string& lang);
     void setDemoMode(bool on);
     void setLeftPanelWidth(int w);
-    [[nodiscard]] bool    enterSends()      const { return m_enterSends; }
     void setEnterSends(bool on);
 
     // ── Updates ───────────────────────────────────────────────────────────
-    [[nodiscard]] QString lastUpdateCheck()    const { return m_lastUpdateCheck; }
-    [[nodiscard]] bool    autoCheckUpdates()   const { return m_autoCheckUpdates; }
-    void setLastUpdateCheck(const QString& iso);
+    [[nodiscard]] std::string lastUpdateCheck()  const { return m_lastUpdateCheck; }
+    [[nodiscard]] bool        autoCheckUpdates() const { return m_autoCheckUpdates; }
+    void setLastUpdateCheck(const std::string& iso);
     void setAutoCheckUpdates(bool on);
 
     // ── Port Forwarding ───────────────────────────────────────────────────
     [[nodiscard]] PortForwardingMode portForwardingMode() const { return m_portForwardingMode; }
-    [[nodiscard]] QString            manualPublicIp()     const { return m_manualPublicIp; }
-    [[nodiscard]] quint16            manualPublicPort()   const { return m_manualPublicPort; }
+    [[nodiscard]] std::string        manualPublicIp()     const { return m_manualPublicIp; }
+    [[nodiscard]] uint16_t           manualPublicPort()   const { return m_manualPublicPort; }
     void setPortForwardingMode(PortForwardingMode mode);
-    void setManualPublicIp(const QString& ip);
-    void setManualPublicPort(quint16 port);
+    void setManualPublicIp(const std::string& ip);
+    void setManualPublicPort(uint16_t port);
 
-    // ── Relay (Client-Server) ─────────────────────────────────────────────
-    [[nodiscard]] QString relayServerIp()  const { return m_relayServerIp; }
-    [[nodiscard]] quint16 relayTcpPort()   const { return m_relayTcpPort; }
-    [[nodiscard]] quint16 relayUdpPort()   const { return m_relayUdpPort; }
-    void setRelayServerIp(const QString& ip);
-    void setRelayTcpPort(quint16 port);
-    void setRelayUdpPort(quint16 port);
+    // ── Relay ─────────────────────────────────────────────────────────────
+    [[nodiscard]] std::string relayServerIp()  const { return m_relayServerIp; }
+    [[nodiscard]] uint16_t    relayTcpPort()   const { return m_relayTcpPort; }
+    [[nodiscard]] uint16_t    relayUdpPort()   const { return m_relayUdpPort; }
+    void setRelayServerIp(const std::string& ip);
+    void setRelayTcpPort(uint16_t port);
+    void setRelayUdpPort(uint16_t port);
 
     // ── Security ──────────────────────────────────────────────────────────
-    // Разрешить входящие запросы удалённого шелла (по умолчанию включено)
     [[nodiscard]] bool remoteShellEnabled() const { return m_remoteShellEnabled; }
     void setRemoteShellEnabled(bool on);
 
@@ -141,65 +101,64 @@ public:
     void setPrivacyShell   (PrivacyLevel v);
 
     // ── Avatar ────────────────────────────────────────────────────────────
-    [[nodiscard]] QString avatarPath() const { return m_avatarPath; }
-    void setAvatarPath(const QString& path);   // автосохранение
+    [[nodiscard]] std::string avatarPath() const { return m_avatarPath; }
+    void setAvatarPath(const std::string& path);
 
-    // SHA-256 hex файла; пустая строка если файл не читается
-    [[nodiscard]] static QByteArray computeAvatarHash(const QString& filePath);
+    // SHA-256 hex of file; empty if file is not readable
+    [[nodiscard]] static std::string computeAvatarHash(const std::string& filePath);
 
-    // Создаёт все необходимые директории для хранения данных приложения.
-    // Вызывается однократно при старте, до инициализации Storage и Logger.
+    // Create all required app directories (call once at startup before Logger/Storage/KeyProtector)
     static void ensureDirectories();
 
-signals:
-    void loaded();
-    void saved();
+    // ── Linked devices ────────────────────────────────────────────────────
+    [[nodiscard]] std::vector<LinkedDevice> linkedDevices() const { return m_linkedDevices; }
+    void addLinkedDevice(const LinkedDevice& dev);
+    void removeLinkedDevice(const std::string& uuid);
+    [[nodiscard]] bool isLinkedDevice(const std::string& uuid) const;
+    [[nodiscard]] std::optional<LinkedDevice> linkedDevice(const std::string& uuid) const;
 
 private:
-    explicit SessionManager(QObject* parent = nullptr);
+    SessionManager();
 
     void initFilePath();
-    [[nodiscard]] QJsonObject toJson() const;
-    void fromJson(const QJsonObject& obj);
     void generateIdentityIfNeeded();
     void scheduleSave();
 
-    QString m_filePath;
-    QTimer* m_saveTimer {nullptr};
+    std::string m_filePath;
 
     // Identity
-    QUuid   m_uuid;
-    QString m_displayName {"User"};
-    QString m_bio {};
-    QString m_birthday {};
+    std::string m_uuid;
+    std::string m_displayName {"User"};
+    std::string m_bio;
+    std::string m_birthday;
 
     // Network
-    quint16 m_port   {47821};
-    QString m_bindIp {};
+    uint16_t    m_port   {47821};
+    std::string m_bindIp;
 
     // UI
-    QString m_theme          {"dark"};
-    QString m_language       {"ru"};
-    bool    m_demoMode       {false};
-    int     m_leftPanelWidth {320};
-    bool    m_enterSends     {true};
+    std::string m_theme          {"dark"};
+    std::string m_language       {"ru"};
+    bool        m_demoMode       {false};
+    int         m_leftPanelWidth {320};
+    bool        m_enterSends     {true};
 
     // Updates
-    QString m_lastUpdateCheck   {};
-    bool    m_autoCheckUpdates  {true};
+    std::string m_lastUpdateCheck;
+    bool        m_autoCheckUpdates {true};
 
     // Port Forwarding
     PortForwardingMode m_portForwardingMode {PortForwardingMode::UpnpAuto};
-    QString            m_manualPublicIp     {};
-    quint16            m_manualPublicPort   {47821};
+    std::string        m_manualPublicIp;
+    uint16_t           m_manualPublicPort {47821};
 
-    // Relay (Client-Server)
-    QString m_relayServerIp  {};
-    quint16 m_relayTcpPort   {47822};
-    quint16 m_relayUdpPort   {47823};
+    // Relay
+    std::string m_relayServerIp;
+    uint16_t    m_relayTcpPort {47822};
+    uint16_t    m_relayUdpPort {47823};
 
     // Security
-    bool    m_remoteShellEnabled {false};
+    bool m_remoteShellEnabled {false};
 
     // Privacy
     PrivacyLevel m_privacyMessages {PrivacyLevel::Everyone};
@@ -210,15 +169,8 @@ private:
     PrivacyLevel m_privacyShell    {PrivacyLevel::ContactsOnly};
 
     // Avatar
-    QString m_avatarPath {};
+    std::string m_avatarPath;
 
-    // Linked devices (multi-device)
-    QList<LinkedDevice> m_linkedDevices {};
-
-public:
-    [[nodiscard]] QList<LinkedDevice> linkedDevices() const { return m_linkedDevices; }
-    void addLinkedDevice(const LinkedDevice& dev);
-    void removeLinkedDevice(const QUuid& uuid);
-    [[nodiscard]] bool isLinkedDevice(const QUuid& uuid) const;
-    [[nodiscard]] std::optional<LinkedDevice> linkedDevice(const QUuid& uuid) const;
+    // Linked devices
+    std::vector<LinkedDevice> m_linkedDevices;
 };

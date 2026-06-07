@@ -1,6 +1,7 @@
 #include "groupmanager.h"
 #include "storage.h"
 #include "../crypto/x3dh.h"
+#include "../crypto/qt_bridge.h"
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonDocument>
@@ -101,8 +102,8 @@ QString GroupManager::decryptGroupMsg(const QByteArray& key, const QString& base
 
 void GroupManager::joinGroup(const QString& serverUrl, const QString& username) {
     // Генерируем ephemeral X25519 keypair для этой группы
-    QByteArray privKey, pubKey;
-    if (!X3DH::generateX25519(privKey, pubKey)) {
+    Bytes privKeyB, pubKeyB;
+    if (!X3DH::generateX25519(privKeyB, pubKeyB)) {
         emit joinError(serverUrl, "keygen failed");
         return;
     }
@@ -114,9 +115,11 @@ void GroupManager::joinGroup(const QString& serverUrl, const QString& username) 
 
     const QJsonObject body {
         {"username", username},
-        {"pubkey",   QString::fromLatin1(pubKey.toBase64())}
+        {"pubkey",   QString::fromLatin1(bridge::toQBA(pubKeyB).toBase64())}
     };
 
+    const QByteArray privKey = bridge::toQBA(privKeyB);
+    const QByteArray pubKey  = bridge::toQBA(pubKeyB);
     QNetworkReply* reply = m_nam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
     connect(reply, &QNetworkReply::finished, this, [this, reply, serverUrl, username, privKey, pubKey]() {
         reply->deleteLater();
@@ -132,7 +135,8 @@ void GroupManager::joinGroup(const QString& serverUrl, const QString& username) 
 
         // ECIES расшифровка группового ключа
         const QByteArray encBlob = QByteArray::fromBase64(keyEncB64.toLatin1());
-        const QByteArray groupKey = X3DH::eciesDecrypt(privKey, encBlob);
+        const QByteArray groupKey = bridge::toQBA(
+            X3DH::eciesDecrypt(bridge::fromQBA(privKey), bridge::fromQBA(encBlob)));
         if (groupKey.size() != 32) {
             qWarning("[GroupManager] ECIES decrypt failed for group_key_enc");
             emit joinError(serverUrl, "key decryption failed");
@@ -148,17 +152,17 @@ void GroupManager::joinGroup(const QString& serverUrl, const QString& username) 
             const auto info = QJsonDocument::fromJson(infoReply->readAll()).object();
 
             Group g;
-            g.id           = serverUrl;
-            g.name         = info["name"].toString(serverUrl);
+            g.id           = serverUrl.toStdString();
+            g.name         = info["name"].toString(serverUrl).toStdString();
             g.type         = info["broadcast_only"].toBool() ? GroupType::Channel : GroupType::Group;
-            g.serverUrl    = serverUrl;
-            g.username     = username;
-            g.token        = token;
-            g.groupKey     = groupKey;
-            g.localPrivKey = privKey;
-            g.localPubKey  = pubKey;
+            g.serverUrl    = serverUrl.toStdString();
+            g.username     = username.toStdString();
+            g.token        = token.toStdString();
+            g.groupKey     = bridge::fromQBA(groupKey);
+            g.localPrivKey = bridge::fromQBA(privKey);
+            g.localPubKey  = bridge::fromQBA(pubKey);
             g.isAdmin      = (role == "owner" || role == "admin");
-            g.joinedAt     = QDateTime::currentDateTime();
+            g.joinedAt     = QDateTime::currentSecsSinceEpoch() * 1000LL;
 
             m_storage->saveGroup(g);
 
@@ -179,9 +183,9 @@ void GroupManager::leaveGroup(const QString& groupId) {
     const Group& g = it->info;
 
     // HTTP DELETE /group/leave
-    QUrl url(g.serverUrl + "/group/leave");
+    QUrl url(QString::fromStdString(g.serverUrl) + "/group/leave");
     QNetworkRequest req(url);
-    req.setRawHeader("Authorization", QByteArray("Bearer ") + g.token.toUtf8());
+    req.setRawHeader("Authorization", QByteArray("Bearer ") + QString::fromStdString(g.token).toUtf8());
     m_nam->deleteResource(req);
 
     if (it->ws) {
@@ -194,21 +198,22 @@ void GroupManager::leaveGroup(const QString& groupId) {
     }
     m_conns.erase(it);
 
-    m_storage->deleteGroup(groupId);
+    m_storage->deleteGroup(groupId.toStdString());
     emit groupLeft(groupId);
 }
 
 // ── Connect WS ───────────────────────────────────────────────────────────────
 
 void GroupManager::connectGroup(const Group& g) {
-    if (m_conns.contains(g.id) && m_conns[g.id].ws) {
-        m_conns[g.id].info = g;
+    const QString qid = QString::fromStdString(g.id);
+    if (m_conns.contains(qid) && m_conns[qid].ws) {
+        m_conns[qid].info = g;
     } else {
         Conn c;
         c.info = g;
-        m_conns[g.id] = std::move(c);
+        m_conns[qid] = std::move(c);
     }
-    openWs(g.id);
+    openWs(qid);
 }
 
 void GroupManager::openWs(const QString& groupId) {
@@ -219,9 +224,10 @@ void GroupManager::openWs(const QString& groupId) {
         c.ws = nullptr;
     }
 
-    const QString wsUrl = c.info.serverUrl.replace("http://", "ws://")
-                                           .replace("https://", "wss://")
-                          + "/group/ws?token=" + c.info.token;
+    const QString wsUrl = QString::fromStdString(c.info.serverUrl)
+                             .replace("http://", "ws://")
+                             .replace("https://", "wss://")
+                          + "/group/ws?token=" + QString::fromStdString(c.info.token);
 
     c.ws = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
 
@@ -283,7 +289,7 @@ void GroupManager::onWsTextMessage(const QString& groupId, const QString& raw) {
 
     auto it = m_conns.find(groupId);
     if (it == m_conns.end()) return;
-    const QByteArray& key = it->info.groupKey;
+    const QByteArray key = bridge::toQBA(it->info.groupKey);
 
     if (type == "history") {
         QList<GroupMessage> hist;
@@ -293,11 +299,11 @@ void GroupManager::onWsTextMessage(const QString& groupId, const QString& raw) {
             const QString decrypted = decryptGroupMsg(key, mo["data"].toString());
             if (decrypted.isEmpty()) continue;
             const QString sender = mo["sender"].toString();
-            const bool outgoing = (sender == it->info.username);
+            const bool outgoing = (sender.toStdString() == it->info.username);
             GroupMessage gm;
-            gm.groupId  = groupId;
-            gm.sender   = sender;
-            gm.text     = decrypted;
+            gm.groupId  = groupId.toStdString();
+            gm.sender   = sender.toStdString();
+            gm.text     = decrypted.toStdString();
             gm.ts       = mo["ts"].toInteger();
             gm.outgoing = outgoing;
             // Сохраняем если ещё нет в БД (история — нет дублей)
@@ -310,12 +316,12 @@ void GroupManager::onWsTextMessage(const QString& groupId, const QString& raw) {
         const QString sender    = obj["sender"].toString();
         const QString decrypted = decryptGroupMsg(key, obj["data"].toString());
         if (decrypted.isEmpty()) return;
-        const bool outgoing = (sender == it->info.username);
+        const bool outgoing = (sender.toStdString() == it->info.username);
 
         GroupMessage gm;
-        gm.groupId  = groupId;
-        gm.sender   = sender;
-        gm.text     = decrypted;
+        gm.groupId  = groupId.toStdString();
+        gm.sender   = sender.toStdString();
+        gm.text     = decrypted.toStdString();
         gm.ts       = obj["ts"].toInteger(QDateTime::currentSecsSinceEpoch());
         gm.outgoing = outgoing;
         m_storage->saveGroupMessage(gm);
@@ -335,7 +341,7 @@ bool GroupManager::sendMessage(const QString& groupId, const QString& text) {
     if (it == m_conns.end() || !it->ws) return false;
     if (it->ws->state() != QAbstractSocket::ConnectedState) return false;
 
-    const QString encrypted = encryptGroupMsg(it->info.groupKey, text);
+    const QString encrypted = encryptGroupMsg(bridge::toQBA(it->info.groupKey), text);
     if (encrypted.isEmpty()) return false;
 
     const QJsonObject frame { {"type", "msg"}, {"data", encrypted} };
@@ -348,10 +354,10 @@ bool GroupManager::sendMessage(const QString& groupId, const QString& text) {
 void GroupManager::loadSavedGroups() {
     const auto saved = m_storage->allGroups();
     for (const Group& g : saved) {
-        if (g.token.isEmpty() || g.groupKey.size() != 32) continue;
-        m_conns[g.id].info = g;
-        openWs(g.id);
-        qDebug("[GroupManager] Загружена группа %s", qPrintable(g.name));
+        if (g.token.empty() || g.groupKey.size() != 32) continue;
+        m_conns[QString::fromStdString(g.id)].info = g;
+        openWs(QString::fromStdString(g.id));
+        qDebug("[GroupManager] Загружена группа %s", g.name.c_str());
     }
 }
 

@@ -1,66 +1,38 @@
 #pragma once
-#include <QString>
-#include <QUuid>
-#include <QDateTime>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QList>
+#include <string>
+#include <cstdint>
+#include <nlohmann/json.hpp>
 
 // ── LinkedDevice ──────────────────────────────────────────────────────────────
-// Запись о привязанном устройстве (хранится в session.json).
-// На вторичном устройстве: isPrimary=true означает запись о главном.
-// На главном устройстве:   isPrimary=false для каждого вторичного.
-
 struct LinkedDevice {
-    QUuid   uuid      {};
-    QString name      {};
-    bool    isPrimary {false};
-    qint64  linkedAt  {0};     // Unix timestamp ms
+    std::string uuid;
+    std::string name;
+    bool        isPrimary{false};
+    int64_t     linkedAt{0};  // Unix timestamp ms
 
-    [[nodiscard]] QJsonObject toJson() const;
-    static LinkedDevice fromJson(const QJsonObject& obj);
+    [[nodiscard]] nlohmann::json toJson() const;
+    static LinkedDevice fromJson(const nlohmann::json& obj);
 };
 
 // ── DevicePairing ─────────────────────────────────────────────────────────────
-// Логика генерации и проверки 6-значного кода привязки.
-// Код действителен 60 секунд и одноразовый: после успешной проверки сбрасывается.
-
 class DevicePairing {
 public:
     static constexpr int kCodeLength  = 6;
     static constexpr int kCodeTtlSecs = 60;
 
-    // Генерирует новый 6-значный код (заменяет предыдущий).
-    // Вызывать на ГЛАВНОМ устройстве; показать пользователю.
-    [[nodiscard]] static QString generateCode();
-
-    // Возвращает активный код (пустой если не сгенерирован или истёк).
-    [[nodiscard]] static QString currentCode();
-
-    // Возвращает время истечения активного кода (invalid QDateTime если нет кода).
-    [[nodiscard]] static QDateTime codeExpiry();
-
-    // Проверяет код на ГЛАВНОМ устройстве.
-    // При совпадении — сбрасывает код (одноразовый). Возвращает true при успехе.
-    [[nodiscard]] static bool validateAndConsume(const QString& code);
-
-    // Явный сброс кода (например при отмене пользователем).
+    [[nodiscard]] static std::string generateCode();
+    [[nodiscard]] static std::string currentCode();
+    [[nodiscard]] static int64_t     codeExpiry();  // Unix timestamp ms (0 = no code)
+    [[nodiscard]] static bool        validateAndConsume(const std::string& code);
     static void clearCode();
 
-    // ── JSON helpers для сетевых фреймов ─────────────────────────────────────
-
-    // DEVICE_PAIR_REQUEST: вторичный → главный
-    [[nodiscard]] static QJsonObject makePairRequest(
-        const QUuid& ownUuid, const QString& ownName, const QString& code);
-
-    // DEVICE_PAIR_ACCEPT: главный → вторичный
-    [[nodiscard]] static QJsonObject makePairAccept(
-        const QUuid& ownUuid, const QString& ownName);
-
-    // DEVICE_PAIR_REJECT: главный → вторичный
-    [[nodiscard]] static QJsonObject makePairReject(const QString& reason);
+    [[nodiscard]] static nlohmann::json makePairRequest(
+        const std::string& ownUuid, const std::string& ownName, const std::string& code);
+    [[nodiscard]] static nlohmann::json makePairAccept(
+        const std::string& ownUuid, const std::string& ownName);
+    [[nodiscard]] static nlohmann::json makePairReject(const std::string& reason);
 
 private:
-    static QString   s_code;
-    static QDateTime s_expiry;
+    static std::string s_code;
+    static int64_t     s_expiry;  // Unix ms (0 = no active code)
 };

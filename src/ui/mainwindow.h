@@ -9,6 +9,7 @@
 #include <QSet>
 #include <QSystemTrayIcon>
 #include "../core/sessionmanager.h"  // нужен PrivacyLevel в сигнатуре checkPrivacy
+#include "../core/demomode.h"
 
 namespace Ui { class MainWindow; }
 
@@ -164,4 +165,6 @@ private:
     GroupChatWidget* m_groupChat    {nullptr};
     QStackedWidget*  m_rightStack   {nullptr};
     QString          m_activeGroup;  // groupId текущей открытой группы
+
+    DemoMode::Token  m_demoToken{0};
 };

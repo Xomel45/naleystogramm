@@ -1,52 +1,65 @@
 #include "device_pairing.h"
-#include <QRandomGenerator>
+#include <chrono>
+#include <cstdio>
+#include <openssl/rand.h>
 
-// ── Static storage ────────────────────────────────────────────────────────────
-QString   DevicePairing::s_code;
-QDateTime DevicePairing::s_expiry;
+std::string DevicePairing::s_code;
+int64_t     DevicePairing::s_expiry{0};
 
 // ── LinkedDevice ──────────────────────────────────────────────────────────────
 
-QJsonObject LinkedDevice::toJson() const {
-    return QJsonObject{
-        {"uuid",      uuid.toString(QUuid::WithoutBraces)},
+nlohmann::json LinkedDevice::toJson() const {
+    return {
+        {"uuid",      uuid},
         {"name",      name},
         {"isPrimary", isPrimary},
         {"linkedAt",  linkedAt},
     };
 }
 
-LinkedDevice LinkedDevice::fromJson(const QJsonObject& obj) {
+LinkedDevice LinkedDevice::fromJson(const nlohmann::json& obj) {
     LinkedDevice d;
-    d.uuid      = QUuid(obj["uuid"].toString());
-    d.name      = obj["name"].toString();
-    d.isPrimary = obj["isPrimary"].toBool(false);
-    d.linkedAt  = static_cast<qint64>(obj["linkedAt"].toDouble(0));
+    d.uuid      = obj.value("uuid",      std::string{});
+    d.name      = obj.value("name",      std::string{});
+    d.isPrimary = obj.value("isPrimary", false);
+    d.linkedAt  = obj.value("linkedAt",  int64_t{0});
     return d;
 }
 
 // ── DevicePairing ─────────────────────────────────────────────────────────────
 
-QString DevicePairing::generateCode() {
-    const quint32 n = QRandomGenerator::global()->bounded(1'000'000u);
-    s_code   = QString("%1").arg(n, kCodeLength, 10, QChar('0'));
-    s_expiry = QDateTime::currentDateTime().addSecs(kCodeTtlSecs);
+static int64_t nowMs() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+std::string DevicePairing::generateCode() {
+    // Rejection sampling: draw 4 random bytes, reduce mod 1 000 000.
+    // Bias < 295 / 4 294 967 296 ≈ 7e-8 — negligible for a 6-digit OTP.
+    uint32_t val = 0;
+    do {
+        RAND_bytes(reinterpret_cast<unsigned char*>(&val), 4);
+    } while (val >= 4000000000u);  // reject top ~6.7% to stay bias-free
+    char buf[8];
+    std::snprintf(buf, sizeof(buf), "%06u", val % 1000000u);
+    s_code   = buf;
+    s_expiry = nowMs() + static_cast<int64_t>(kCodeTtlSecs) * 1000LL;
     return s_code;
 }
 
-QString DevicePairing::currentCode() {
-    if (s_code.isEmpty()) return {};
-    if (QDateTime::currentDateTime() > s_expiry) { clearCode(); return {}; }
+std::string DevicePairing::currentCode() {
+    if (s_code.empty()) return {};
+    if (nowMs() > s_expiry) { clearCode(); return {}; }
     return s_code;
 }
 
-QDateTime DevicePairing::codeExpiry() {
+int64_t DevicePairing::codeExpiry() {
     return s_expiry;
 }
 
-bool DevicePairing::validateAndConsume(const QString& code) {
-    if (s_code.isEmpty()) return false;
-    if (QDateTime::currentDateTime() > s_expiry) { clearCode(); return false; }
+bool DevicePairing::validateAndConsume(const std::string& code) {
+    if (s_code.empty()) return false;
+    if (nowMs() > s_expiry) { clearCode(); return false; }
     if (code != s_code) return false;
     clearCode();
     return true;
@@ -54,35 +67,21 @@ bool DevicePairing::validateAndConsume(const QString& code) {
 
 void DevicePairing::clearCode() {
     s_code.clear();
-    s_expiry = QDateTime();
+    s_expiry = 0;
 }
 
-// ── Frame builders ────────────────────────────────────────────────────────────
-
-QJsonObject DevicePairing::makePairRequest(
-    const QUuid& ownUuid, const QString& ownName, const QString& code)
+nlohmann::json DevicePairing::makePairRequest(
+    const std::string& ownUuid, const std::string& ownName, const std::string& code)
 {
-    return QJsonObject{
-        {"type", "DEVICE_PAIR_REQUEST"},
-        {"uuid", ownUuid.toString(QUuid::WithoutBraces)},
-        {"name", ownName},
-        {"code", code},
-    };
+    return {{"type", "DEVICE_PAIR_REQUEST"}, {"uuid", ownUuid}, {"name", ownName}, {"code", code}};
 }
 
-QJsonObject DevicePairing::makePairAccept(
-    const QUuid& ownUuid, const QString& ownName)
+nlohmann::json DevicePairing::makePairAccept(
+    const std::string& ownUuid, const std::string& ownName)
 {
-    return QJsonObject{
-        {"type", "DEVICE_PAIR_ACCEPT"},
-        {"uuid", ownUuid.toString(QUuid::WithoutBraces)},
-        {"name", ownName},
-    };
+    return {{"type", "DEVICE_PAIR_ACCEPT"}, {"uuid", ownUuid}, {"name", ownName}};
 }
 
-QJsonObject DevicePairing::makePairReject(const QString& reason) {
-    return QJsonObject{
-        {"type",   "DEVICE_PAIR_REJECT"},
-        {"reason", reason},
-    };
+nlohmann::json DevicePairing::makePairReject(const std::string& reason) {
+    return {{"type", "DEVICE_PAIR_REJECT"}, {"reason", reason}};
 }

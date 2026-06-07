@@ -1,6 +1,7 @@
 #include "remoteshellmanager.h"
 #include "network.h"
 #include "../crypto/e2e.h"
+#include "../crypto/qt_bridge.h"
 #include <QProcess>
 #include <QTimer>
 #include <QRandomGenerator>
@@ -8,6 +9,14 @@
 #include <QJsonObject>
 #include <QFile>
 #include <QDebug>
+
+// Migration helpers — Phase 6 will migrate these call sites fully
+static inline std::string quid2s(const QUuid& u) {
+    return u.toString(QUuid::WithoutBraces).toStdString();
+}
+static inline void netSend(NetworkManager* net, const QUuid& u, const QJsonObject& o) {
+    net->sendFrame(quid2s(u), bridge::fromQJsonObj(o));
+}
 
 // ── Конструктор / деструктор ──────────────────────────────────────────────────
 
@@ -38,7 +47,7 @@ void RemoteShellManager::requestShell(const QUuid& peerUuid) {
     }
 
     const QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    const QString peerName  = m_net->getPeerInfo(peerUuid).name;
+    const QString peerName  = QString::fromStdString(m_net->getPeerInfo(quid2s(peerUuid)).name);
 
     SessionData sd;
     sd.role     = Role::Initiator;
@@ -46,7 +55,7 @@ void RemoteShellManager::requestShell(const QUuid& peerUuid) {
     sd.peerName = peerName;
     m_sessions.insert(sessionId, sd);
 
-    m_net->sendJson(peerUuid, QJsonObject{
+    netSend(m_net, peerUuid, QJsonObject{
         {"type",      "SHELL_REQUEST"},
         {"sessionId", sessionId},
     });
@@ -63,7 +72,7 @@ void RemoteShellManager::rejectRequest(const QString& sessionId,
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
-    m_net->sendJson(it->peerUuid, QJsonObject{
+    netSend(m_net, it->peerUuid, QJsonObject{
         {"type",      "SHELL_REJECT"},
         {"sessionId", sessionId},
         {"reason",    reason},
@@ -82,7 +91,7 @@ void RemoteShellManager::respondToChallenge(const QString& sessionId,
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end() || it->role != Role::Initiator) return;
 
-    m_net->sendJson(it->peerUuid, QJsonObject{
+    netSend(m_net, it->peerUuid, QJsonObject{
         {"type",      "SHELL_CHALLENGE_RESPONSE"},
         {"sessionId", sessionId},
         {"password",  password},
@@ -128,7 +137,7 @@ void RemoteShellManager::killSession(const QString& sessionId,
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
-    m_net->sendJson(it->peerUuid, QJsonObject{
+    netSend(m_net, it->peerUuid, QJsonObject{
         {"type",      "SHELL_KILL"},
         {"sessionId", sessionId},
         {"reason",    reason},
@@ -151,7 +160,7 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
         if (m_sessions.size() >= kMaxConcurrentSessions) {
             qWarning("[Shell] Входящий SHELL_REQUEST отклонён: занято (сессий=%zu)",
                      static_cast<std::size_t>(m_sessions.size()));
-            m_net->sendJson(from, QJsonObject{
+            netSend(m_net, from, QJsonObject{
                 {"type",      "SHELL_REJECT"},
                 {"sessionId", sessionId},
                 {"reason",    "busy"},
@@ -159,7 +168,7 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
             return;
         }
 
-        const QString peerName = m_net->getPeerInfo(from).name;
+        const QString peerName = QString::fromStdString(m_net->getPeerInfo(quid2s(from)).name);
         const QString otp      = generateOtp();
 
         SessionData sd;
@@ -170,7 +179,7 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
         m_sessions.insert(sessionId, sd);
 
         // Сообщаем инициатору что ждём ответа на OTP-запрос
-        m_net->sendJson(from, QJsonObject{
+        netSend(m_net, from, QJsonObject{
             {"type",      "SHELL_CHALLENGE"},
             {"sessionId", sessionId},
         });
@@ -204,7 +213,7 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
             qWarning("[Shell][SECURITY] Неверный OTP для сессии %s — шелл отклонён",
                      qPrintable(sessionId.left(8)));
 
-            m_net->sendJson(from, QJsonObject{
+            netSend(m_net, from, QJsonObject{
                 {"type",      "SHELL_REJECT"},
                 {"sessionId", sessionId},
                 {"reason",    "wrong_password"},
@@ -217,7 +226,7 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
         // Пароль верный — запускаем шелл и подтверждаем инициатору
         it->otp.clear(); // одноразовый: сразу обнуляем
 
-        m_net->sendJson(from, QJsonObject{
+        netSend(m_net, from, QJsonObject{
             {"type",      "SHELL_ACCEPT"},
             {"sessionId", sessionId},
         });
@@ -294,7 +303,7 @@ void RemoteShellManager::handleDecryptedData(const QUuid& from,
             qCritical("[Shell][SECURITY] ЭСКАЛАЦИЯ (получатель): сессия %s уничтожена",
                       qPrintable(sessionId.left(8)));
 
-            m_net->sendJson(from, QJsonObject{
+            netSend(m_net, from, QJsonObject{
                 {"type",      "SHELL_KILL"},
                 {"sessionId", sessionId},
                 {"reason",    "privilege_escalation"},
@@ -377,7 +386,7 @@ QString RemoteShellManager::generateOtp() {
 void RemoteShellManager::sendEncrypted(const QUuid& peerUuid,
                                         const QJsonObject& innerObj,
                                         const QString& outerType) {
-    if (!m_e2e->hasSession(peerUuid)) {
+    if (!m_e2e->hasSession(bridge::fromQUuid(peerUuid))) {
         qWarning("[Shell] Нет E2E-сессии для %s — данные шелла не отправлены",
                  qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)));
         return;
@@ -385,12 +394,13 @@ void RemoteShellManager::sendEncrypted(const QUuid& peerUuid,
 
     const QByteArray innerJson =
         QJsonDocument(innerObj).toJson(QJsonDocument::Compact);
-    QJsonObject env = m_e2e->encrypt(peerUuid, innerJson);
+    QJsonObject env = bridge::toQJsonObj(
+        m_e2e->encrypt(bridge::fromQUuid(peerUuid), bridge::fromQBA(innerJson)));
     if (env.isEmpty()) return;
 
     // decrypt() не использует поле type — подмена безопасна
     env["type"] = outerType;
-    m_net->sendJson(peerUuid, env);
+    netSend(m_net, peerUuid, env);
 }
 
 // ── Запуск шелл-процесса ──────────────────────────────────────────────────────
@@ -420,7 +430,7 @@ void RemoteShellManager::spawnProcess(const QString& sessionId) {
         qWarning("[Shell] Не удалось запустить шелл: %s",
                  qPrintable(proc->errorString()));
         proc->deleteLater();
-        m_net->sendJson(sd.peerUuid, QJsonObject{
+        netSend(m_net, sd.peerUuid, QJsonObject{
             {"type",      "SHELL_KILL"},
             {"sessionId", sessionId},
             {"reason",    "spawn_failed"},
@@ -457,7 +467,7 @@ void RemoteShellManager::spawnProcess(const QString& sessionId) {
         qDebug("[Shell] Шелл-процесс завершился, сессия=%s",
                qPrintable(sessionId.left(8)));
 
-        m_net->sendJson(peerUuid, QJsonObject{
+        netSend(m_net, peerUuid, QJsonObject{
             {"type",      "SHELL_KILL"},
             {"sessionId", sessionId},
             {"reason",    "process_exited"},

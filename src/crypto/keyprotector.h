@@ -1,44 +1,33 @@
 #pragma once
-#include <QByteArray>
-#include <QObject>
+#include "bytes.h"
+#include <filesystem>
 
 // ── KeyProtector — менеджер мастер-ключа ─────────────────────────────────────
 //
-// Отвечает за хранение и использование 32-байтного мастер-ключа.
-// Мастер-ключ генерируется случайно при первом запуске и сохраняется
-// в AppDataLocation/master.key с правами 0600 (только владелец).
+// Хранит 32-байтный мастер-ключ в <dataDir>/master.key (права 0600).
+// Используется для шифрования E2E-ключей на диске и деривации ключа SQLCipher.
 //
-// Используется:
-//   - Для шифрования файла приватных ключей E2E (keys/*.json)
-//   - Для получения ключа SQLCipher (deriveKey("db"))
-//
-// Формат зашифрованных данных (encrypt / decrypt):
-//   [12 байт nonce][16 байт GCM-tag][N байт ciphertext]
-//
-// Никогда не передаётся по сети и не сохраняется в открытом виде.
+// Формат зашифрованных данных: [12 байт nonce][16 байт GCM-tag][N байт ciphertext]
 
 class KeyProtector {
 public:
     static KeyProtector& instance();
 
     // Загрузить или сгенерировать мастер-ключ. Вызывать до всех остальных методов.
-    bool init();
+    bool init(const std::filesystem::path& dataDir);
 
-    // Проверить, инициализирован ли KeyProtector
-    [[nodiscard]] bool isReady() const noexcept { return !m_masterKey.isEmpty(); }
+    [[nodiscard]] bool isReady() const noexcept { return !m_masterKey.empty(); }
 
-    // Вывести дочерний 32-байтный ключ через HKDF-SHA256(masterKey, label)
-    [[nodiscard]] QByteArray deriveKey(const QByteArray& label, int bytes = 32) const;
+    // HKDF-SHA256(masterKey, label) → дочерний ключ длиной bytes
+    [[nodiscard]] Bytes deriveKey(const Bytes& label, int bytes = 32) const;
 
-    // Зашифровать произвольный блоб с AES-256-GCM
-    [[nodiscard]] QByteArray encrypt(const QByteArray& plaintext) const;
-
-    // Расшифровать блоб, созданный encrypt()
-    [[nodiscard]] QByteArray decrypt(const QByteArray& blob) const;
+    // AES-256-GCM шифрование / расшифровка
+    [[nodiscard]] Bytes encrypt(const Bytes& plaintext) const;
+    [[nodiscard]] Bytes decrypt(const Bytes& blob) const;
 
 private:
     KeyProtector()  = default;
     ~KeyProtector() = default;
 
-    QByteArray m_masterKey; // 32 случайных байта
+    Bytes m_masterKey; // 32 случайных байта
 };

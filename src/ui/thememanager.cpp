@@ -21,7 +21,7 @@ ThemeManager& ThemeManager::instance() {
 
 ThemeManager::ThemeManager() {
     // Читаем тему из session.json
-    const QString saved = SessionManager::instance().theme();
+    const QString saved = QString::fromStdString(SessionManager::instance().theme());
     if (saved.startsWith("custom:")) {
         // Пользовательская тема — пытаемся загрузить; при ошибке фоллбэк на Dark
         const QString folderName = saved.mid(7);
@@ -56,7 +56,7 @@ void ThemeManager::setTheme(Theme t) {
         case Theme::Legacy:    name = "legacy";                            break;
         case Theme::Custom:    name = "custom:" + m_customFolderName;      break;
     }
-    SessionManager::instance().setTheme(name);
+    SessionManager::instance().setTheme(name.toStdString());
     applyPalette();
     qApp->setStyleSheet(stylesheet());
     emit themeChanged(t);
@@ -100,7 +100,7 @@ void ThemeManager::applyPalette() {
 
 void ThemeManager::applyCustomTheme() {
     m_theme = Theme::Custom;
-    SessionManager::instance().setTheme("custom:" + m_customFolderName);
+    SessionManager::instance().setTheme(("custom:" + m_customFolderName).toStdString());
     qApp->setStyleSheet(stylesheet());
     emit themeChanged(Theme::Custom);
 }

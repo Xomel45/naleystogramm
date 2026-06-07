@@ -1,5 +1,4 @@
 #include "logpanel.h"
-#include "../core/logger.h"
 #include "thememanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -15,18 +14,28 @@
 LogPanel::LogPanel(QWidget* parent) : QWidget(parent) {
     setupUi();
 
-    // Подключаемся к Logger
-    connect(&Logger::instance(), &Logger::logEntry,
-            this, &LogPanel::appendEntry);
+    m_logToken = Logger::instance().subscribe([this](const LogEntry& e) {
+        QMetaObject::invokeMethod(this, [this, e]() {
+            appendEntry(e);
+        }, Qt::QueuedConnection);
+    });
 
-    connect(&Logger::instance(), &Logger::logCleared,
-            this, &LogPanel::clear);
+    m_clearToken = Logger::instance().subscribeClear([this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            clear();
+        }, Qt::QueuedConnection);
+    });
 
     // Загружаем последние записи из буфера
     const auto entries = Logger::instance().recentEntries(100);
     for (const auto& entry : entries) {
         appendEntry(entry);
     }
+}
+
+LogPanel::~LogPanel() {
+    Logger::instance().unsubscribe(m_logToken);
+    Logger::instance().unsubscribeClear(m_clearToken);
 }
 
 void LogPanel::setupUi() {

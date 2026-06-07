@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <memory>
 
 class StorageManager;
 class E2EManager;
@@ -26,10 +27,10 @@ public:
     [[nodiscard]] RemoteShellManager& shellManager();
 
 private:
-    StorageManager*     m_storage     {nullptr};
-    E2EManager*         m_e2e         {nullptr};
-    NetworkManager*     m_network     {nullptr};
-    FileTransfer*       m_fileTransfer{nullptr};
-    CallManager*        m_callManager {nullptr};
-    RemoteShellManager* m_shellManager{nullptr};
+    StorageManager*                m_storage     {nullptr};
+    std::unique_ptr<E2EManager>    m_e2e;
+    NetworkManager*                m_network     {nullptr};
+    FileTransfer*                  m_fileTransfer{nullptr};
+    CallManager*                   m_callManager {nullptr};
+    RemoteShellManager*            m_shellManager{nullptr};
 };

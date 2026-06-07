@@ -7,25 +7,44 @@
 #include "identity.h"
 #include "../crypto/e2e.h"
 #include "../crypto/keyprotector.h"
-#include <QDebug>
+#include <filesystem>
+#include <cstdlib>
+#include <cstdio>
+
+static std::filesystem::path appDataDir() {
+#ifdef _WIN32
+    const char* local = std::getenv("LOCALAPPDATA");
+    return std::filesystem::path(local ? local : "C:\\ProgramData") / "naleystogramm";
+#else
+    const char* xdg  = std::getenv("XDG_DATA_HOME");
+    const char* home = std::getenv("HOME");
+    std::string base = (xdg && *xdg) ? xdg
+        : (std::string(home ? home : "/tmp") + "/.local/share");
+    return std::filesystem::path(base) / "naleystogramm";
+#endif
+}
 
 App::App(QObject* parent) : QObject(parent) {
     auto& id = Identity::instance();
     id.load();
 
-    if (!KeyProtector::instance().init())
-        qCritical("[App] KeyProtector не инициализирован — данные будут незащищены");
+    const std::filesystem::path dataDir = appDataDir();
+    std::error_code ec;
+    std::filesystem::create_directories(dataDir, ec);
 
-    m_storage = new StorageManager(this);
+    if (!KeyProtector::instance().init(dataDir))
+        fprintf(stderr, "[App] KeyProtector не инициализирован — данные будут незащищены\n");
+
+    m_storage = new StorageManager();
     m_storage->open();
 
-    m_e2e = new E2EManager(this);
-    m_e2e->init(id.uuid());
+    m_e2e = std::make_unique<E2EManager>();
+    m_e2e->init(id.uuid(), dataDir);
 
-    m_network      = new NetworkManager(this);
-    m_fileTransfer = new FileTransfer(m_network, m_e2e, this);
-    m_callManager  = new CallManager(m_network, m_e2e, this);
-    m_shellManager = new RemoteShellManager(m_network, m_e2e, this);
+    m_network      = new NetworkManager();
+    m_fileTransfer = new FileTransfer(m_network, m_e2e.get(), this);
+    m_callManager  = new CallManager(m_network, m_e2e.get(), this);
+    m_shellManager = new RemoteShellManager(m_network, m_e2e.get(), this);
 }
 
 App::~App() = default;

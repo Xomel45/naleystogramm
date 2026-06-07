@@ -1,98 +1,72 @@
 #pragma once
-#include <QByteArray>
-#include <QMap>
-#include <QPair>
-#include <QString>
+#include "bytes.h"
+#include <cstdint>
+#include <map>
+#include <utility>
 #include <expected>
+#include <string>
 
-// Double Ratchet Algorithm (per-message E2E encryption)
+// Double Ratchet Algorithm (per-message E2E encryption).
 // After X3DH establishes a shared secret, Double Ratchet
 // provides forward secrecy and break-in recovery.
-//
-// Each message uses a unique key derived from the ratchet chain.
 
-// Максимальное количество хранимых ключей пропущенных сообщений.
-// Защищает от исчерпания памяти при получении сообщений сильно не по порядку.
-static constexpr quint32 kMaxSkippedKeys = 100;
+static constexpr uint32_t kMaxSkippedKeys = 100;
 
 struct RatchetState {
-    // Корневой ключ (32 байта)
-    QByteArray rootKey;
+    Bytes    rootKey;
+    Bytes    sendChainKey;
+    uint32_t sendMsgNum{0};
+    uint32_t prevSendMsgNum{0};
+    Bytes    recvChainKey;
+    uint32_t recvMsgNum{0};
+    Bytes    dhPriv;
+    Bytes    dhPub;
+    Bytes    peerDHPub;
 
-    // Цепочка отправки
-    QByteArray sendChainKey;
-    quint32    sendMsgNum{0};
-    quint32    prevSendMsgNum{0}; // кол-во сообщений, отправленных с предыдущим DH-ключом
-
-    // Цепочка приёма
-    QByteArray recvChainKey;
-    quint32    recvMsgNum{0};
-
-    // Наша пара DH-ключей
-    QByteArray dhPriv;
-    QByteArray dhPub;
-
-    // Текущий DH-публичный ключ собеседника
-    QByteArray peerDHPub;
-
-    // Кеш ключей пропущенных сообщений: {dhPub, msgNum} → msgKey.
-    // Позволяет расшифровать сообщения, доставленные не по порядку.
-    QMap<QPair<QByteArray, quint32>, QByteArray> skippedKeys;
+    // {dhPub, msgNum} → msgKey  (пропущенные сообщения)
+    std::map<std::pair<Bytes, uint32_t>, Bytes> skippedKeys;
 
     bool initialized{false};
 };
 
 struct RatchetMessage {
-    QByteArray dhPub;           // текущий DH-публичный ключ отправителя
-    quint32    msgNum{0};       // счётчик сообщений в текущей эпохе
-    quint32    prevChainLen{0}; // кол-во сообщений, отправленных с предыдущим DH-ключом
-    QByteArray ciphertext;      // зашифрованные данные (AES-256-GCM)
-    QByteArray nonce;           // GCM nonce (12 байт)
-    QByteArray tag;             // GCM тег аутентификации (16 байт)
+    Bytes    dhPub;
+    uint32_t msgNum{0};
+    uint32_t prevChainLen{0};
+    Bytes    ciphertext;
+    Bytes    nonce;
+    Bytes    tag;
 };
 
 class DoubleRatchet {
 public:
-    [[nodiscard]] static RatchetState initSender(
-        const QByteArray& sharedSecret,
-        const QByteArray& peerDHPub);
+    [[nodiscard]] static RatchetState initSender(const Bytes& sharedSecret,
+                                                  const Bytes& peerDHPub);
+    [[nodiscard]] static RatchetState initReceiver(const Bytes& sharedSecret,
+                                                    const Bytes& ourDHPriv,
+                                                    const Bytes& ourDHPub);
 
-    [[nodiscard]] static RatchetState initReceiver(
-        const QByteArray& sharedSecret,
-        const QByteArray& ourDHPriv,
-        const QByteArray& ourDHPub);
+    [[nodiscard]] static RatchetMessage                     encrypt(RatchetState& state,
+                                                                     const Bytes& plaintext);
+    [[nodiscard]] static std::expected<Bytes, std::string>  decrypt(RatchetState& state,
+                                                                     const RatchetMessage& msg);
 
-    [[nodiscard]] static RatchetMessage encrypt(RatchetState& state,
-                                                const QByteArray& plaintext);
-
-    [[nodiscard]] static std::expected<QByteArray, QString> decrypt(
-        RatchetState& state, const RatchetMessage& msg);
-
-    // HKDF-SHA256: публично доступен для деривации ключей вне Double Ratchet
-    // (например, для медиа-ключей голосовых звонков в E2EManager).
-    [[nodiscard]] static QByteArray hkdf2(const QByteArray& ikm,
-                                           const QByteArray& info,
-                                           int outLen = 64);
+    [[nodiscard]] static Bytes hkdf2(const Bytes& ikm, const Bytes& info, int outLen = 64);
 
 private:
-    [[nodiscard]] static QByteArray chainStep(QByteArray& chainKey);
-    [[nodiscard]] static std::expected<QByteArray, QString> dhRatchet(
-        RatchetState& state, const QByteArray& peerDHPub);
+    [[nodiscard]] static Bytes chainStep(Bytes& chainKey);
+    [[nodiscard]] static std::expected<Bytes, std::string> dhRatchet(
+        RatchetState& state, const Bytes& peerDHPub);
 
-    // Сохраняет ключи сообщений с номерами [msgNum, until) в skippedKeys.
-    // Продвигает chainKey и msgNum до until (или до достижения лимита).
-    static void skipChainKeys(RatchetState& state,
-                               QByteArray& chainKey,
-                               const QByteArray& dhPub,
-                               quint32& msgNum,
-                               quint32 until);
-    [[nodiscard]] static QByteArray aesgcmEncrypt(const QByteArray& key,
-                                                   const QByteArray& nonce,
-                                                   const QByteArray& plaintext,
-                                                   QByteArray& outTag);
-    [[nodiscard]] static std::expected<QByteArray, QString> aesgcmDecrypt(
-        const QByteArray& key, const QByteArray& nonce,
-        const QByteArray& ciphertext, const QByteArray& tag);
-    [[nodiscard]] static bool       generateX25519(QByteArray& priv, QByteArray& pub);
-    [[nodiscard]] static QByteArray dh(const QByteArray& priv, const QByteArray& pub);
+    static void skipChainKeys(RatchetState& state, Bytes& chainKey,
+                               const Bytes& dhPub, uint32_t& msgNum, uint32_t until);
+
+    [[nodiscard]] static Bytes aesgcmEncrypt(const Bytes& key, const Bytes& nonce,
+                                              const Bytes& plaintext, Bytes& outTag);
+    [[nodiscard]] static std::expected<Bytes, std::string> aesgcmDecrypt(
+        const Bytes& key, const Bytes& nonce,
+        const Bytes& ciphertext, const Bytes& tag);
+
+    [[nodiscard]] static bool  generateX25519(Bytes& priv, Bytes& pub);
+    [[nodiscard]] static Bytes dh(const Bytes& priv, const Bytes& pub);
 };

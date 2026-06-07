@@ -1,6 +1,6 @@
 #include "identity.h"
 #include "sessionmanager.h"
-#include <QDateTime>
+#include <chrono>
 #include <optional>
 
 Identity& Identity::instance() {
@@ -9,16 +9,14 @@ Identity& Identity::instance() {
 }
 
 void Identity::load() {
-    // SessionManager уже загружен в main() до создания окна.
-    // Просто берём данные оттуда.
     auto& sm = SessionManager::instance();
     m_uuid = sm.uuid();
     m_name = sm.displayName();
 
-    // На случай первого запуска (SessionManager уже сгенерировал uuid)
     if (m_name == "User") {
-        m_name = QString("User-%1")
-            .arg(QString::number(QDateTime::currentMSecsSinceEpoch()).right(4));
+        const auto epochMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        m_name = "User-" + std::to_string(epochMs % 10000);
         sm.setDisplayName(m_name);
     }
 }
@@ -29,40 +27,44 @@ void Identity::save() const {
     sm.setDisplayName(m_name);
 }
 
-void Identity::setDisplayName(const QString& name) {
-    m_name = name.trimmed();
+void Identity::setDisplayName(const std::string& name) {
+    const auto start = name.find_first_not_of(" \t\r\n");
+    const auto end   = name.find_last_not_of (" \t\r\n");
+    m_name = (start == std::string::npos) ? std::string{} : name.substr(start, end - start + 1);
     SessionManager::instance().setDisplayName(m_name);
 }
 
-QString Identity::connectionString(const QString& ip, quint16 port) const {
-    return QString("%1@%2:%3")
-        .arg(m_uuid.toString(QUuid::WithoutBraces))
-        .arg(ip)
-        .arg(port);
+std::string Identity::connectionString(const std::string& ip, uint16_t port) const {
+    return m_uuid + "@" + ip + ":" + std::to_string(port);
 }
 
-std::optional<PeerInfo> Identity::parseConnectionString(const QString& str) {
-    const QStringList parts = str.trimmed().split('@');
-    if (parts.size() != 2) return std::nullopt;
+std::optional<PeerInfo> Identity::parseConnectionString(const std::string& str) {
+    // format: "UUID@IP:Port"
+    const auto atPos = str.find('@');
+    if (atPos == std::string::npos) return std::nullopt;
 
-    const QUuid   uuid   = QUuid(parts[0].trimmed());
-    const QString ipPort = parts[1].trimmed();
+    const std::string uuid   = str.substr(0, atPos);
+    const std::string ipPort = str.substr(atPos + 1);
 
-    if (uuid.isNull()) return std::nullopt;
+    if (uuid.empty()) return std::nullopt;
 
-    const int colonIdx = ipPort.lastIndexOf(':');
-    if (colonIdx < 0) return std::nullopt;
+    const auto colonPos = ipPort.rfind(':');
+    if (colonPos == std::string::npos) return std::nullopt;
 
-    const QString ip   = ipPort.left(colonIdx);
-    const quint16 port = static_cast<quint16>(ipPort.mid(colonIdx + 1).toUInt());
+    const std::string ip      = ipPort.substr(0, colonPos);
+    const std::string portStr = ipPort.substr(colonPos + 1);
 
-    if (ip.isEmpty() || port == 0) return std::nullopt;
+    if (ip.empty() || portStr.empty()) return std::nullopt;
+
+    uint16_t port = 0;
+    try {
+        const int p = std::stoi(portStr);
+        if (p <= 0 || p > 65535) return std::nullopt;
+        port = static_cast<uint16_t>(p);
+    } catch (...) {
+        return std::nullopt;
+    }
 
     // Name is intentionally empty — filled automatically via HANDSHAKE after connect
-    return PeerInfo{
-        .name = QString(),
-        .uuid = uuid,
-        .ip   = ip,
-        .port = port,
-    };
+    return PeerInfo{ .name = {}, .uuid = uuid, .ip = ip, .port = port };
 }

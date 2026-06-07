@@ -135,7 +135,7 @@ int main(int argc, char* argv[]) {
     // ── Шаг 3: Загрузка перевода Qt базовых виджетов ─────────────────────
     splash->updateStatus(40, QObject::tr("Загрузка языкового пакета..."));
     splashDelay(60);
-    const QString lang = SessionManager::instance().language();
+    const QString lang = QString::fromStdString(SessionManager::instance().language());
     QTranslator qtTranslator;
     if (qtTranslator.load("qt_" + lang,
             QLibraryInfo::path(QLibraryInfo::TranslationsPath))) {

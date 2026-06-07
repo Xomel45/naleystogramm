@@ -30,7 +30,7 @@ SettingsInterfacePage::SettingsInterfacePage(QWidget* parent) : SettingsPageBase
     rebuildCustomThemeItems();
 
     {
-        const QString cur = SessionManager::instance().theme();
+        const QString cur = QString::fromStdString(SessionManager::instance().theme());
         const int idx = m_themeCombo->findData(cur.isEmpty() ? "dark" : cur);
         if (idx >= 0) m_themeCombo->setCurrentIndex(idx);
     }
@@ -126,11 +126,11 @@ SettingsInterfacePage::SettingsInterfacePage(QWidget* parent) : SettingsPageBase
 
 void SettingsInterfacePage::reload() {
     auto& sm = SessionManager::instance();
-    const int idx = m_langCombo->findData(sm.language());
+    const int idx = m_langCombo->findData(QString::fromStdString(sm.language()));
     if (idx >= 0) m_langCombo->setCurrentIndex(idx);
 
     rebuildCustomThemeItems();
-    const QString key = sm.theme().isEmpty() ? "dark" : sm.theme();
+    const QString key = sm.theme().empty() ? "dark" : QString::fromStdString(sm.theme());
     const int themeIdx = m_themeCombo->findData(key);
     if (themeIdx >= 0) m_themeCombo->setCurrentIndex(themeIdx);
     m_removeThemeBtn->setEnabled(key.startsWith("custom:"));
@@ -140,7 +140,7 @@ void SettingsInterfacePage::reload() {
 }
 
 bool SettingsInterfacePage::save() {
-    SessionManager::instance().setLanguage(m_langCombo->currentData().toString());
+    SessionManager::instance().setLanguage(m_langCombo->currentData().toString().toStdString());
     return true;
 }
 

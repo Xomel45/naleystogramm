@@ -2,67 +2,170 @@
 #include "identity.h"
 #include "versionutils.h"
 #include "device_pairing.h"
-#include <QCoreApplication>
-#include <QPointer>
-#include "upnp.h"
 #include "systeminfo.h"
 #include "sessionmanager.h"
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QNetworkInterface>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QHostAddress>
-#include <QTimer>
-#include <QRegularExpression>
-#include <QtMath>
+#include <nlohmann/json.hpp>
+#include <asio.hpp>
+#include <cmath>
+#include <ctime>
+#include <chrono>
+#include <algorithm>
+#include <random>
+#include <string>
+#include <memory>
+#include <functional>
+#include <future>
+#ifdef HAVE_CURL
+#  include <curl/curl.h>
+#endif
+#ifdef _WIN32
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  include <winsock2.h>
+#  include <iphlpapi.h>
+#else
+#  include <ifaddrs.h>
+#  include <net/if.h>
+#  include <netinet/in.h>
+#  include <arpa/inet.h>
+#endif
 
-NetworkManager::NetworkManager(QObject* parent)
-    : QObject(parent)
-    , m_server(new QTcpServer(this))
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+static int64_t currentEpochMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+static std::string generateUuid() {
+    static std::random_device rd;
+    static std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dist;
+    uint64_t hi = dist(gen);
+    uint64_t lo = dist(gen);
+    hi = (hi & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;  // version 4
+    lo = (lo & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;  // variant 10xx
+    char buf[37];
+    std::snprintf(buf, sizeof(buf),
+        "%08x-%04x-%04x-%04x-%012llx",
+        static_cast<uint32_t>(hi >> 32),
+        static_cast<uint16_t>(hi >> 16),
+        static_cast<uint16_t>(hi),
+        static_cast<uint16_t>(lo >> 48),
+        static_cast<unsigned long long>(lo & 0x0000FFFFFFFFFFFFULL));
+    return std::string(buf);
+}
+
+#ifdef HAVE_CURL
+static size_t curlWrite(void* ptr, size_t size, size_t nmemb, std::string* out) {
+    out->append(static_cast<char*>(ptr), size * nmemb);
+    return size * nmemb;
+}
+#endif
+
+static void writeFrame(asio::ip::tcp::socket& sock, const nlohmann::json& obj) {
+    const std::string data = obj.dump() + "\n";
+    std::error_code ec;
+    asio::write(sock, asio::buffer(data), ec);
+}
+
+static std::string sanitizeCtrl(const std::string& s, std::size_t maxLen = 256) {
+    std::string r;
+    r.reserve(std::min(s.size(), maxLen));
+    for (unsigned char c : s) {
+        if (r.size() >= maxLen) break;
+        if (c >= 0x20 && c != 0x7F) r.push_back(static_cast<char>(c));
+    }
+    // trim trailing spaces
+    while (!r.empty() && r.back() == ' ') r.pop_back();
+    return r;
+}
+
+// ── Constructor / Destructor ──────────────────────────────────────────────────
+
+NetworkManager::NetworkManager()
+    : m_work(std::make_unique<asio::executor_work_guard<asio::io_context::executor_type>>(
+          asio::make_work_guard(m_io)))
+    , m_acceptor(m_io)
 {
-    connect(m_server, &QTcpServer::newConnection,
-            this, &NetworkManager::onNewConnection);
+    m_ioThread = std::thread([this]() { m_io.run(); });
 }
 
 NetworkManager::~NetworkManager() {
-    // Останавливаем все таймеры и отключаем сокеты
-    for (auto& peer : m_peers) {
-        stopKeepalive(peer.uuid);
-        if (peer.reconnectTimer) {
-            peer.reconnectTimer->stop();
-            peer.reconnectTimer->deleteLater();
+    // Close acceptor from this thread; io_context handles the error gracefully
+    {
+        std::error_code ec;
+        m_acceptor.close(ec);
+    }
+
+    // Cancel timers and close sockets on io_context thread, then wait
+    std::promise<void> done;
+    auto fut = done.get_future();
+    asio::post(m_io, [this, &done]() mutable {
+        for (auto& [uuid, peer] : m_peers) {
+            if (peer.pingTimer)        peer.pingTimer->cancel();
+            if (peer.pongTimeoutTimer) peer.pongTimeoutTimer->cancel();
+            if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
         }
-        if (peer.socket) peer.socket->disconnectFromHost();
+        for (auto& [uuid, timer] : m_reconnectTimers) timer->cancel();
+        if (m_relayReconnectTimer) m_relayReconnectTimer->cancel();
+        if (m_upnpRefreshTimer)    m_upnpRefreshTimer->cancel();
+        if (m_relaySocket) { std::error_code ec; m_relaySocket->close(ec); }
+        done.set_value();
+    });
+    fut.wait();
+
+    m_work.reset();
+    if (m_ioThread.joinable()) m_ioThread.join();
+}
+
+// ── Listener API ──────────────────────────────────────────────────────────────
+
+NetworkManager::Token NetworkManager::addListener(NetworkEvent ev) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    Token t = m_nextToken++;
+    m_listeners.emplace_back(t, std::move(ev));
+    return t;
+}
+
+void NetworkManager::removeListener(Token t) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    m_listeners.erase(
+        std::remove_if(m_listeners.begin(), m_listeners.end(),
+                       [t](const auto& p){ return p.first == t; }),
+        m_listeners.end());
+}
+
+// ── Logging ───────────────────────────────────────────────────────────────────
+
+void NetworkManager::log(const std::string& message, bool forceVerbose) {
+    std::fprintf(stderr, "[Network] %s\n", message.c_str());
+    if (m_verboseLogging || forceVerbose) {
+        fire([&message](NetworkEvent& ev) {
+            if (ev.onLog) ev.onLog(message);
+        });
     }
 }
 
-// ── Логирование ──────────────────────────────────────────────────────────────
-
-void NetworkManager::log(const QString& message, bool forceVerbose) {
-    // Всегда логируем в qDebug
-    qDebug("[Network] %s", qPrintable(message));
-
-    // Эмитим сигнал только если включено подробное логирование или force
-    if (m_verboseLogging || forceVerbose)
-        emit connectionLog(message);
-}
-
 void NetworkManager::setVerboseLogging(bool enabled) {
-    m_verboseLogging = enabled;
-    log(QString("Verbose logging %1").arg(enabled ? "enabled" : "disabled"), true);
+    asio::post(m_io, [this, enabled]() {
+        m_verboseLogging = enabled;
+        log(std::string("Verbose logging ") + (enabled ? "enabled" : "disabled"), true);
+    });
 }
 
-ConnectionState NetworkManager::connectionState(const QUuid& uuid) const {
-    if (m_peers.contains(uuid))
-        return m_peers[uuid].state;
-    return ConnectionState::Disconnected;
+// ── Read-only getters (benign race — display only) ─────────────────────────────
+
+ConnectionState NetworkManager::connectionState(const std::string& uuid) const {
+    const auto it = m_peers.find(uuid);
+    return (it != m_peers.end()) ? it->second.state : ConnectionState::Disconnected;
 }
 
-PeerPublicInfo NetworkManager::getPeerInfo(const QUuid& uuid) const {
-    if (!m_peers.contains(uuid)) return {};
-    const auto& p = m_peers[uuid];
+PeerPublicInfo NetworkManager::getPeerInfo(const std::string& uuid) const {
+    const auto it = m_peers.find(uuid);
+    if (it == m_peers.end()) return {};
+    const auto& p = it->second;
     return PeerPublicInfo{
         .name           = p.name,
         .ip             = p.ip,
@@ -70,384 +173,556 @@ PeerPublicInfo NetworkManager::getPeerInfo(const QUuid& uuid) const {
         .state          = p.state,
         .latencyMs      = p.latencyMs,
         .connectedSince = p.connectedSince,
-        .systemInfo     = p.systemInfo,
+        .systemInfoJson = p.systemInfoJson,
         .avatarHash     = p.avatarHash,
         .birthday       = p.birthday,
     };
 }
 
-// ── Вспомогательная функция: лучший локальный LAN IP ─────────────────────
-// Используется в режиме Disabled для определения адреса объявляемого пирам.
-
-QString NetworkManager::detectLocalLanIp() {
-    static const QStringList kVpnPrefixes {
-        "tun", "tap", "wg", "utun", "ppp", "vpn", "veth", "docker", "virbr", "br-"
-    };
-    QString best192, best10, other;
-    for (const auto& iface : QNetworkInterface::allInterfaces()) {
-        if (iface.flags() & QNetworkInterface::IsLoopBack)   continue;
-        if (!(iface.flags() & QNetworkInterface::IsUp))      continue;
-        if (!(iface.flags() & QNetworkInterface::IsRunning)) continue;
-        const QString name = iface.name().toLower();
-        bool isVpn = false;
-        for (const auto& pfx : kVpnPrefixes)
-            if (name.startsWith(pfx)) { isVpn = true; break; }
-        if (isVpn) continue;
-        for (const auto& entry : iface.addressEntries()) {
-            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
-            const QString ip = entry.ip().toString();
-            if      (ip.startsWith("192.168.") && best192.isEmpty()) best192 = ip;
-            else if (ip.startsWith("10.")       && best10.isEmpty())  best10  = ip;
-            else if (other.isEmpty())                                  other   = ip;
-        }
-    }
-    return !best192.isEmpty() ? best192 : !best10.isEmpty() ? best10 : other;
+bool NetworkManager::isOnline(const std::string& uuid) const {
+    return m_peers.count(uuid) > 0;
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────
+// ── detectLocalLanIp ──────────────────────────────────────────────────────────
+
+std::string NetworkManager::detectLocalLanIp() {
+    static const std::vector<std::string> kVpnPfx {
+        "tun","tap","wg","utun","ppp","vpn","veth","docker","virbr","br-"
+    };
+    auto isVpn = [&](const std::string& name) {
+        for (const auto& p : kVpnPfx)
+            if (name.rfind(p, 0) == 0) return true;
+        return false;
+    };
+
+    std::string best192, best10, other;
+
+#ifdef _WIN32
+    ULONG bufLen = 16000;
+    auto buf = std::make_unique<char[]>(bufLen);
+    auto* pAddrs = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.get());
+    if (GetAdaptersAddresses(AF_INET,
+            GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST,
+            nullptr, pAddrs, &bufLen) != ERROR_SUCCESS)
+        return {};
+    for (auto* a = pAddrs; a; a = a->Next) {
+        if (a->OperStatus != IfOperStatusUp ||
+            a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+        char n[512] = {};
+        WideCharToMultiByte(CP_UTF8,0,a->FriendlyName,-1,n,sizeof(n),nullptr,nullptr);
+        std::string sname = n;
+        std::transform(sname.begin(), sname.end(), sname.begin(), ::tolower);
+        if (isVpn(sname)) continue;
+        for (auto* ua = a->FirstUnicastAddress; ua; ua = ua->Next) {
+            if (ua->Address.lpSockaddr->sa_family != AF_INET) continue;
+            char ipbuf[INET_ADDRSTRLEN];
+            const auto* sin = reinterpret_cast<sockaddr_in*>(ua->Address.lpSockaddr);
+            inet_ntop(AF_INET, &sin->sin_addr, ipbuf, sizeof(ipbuf));
+            const std::string ip = ipbuf;
+            if      (ip.rfind("192.168.",0)==0 && best192.empty()) best192 = ip;
+            else if (ip.rfind("10.",0)==0       && best10.empty())  best10  = ip;
+            else if (other.empty())                                   other   = ip;
+        }
+    }
+#else
+    struct ifaddrs* ifap = nullptr;
+    if (::getifaddrs(&ifap) != 0) return {};
+    for (auto* ifa = ifap; ifa; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+        if (!(ifa->ifa_flags & IFF_UP) || !(ifa->ifa_flags & IFF_RUNNING)) continue;
+        if (ifa->ifa_flags & IFF_LOOPBACK) continue;
+        const std::string sname = ifa->ifa_name ? ifa->ifa_name : "";
+        if (isVpn(sname)) continue;
+        char ipbuf[INET_ADDRSTRLEN];
+        const auto* sin = reinterpret_cast<const sockaddr_in*>(ifa->ifa_addr);
+        inet_ntop(AF_INET, &sin->sin_addr, ipbuf, sizeof(ipbuf));
+        const std::string ip = ipbuf;
+        if      (ip.rfind("192.168.",0)==0 && best192.empty()) best192 = ip;
+        else if (ip.rfind("10.",0)==0       && best10.empty())  best10  = ip;
+        else if (other.empty())                                   other   = ip;
+    }
+    ::freeifaddrs(ifap);
+#endif
+
+    return !best192.empty() ? best192 : !best10.empty() ? best10 : other;
+}
+
+// ── init / startServer / startAccept ─────────────────────────────────────────
 
 void NetworkManager::init() {
-    startServer();
-    // m_advertisedPort: по умолчанию совпадает с локальным портом;
-    // переопределяется в Manual-режиме или после успешного UPnP.
-    m_advertisedPort = m_localPort;
-
-    const auto mode = SessionManager::instance().portForwardingMode();
-
-    if (mode == PortForwardingMode::Manual) {
-        // Ручной режим: пользователь задал публичный IP и порт вручную.
-        // UPnP не запускаем, IP-discovery не делаем.
-        const QString manIp   = SessionManager::instance().manualPublicIp();
-        const quint16 manPort = SessionManager::instance().manualPublicPort();
-        m_externalIp     = manIp;
-        m_advertisedPort = (manPort > 0) ? manPort : m_localPort;
-        qDebug("[Network] Режим Manual: публичный адрес %s:%d",
-               qPrintable(m_externalIp), m_advertisedPort);
-        if (!m_externalIp.isEmpty())
-            emit externalIpDiscovered(m_externalIp);
-        emit ready(m_externalIp, m_advertisedPort, false);
-
-    } else if (mode == PortForwardingMode::Disabled) {
-        // Режим Disabled: используем локальный LAN IP, UPnP не запускаем.
-        m_externalIp     = detectLocalLanIp();
+    asio::post(m_io, [this]() {
+        startServer();
         m_advertisedPort = m_localPort;
-        qDebug("[Network] Режим Disabled: локальный адрес %s:%d",
-               qPrintable(m_externalIp), m_advertisedPort);
-        emit externalIpDiscovered(m_externalIp);
-        emit ready(m_externalIp, m_advertisedPort, false);
 
-    } else if (mode == PortForwardingMode::ClientServer) {
-        // Режим Client-Server: все пиры подключаются через ретрансляционный сервер.
-        m_externalIp     = QString();
-        m_advertisedPort = m_localPort;
-        qDebug("[Network] Режим Client-Server: подключаемся к ретранслятору");
-        connectToRelay();
-        emit ready(m_externalIp, m_advertisedPort, false);
+        const auto mode = SessionManager::instance().portForwardingMode();
 
-    } else if (mode == PortForwardingMode::OpenPort) {
-        // Режим OpenPort: пользователь вручную пробросил порт.
-        // IP определяем автоматически, UPnP не запускаем.
-        const quint16 manPort = SessionManager::instance().manualPublicPort();
-        m_advertisedPort = (manPort > 0) ? manPort : m_localPort;
-        qDebug("[Network] Режим OpenPort: анонсируем порт %d, ищем внешний IP", m_advertisedPort);
-        discoverExternalIp();
+        if (mode == PortForwardingMode::Manual) {
+            m_externalIp     = SessionManager::instance().manualPublicIp();
+            const uint16_t manPort = SessionManager::instance().manualPublicPort();
+            m_advertisedPort = (manPort > 0) ? manPort : m_localPort;
+            log("Режим Manual: " + m_externalIp + ":" + std::to_string(m_advertisedPort));
+            if (!m_externalIp.empty())
+                fire([this](NetworkEvent& ev){ if(ev.onExternalIp) ev.onExternalIp(m_externalIp); });
+            fire([this](NetworkEvent& ev){ if(ev.onReady) ev.onReady(m_externalIp, m_advertisedPort, false); });
 
-    } else {
-        // Режим UpnpAuto (по умолчанию): запускаем UPnP + discovery внешнего IP.
-        tryUpnp();
-        discoverExternalIp();
-    }
+        } else if (mode == PortForwardingMode::Disabled) {
+            m_externalIp     = detectLocalLanIp();
+            m_advertisedPort = m_localPort;
+            log("Режим Disabled: " + m_externalIp + ":" + std::to_string(m_advertisedPort));
+            fire([this](NetworkEvent& ev){ if(ev.onExternalIp) ev.onExternalIp(m_externalIp); });
+            fire([this](NetworkEvent& ev){ if(ev.onReady) ev.onReady(m_externalIp, m_advertisedPort, false); });
+
+        } else if (mode == PortForwardingMode::ClientServer) {
+            m_externalIp     = {};
+            m_advertisedPort = m_localPort;
+            log("Режим Client-Server: подключаемся к ретранслятору");
+            connectToRelay();
+            fire([this](NetworkEvent& ev){ if(ev.onReady) ev.onReady(m_externalIp, m_advertisedPort, false); });
+
+        } else if (mode == PortForwardingMode::OpenPort) {
+            const uint16_t manPort = SessionManager::instance().manualPublicPort();
+            m_advertisedPort = (manPort > 0) ? manPort : m_localPort;
+            log("Режим OpenPort: порт " + std::to_string(m_advertisedPort) + ", ищем внешний IP");
+            discoverExternalIp();
+
+        } else {
+            // UpnpAuto — default
+            tryUpnp();
+            discoverExternalIp();
+        }
+    });
 }
 
 void NetworkManager::startServer() {
-    const quint16 configuredPort = SessionManager::instance().port();
-    quint16 port = configuredPort;
-    while (!m_server->listen(QHostAddress::Any, port)) {
-        if (++port > configuredPort + 20) {
-            emit error("Cannot bind to any port near " +
-                       QString::number(configuredPort));
+    const uint16_t configured = SessionManager::instance().port();
+    uint16_t port = configured;
+    std::error_code ec;
+
+    while (true) {
+        m_acceptor.open(asio::ip::tcp::v4(), ec);
+        if (!ec) {
+            m_acceptor.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec);
+            m_acceptor.bind(asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port), ec);
+        }
+        if (!ec) { m_acceptor.listen(asio::socket_base::max_listen_connections, ec); }
+        if (!ec) break;
+
+        std::error_code closeEc;
+        m_acceptor.close(closeEc);
+        if (++port > configured + 20) {
+            fire([&](NetworkEvent& ev){
+                if (ev.onError) ev.onError("Cannot bind to any port near " + std::to_string(configured));
+            });
             return;
         }
     }
     m_localPort = port;
-    qDebug("[Network] Listening on port %d", port);
-    // UPnP запускается из init() с учётом выбранного режима
+    log("Listening on port " + std::to_string(port));
+    startAccept();
 }
+
+void NetworkManager::startAccept() {
+    auto sock = std::make_shared<asio::ip::tcp::socket>(m_io);
+    m_acceptor.async_accept(*sock, [this, sock](std::error_code ec) {
+        if (ec) return;
+        startAccept();
+
+        const std::string tempId = generateUuid();
+        m_pending[tempId] = PeerConnection{
+            .uuid   = tempId,
+            .ip     = sock->remote_endpoint().address().to_string(),
+            .socket = sock,
+        };
+        startAsyncRead(tempId, true);
+    });
+}
+
+// ── Асинхронное чтение ────────────────────────────────────────────────────────
+
+void NetworkManager::startAsyncRead(const std::string& peerId, bool isPending) {
+    PeerConnection* connPtr = nullptr;
+    if (isPending) {
+        auto it = m_pending.find(peerId);
+        if (it == m_pending.end()) return;
+        connPtr = &it->second;
+    } else {
+        auto it = m_peers.find(peerId);
+        if (it == m_peers.end()) return;
+        connPtr = &it->second;
+    }
+    if (!connPtr->socket) return;
+
+    auto sock     = connPtr->socket;
+    auto stageBuf = std::make_shared<std::array<char, 8192>>();
+
+    sock->async_read_some(asio::buffer(*stageBuf),
+        [this, peerId, isPending, sock, stageBuf](std::error_code ec, std::size_t n) {
+            if (ec) {
+                if (isPending) {
+                    m_pending.erase(peerId);
+                } else {
+                    handleDisconnect(peerId);
+                }
+                return;
+            }
+
+            PeerConnection* conn = nullptr;
+            if (isPending) {
+                auto it = m_pending.find(peerId);
+                if (it == m_pending.end()) return;
+                conn = &it->second;
+            } else {
+                auto it = m_peers.find(peerId);
+                if (it == m_peers.end()) return;
+                conn = &it->second;
+            }
+
+            if (static_cast<int>(conn->readBuf.size() + n) > kMaxBufferSize) {
+                log("DoS: буфер пира " + conn->ip + " превысил " +
+                    std::to_string(kMaxBufferSize / (1024*1024)) + " МБ — отключаем", true);
+                std::error_code closeEc;
+                sock->close(closeEc);
+                return;
+            }
+            conn->readBuf.append(stageBuf->data(), n);
+            tryParseFrames(*conn, isPending);
+
+            startAsyncRead(peerId, isPending);
+        });
+}
+
+// ── Разбор фреймов ────────────────────────────────────────────────────────────
+
+void NetworkManager::tryParseFrames(PeerConnection& conn, bool /*isPending*/) {
+    static constexpr int kMaxFrameSize = 1 * 1024 * 1024;
+
+    while (true) {
+        const auto nl = conn.readBuf.find('\n');
+        if (nl == std::string::npos) break;
+
+        const std::string rawFrame(conn.readBuf.data(), nl);
+        conn.readBuf.erase(0, nl + 1);
+
+        if (static_cast<int>(rawFrame.size()) > kMaxFrameSize) {
+            log("Большой фрейм " + std::to_string(rawFrame.size()) +
+                " байт от " + conn.ip + " — отброшен", true);
+            continue;
+        }
+
+        const auto doc = nlohmann::json::parse(rawFrame, nullptr, false);
+        if (!doc.is_discarded() && doc.is_object())
+            handleFrame(conn, doc);
+    }
+}
+
+// ── Отключение ────────────────────────────────────────────────────────────────
+
+void NetworkManager::handleDisconnect(const std::string& uuid) {
+    auto it = m_peers.find(uuid);
+    if (it == m_peers.end()) return;
+
+    const std::string name = it->second.name;
+    log("Disconnected from " + name, true);
+
+    stopKeepalive(uuid);
+
+    if (it->second.socket) {
+        std::error_code ec;
+        it->second.socket->close(ec);
+    }
+    m_peers.erase(it);
+
+    fire([&uuid](NetworkEvent& ev){ if(ev.onPeerDisconnected) ev.onPeerDisconnected(uuid); });
+    fire([&uuid](NetworkEvent& ev){ if(ev.onStateChanged) ev.onStateChanged(uuid, ConnectionState::Disconnected); });
+
+    if (m_reconnectInfo.count(uuid))
+        scheduleReconnect(uuid);
+}
+
+// ── Внешний IP ────────────────────────────────────────────────────────────────
 
 void NetworkManager::discoverExternalIp() {
-    auto* nam = new QNetworkAccessManager(this);
-    QNetworkRequest req(QUrl("https://api.ipify.org?format=json"));
-    req.setTransferTimeout(5000);
+#ifndef HAVE_CURL
+    fire([this](NetworkEvent& ev){ if(ev.onReady) ev.onReady(m_externalIp, m_advertisedPort, m_upnpMapped); });
+    return;
+#else
+    std::thread([this]() {
+        std::string body;
+        CURL* curl = curl_easy_init();
+        if (curl) {
+            curl_easy_setopt(curl, CURLOPT_URL,           "https://api.ipify.org?format=json");
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &body);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT,       5L);
+            curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+            curl_easy_perform(curl);
+            curl_easy_cleanup(curl);
+        }
 
-    auto* reply = nam->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam]() {
-        reply->deleteLater();
-        nam->deleteLater();
+        asio::post(m_io, [this, body]() {
+            const auto isValidIp = [](const std::string& s) {
+                if (s.empty()) return false;
+                // IPv6 minimal check
+                if (s.find(':') != std::string::npos) {
+                    for (char c : s)
+                        if (!std::isalnum(static_cast<unsigned char>(c)) && c != ':') return false;
+                    return true;
+                }
+                // IPv4
+                int parts = 0; int val = 0; bool inNum = false;
+                for (char c : s) {
+                    if (std::isdigit(static_cast<unsigned char>(c))) {
+                        val = val * 10 + (c - '0');
+                        inNum = true;
+                    } else if (c == '.' && inNum) {
+                        if (val > 255) return false;
+                        ++parts; val = 0; inNum = false;
+                    } else return false;
+                }
+                return inNum && parts == 3 && val <= 255;
+            };
 
-        if (reply->error() == QNetworkReply::NoError) {
-            const auto doc = QJsonDocument::fromJson(reply->readAll());
-            const QString ip = doc.object()["ip"].toString().trimmed();
+            const auto doc = nlohmann::json::parse(body, nullptr, false);
+            std::string ip;
+            if (!doc.is_discarded() && doc.is_object())
+                ip = doc.value("ip", std::string{});
 
-            // M-2: принимаем только корректные IPv4/IPv6 адреса.
-            // Regex: IPv4 — четыре октета по 1–3 цифры через точку;
-            //        IPv6 — шестнадцатеричные группы через двоеточие (включая сжатые формы).
-            static const QRegularExpression kIpv4(
-                QStringLiteral("^(\\d{1,3}\\.){3}\\d{1,3}$"));
-            static const QRegularExpression kIpv6(
-                QStringLiteral("^[0-9a-fA-F:]{2,39}$"));
+            // trim whitespace
+            const auto s = ip.find_first_not_of(" \t\r\n");
+            const auto e = ip.find_last_not_of(" \t\r\n");
+            if (s != std::string::npos) ip = ip.substr(s, e - s + 1);
 
-            if (!kIpv4.match(ip).hasMatch() && !kIpv6.match(ip).hasMatch()) {
-                qWarning("[Network] Получен невалидный внешний IP: '%s' — игнорируем",
-                         qPrintable(ip));
+            if (!isValidIp(ip)) {
+                log("Невалидный внешний IP: '" + ip + "'", true);
             } else {
                 m_externalIp = ip;
-                qDebug("[Network] External IP: %s", qPrintable(m_externalIp));
-                emit externalIpDiscovered(m_externalIp);
+                log("External IP: " + ip);
+                fire([this](NetworkEvent& ev){ if(ev.onExternalIp) ev.onExternalIp(m_externalIp); });
             }
-        } else {
-            qWarning("[Network] IP discovery failed: %s",
-                     qPrintable(reply->errorString()));
-        }
-        emit ready(m_externalIp, m_advertisedPort, m_upnpMapped);
-    });
+            fire([this](NetworkEvent& ev){ if(ev.onReady) ev.onReady(m_externalIp, m_advertisedPort, m_upnpMapped); });
+        });
+    }).detach();
+#endif
 }
+
+// ── UPnP ──────────────────────────────────────────────────────────────────────
 
 void NetworkManager::tryUpnp() {
-    qDebug("[Network] [UPnP] Запускаем UPnP маппинг порта %d...", m_localPort);
-    auto* upnp = new UpnpMapper(this);
-    connect(upnp, &UpnpMapper::mapped, this, [this, upnp](bool ok) {
-        m_upnpMapped = ok;
-        upnp->deleteLater();
-
-        if (ok) {
-            qDebug("[Network] [4/4 Result] UPnP маппинг УСПЕШЕН — "
-                   "порт %d доступен снаружи, внешний IP: %s",
-                   m_localPort, qPrintable(m_externalIp));
-        } else {
-            qWarning("[Network] [4/4 Result] UPnP маппинг ПРОВАЛИЛСЯ — "
-                     "порт %d НЕ доступен снаружи.\n"
-                     "  Альтернативы: ручной проброс порта в роутере (режим "
-                     "«Разблокированный порт») или режим «Ретранслятор».",
-                     m_localPort);
-        }
-
-        emit upnpMappingResult(ok);
-
-        // Перепробрасываем lease до его истечения. Запускаем таймер только
-        // при первом успешном маппинге; повторные tryUpnp() рестартуют его.
-        if (ok) {
-            if (!m_upnpRefreshTimer) {
-                m_upnpRefreshTimer = new QTimer(this);
-                connect(m_upnpRefreshTimer, &QTimer::timeout, this, [this]() {
-                    if (SessionManager::instance().portForwardingMode()
-                            != PortForwardingMode::UpnpAuto) return;
-                    qDebug("[Network] [UPnP] Refresh: обновляем lease (порт %d)",
-                           m_localPort);
-                    tryUpnp();
-                });
-            }
-            m_upnpRefreshTimer->start(kUpnpRefreshIntervalMs);
-            qDebug("[Network] [UPnP] Refresh-таймер запущен, следующее обновление "
-                   "через %d мс", kUpnpRefreshIntervalMs);
-        }
+    log("UPnP: запускаем маппинг порта " + std::to_string(m_localPort) + "...");
+    fire([this](NetworkEvent& ev) {
+        if (ev.onNeedUpnpMapping) ev.onNeedUpnpMapping(m_localPort);
     });
-    upnp->mapPort(m_localPort);
 }
 
-void NetworkManager::checkOpenPort() {
-    // Проверяем доступность m_advertisedPort через TCP self-connect к внешнему IP.
-    // Работает если роутер поддерживает hairpin NAT; при неудаче тоже эмитим сигнал.
-    if (m_externalIp.isEmpty() || m_advertisedPort == 0) {
-        emit openPortCheckResult(false);
-        return;
-    }
-    auto* sock = new QTcpSocket(this);
-    auto* timer = new QTimer(this);
-    timer->setSingleShot(true);
-    timer->setInterval(5000);
+void NetworkManager::notifyUpnpResult(bool ok) {
+    asio::post(m_io, [this, ok]() {
+        m_upnpMapped = ok;
+        if (ok) {
+            log("UPnP: маппинг успешен");
+            if (!m_upnpRefreshTimer)
+                m_upnpRefreshTimer = std::make_shared<asio::steady_timer>(m_io);
 
-    connect(sock, &QTcpSocket::connected, this, [this, sock, timer]() {
-        timer->stop();
-        sock->disconnectFromHost();
-        sock->deleteLater();
-        timer->deleteLater();
-        emit openPortCheckResult(true);
+            auto scheduleRefresh = std::make_shared<std::function<void()>>();
+            *scheduleRefresh = [this, scheduleRefresh]() {
+                m_upnpRefreshTimer->expires_after(std::chrono::milliseconds(kUpnpRefreshIntervalMs));
+                m_upnpRefreshTimer->async_wait([this, scheduleRefresh](std::error_code ec) {
+                    if (ec) return;
+                    if (SessionManager::instance().portForwardingMode() != PortForwardingMode::UpnpAuto) return;
+                    log("UPnP: refresh — повторный маппинг порта " + std::to_string(m_localPort));
+                    tryUpnp();
+                });
+            };
+            (*scheduleRefresh)();
+        } else {
+            log("UPnP: маппинг провалился");
+        }
+        fire([ok](NetworkEvent& ev){ if(ev.onUpnpResult) ev.onUpnpResult(ok); });
     });
-    connect(sock, &QTcpSocket::errorOccurred, this, [this, sock, timer](QAbstractSocket::SocketError) {
-        timer->stop();
-        sock->deleteLater();
-        timer->deleteLater();
-        emit openPortCheckResult(false);
-    });
-    connect(timer, &QTimer::timeout, this, [this, sock, timer]() {
-        sock->abort();
-        sock->deleteLater();
-        timer->deleteLater();
-        emit openPortCheckResult(false);
-    });
-
-    timer->start();
-    sock->connectToHost(m_externalIp, m_advertisedPort);
 }
 
 void NetworkManager::retryUpnp() {
-    const auto mode = SessionManager::instance().portForwardingMode();
-    if (mode != PortForwardingMode::UpnpAuto) {
-        qDebug("[Network] retryUpnp: пропускаем (режим=%d, нужен UpnpAuto=0)",
-               static_cast<int>(mode));
-        return;
-    }
-    qDebug("[Network] retryUpnp: запускаем повторный UPnP маппинг порта %d",
-           m_localPort);
-    m_upnpMapped = false;
-    tryUpnp();
+    asio::post(m_io, [this]() {
+        if (SessionManager::instance().portForwardingMode() != PortForwardingMode::UpnpAuto) {
+            log("retryUpnp: пропускаем (не UpnpAuto)");
+            return;
+        }
+        log("retryUpnp: повторный маппинг порта " + std::to_string(m_localPort));
+        m_upnpMapped = false;
+        tryUpnp();
+    });
 }
 
-// ── Ретранслятор (Client-Server) ─────────────────────────────────────────────
+void NetworkManager::checkOpenPort() {
+    asio::post(m_io, [this]() {
+        if (m_externalIp.empty() || m_advertisedPort == 0) {
+            fire([](NetworkEvent& ev){ if(ev.onOpenPortResult) ev.onOpenPortResult(false); });
+            return;
+        }
+        std::error_code ec;
+        const auto addr = asio::ip::make_address(m_externalIp, ec);
+        if (ec) {
+            fire([](NetworkEvent& ev){ if(ev.onOpenPortResult) ev.onOpenPortResult(false); });
+            return;
+        }
 
-void NetworkManager::connectToRelay() {
-    const QString relayIp  = SessionManager::instance().relayServerIp();
-    const quint16 relayTcp = SessionManager::instance().relayTcpPort();
+        auto sock  = std::make_shared<asio::ip::tcp::socket>(m_io);
+        auto timer = std::make_shared<asio::steady_timer>(m_io);
 
-    if (relayIp.isEmpty()) {
-        qWarning("[Network] Relay: IP сервера не задан — пропускаем подключение");
-        return;
-    }
-
-    if (m_relaySocket) {
-        // Отключаем сигналы до abort() — иначе disconnected эмитится синхронно
-        // и onRelayDisconnected() запустит reconnect-таймер, хотя мы уже переподключаемся.
-        m_relaySocket->disconnect(this);
-        m_relaySocket->abort();
-        m_relaySocket->deleteLater();
-    }
-
-    // Сбрасываем reconnect-таймер: мы уже в процессе переподключения
-    if (m_relayReconnectTimer)
-        m_relayReconnectTimer->stop();
-
-    m_relaySocket     = new QTcpSocket(this);
-    m_relayRegistered = false;
-
-    connect(m_relaySocket, &QTcpSocket::connected,
-            this, &NetworkManager::onRelayConnected);
-    connect(m_relaySocket, &QTcpSocket::readyRead,
-            this, &NetworkManager::onRelayReadyRead);
-    connect(m_relaySocket, &QTcpSocket::disconnected,
-            this, &NetworkManager::onRelayDisconnected);
-    // Захватываем указатель на конкретный сокет — не this->m_relaySocket,
-    // чтобы при замене сокета в следующем connectToRelay() читать правильный errorString.
-    connect(m_relaySocket, &QTcpSocket::errorOccurred, this,
-        [sock = m_relaySocket](QAbstractSocket::SocketError) {
-            qWarning("[Network] Relay socket error: %s",
-                     qPrintable(sock->errorString()));
+        timer->expires_after(std::chrono::seconds(5));
+        timer->async_wait([sock, timer](std::error_code) {
+            std::error_code ce; sock->cancel(ce);
         });
 
-    qDebug("[Network] Relay: подключаемся к %s:%d", qPrintable(relayIp), relayTcp);
-    m_relaySocket->connectToHost(relayIp, relayTcp);
+        const uint16_t port = m_advertisedPort;
+        sock->async_connect({addr, port},
+            [this, sock, timer](std::error_code ec) {
+                timer->cancel();
+                std::error_code ce; sock->close(ce);
+                const bool open = !ec;
+                fire([open](NetworkEvent& ev){ if(ev.onOpenPortResult) ev.onOpenPortResult(open); });
+            });
+    });
 }
 
-void NetworkManager::onRelayConnected() {
-    qDebug("[Network] Relay: подключились, отправляем RELAY_REGISTER");
-    const QJsonObject reg{
-        {"type", "RELAY_REGISTER"},
-        {"uuid", Identity::instance().uuid().toString(QUuid::WithoutBraces)},
-    };
-    m_relaySocket->write(QJsonDocument(reg).toJson(QJsonDocument::Compact) + '\n');
-}
+// ── Ретранслятор ──────────────────────────────────────────────────────────────
 
-void NetworkManager::onRelayReadyRead() {
-    const QByteArray incoming = m_relaySocket->readAll();
-    if (m_relayReadBuf.size() + incoming.size() > kMaxBufferSize) {
-        qWarning("[Network] Relay: буфер переполнен (%d МБ) — сбрасываем соединение",
-                 kMaxBufferSize / (1024 * 1024));
-        m_relayReadBuf.clear();
-        m_relaySocket->abort();
+void NetworkManager::connectToRelay() {
+    const std::string relayIp  = SessionManager::instance().relayServerIp();
+    const uint16_t    relayTcp = SessionManager::instance().relayTcpPort();
+
+    if (relayIp.empty()) {
+        log("Relay: IP сервера не задан");
         return;
     }
-    m_relayReadBuf += incoming;
-    int newline;
-    while ((newline = m_relayReadBuf.indexOf('\n')) != -1) {
-        const QByteArray frame = m_relayReadBuf.left(newline);
-        m_relayReadBuf = m_relayReadBuf.mid(newline + 1);
 
-        const auto doc = QJsonDocument::fromJson(frame);
-        if (doc.isNull()) continue;
-        const auto obj  = doc.object();
-        const QString t = obj["type"].toString();
+    if (m_relayReconnectTimer) m_relayReconnectTimer->cancel();
 
-        if (t == "RELAY_REGISTERED") {
-            m_relayRegistered = true;
-            qDebug("[Network] Relay: зарегистрированы на сервере");
-            emit relayConnected();
+    if (m_relaySocket) {
+        std::error_code ec; m_relaySocket->close(ec);
+    }
+    m_relaySocket     = std::make_shared<asio::ip::tcp::socket>(m_io);
+    m_relayReadBuf.clear();
+    m_relayRegistered = false;
 
-        } else if (t == "RELAY_MSG") {
-            const QUuid fromUuid = QUuid(obj["from"].toString());
-            const QJsonObject inner = obj["data"].toObject();
-            if (!fromUuid.isNull() && !inner.isEmpty())
-                handleRelayFrame(fromUuid, inner);
+    std::error_code ec;
+    const auto addr = asio::ip::make_address(relayIp, ec);
+    if (ec) { log("Relay: невалидный IP '" + relayIp + "'"); return; }
 
-        } else if (t == "RELAY_PEER_OFFLINE") {
-            const QUuid peerUuid = QUuid(obj["uuid"].toString());
-            qDebug("[Network] Relay: пир %s недоступен",
-                   qPrintable(peerUuid.toString(QUuid::WithoutBraces)));
-            if (m_peers.contains(peerUuid)) {
-                stopKeepalive(peerUuid);
-                m_relayPeers.remove(peerUuid);
-                m_peers.remove(peerUuid);
-                emit peerDisconnected(peerUuid);
-                emit connectionStateChanged(peerUuid, ConnectionState::Disconnected);
+    log("Relay: подключаемся к " + relayIp + ":" + std::to_string(relayTcp));
+
+    m_relaySocket->async_connect({addr, relayTcp},
+        [this](std::error_code ec) {
+            if (ec) {
+                log("Relay: ошибка подключения: " + ec.message());
+                if (!m_relayReconnectTimer)
+                    m_relayReconnectTimer = std::make_shared<asio::steady_timer>(m_io);
+                m_relayReconnectTimer->expires_after(std::chrono::seconds(5));
+                m_relayReconnectTimer->async_wait([this](std::error_code e) {
+                    if (!e) connectToRelay();
+                });
+                return;
+            }
+            nlohmann::json reg;
+            reg["type"] = "RELAY_REGISTER";
+            reg["uuid"] = Identity::instance().uuid();
+            writeFrame(*m_relaySocket, reg);
+            startRelayRead();
+        });
+}
+
+void NetworkManager::startRelayRead() {
+    if (!m_relaySocket || !m_relaySocket->is_open()) return;
+
+    auto sock     = m_relaySocket;
+    auto stageBuf = std::make_shared<std::array<char, 8192>>();
+
+    sock->async_read_some(asio::buffer(*stageBuf),
+        [this, sock, stageBuf](std::error_code ec, std::size_t n) {
+            if (ec) {
+                m_relayRegistered = false;
+                log("Relay: соединение разорвано: " + ec.message());
+                fire([](NetworkEvent& ev){ if(ev.onRelayDisconnected) ev.onRelayDisconnected(); });
+
+                if (!m_relayReconnectTimer)
+                    m_relayReconnectTimer = std::make_shared<asio::steady_timer>(m_io);
+                m_relayReconnectTimer->expires_after(std::chrono::seconds(5));
+                m_relayReconnectTimer->async_wait([this](std::error_code e) {
+                    if (!e) connectToRelay();
+                });
+                return;
             }
 
-        } else if (t == "RELAY_ERROR") {
-            qWarning("[Network] Relay error: %s", qPrintable(obj["msg"].toString()));
-        }
-    }
+            if (static_cast<int>(m_relayReadBuf.size() + n) > kMaxBufferSize) {
+                log("Relay: буфер переполнен — сбрасываем");
+                m_relayReadBuf.clear();
+                std::error_code ce; sock->close(ce);
+                return;
+            }
+            m_relayReadBuf.append(stageBuf->data(), n);
+
+            while (true) {
+                const auto nl = m_relayReadBuf.find('\n');
+                if (nl == std::string::npos) break;
+                const std::string rawFrame(m_relayReadBuf.data(), nl);
+                m_relayReadBuf.erase(0, nl + 1);
+
+                const auto obj = nlohmann::json::parse(rawFrame, nullptr, false);
+                if (obj.is_discarded() || !obj.is_object()) continue;
+
+                const std::string t = obj.value("type", std::string{});
+
+                if (t == "RELAY_REGISTERED") {
+                    m_relayRegistered = true;
+                    log("Relay: зарегистрированы");
+                    fire([](NetworkEvent& ev){ if(ev.onRelayConnected) ev.onRelayConnected(); });
+
+                } else if (t == "RELAY_MSG") {
+                    const std::string fromUuid = obj.value("from", std::string{});
+                    if (obj.contains("data") && obj["data"].is_object() && !fromUuid.empty())
+                        handleRelayFrame(fromUuid, obj["data"]);
+
+                } else if (t == "RELAY_PEER_OFFLINE") {
+                    const std::string peerUuid = obj.value("uuid", std::string{});
+                    log("Relay: пир " + peerUuid + " недоступен");
+                    if (m_peers.count(peerUuid)) {
+                        stopKeepalive(peerUuid);
+                        m_relayPeers.erase(peerUuid);
+                        m_peers.erase(peerUuid);
+                        fire([&peerUuid](NetworkEvent& ev){
+                            if(ev.onPeerDisconnected) ev.onPeerDisconnected(peerUuid);
+                            if(ev.onStateChanged)     ev.onStateChanged(peerUuid, ConnectionState::Disconnected);
+                        });
+                    }
+
+                } else if (t == "RELAY_ERROR") {
+                    log("Relay error: " + obj.value("msg", std::string{}));
+                }
+            }
+
+            startRelayRead();
+        });
 }
 
-void NetworkManager::onRelayDisconnected() {
-    m_relayRegistered = false;
-    qWarning("[Network] Relay: соединение с сервером разорвано");
-    emit relayDisconnected();
-
-    // Планируем переподключение через 5 секунд
-    if (!m_relayReconnectTimer) {
-        m_relayReconnectTimer = new QTimer(this);
-        m_relayReconnectTimer->setSingleShot(true);
-        connect(m_relayReconnectTimer, &QTimer::timeout,
-                this, &NetworkManager::connectToRelay);
-    }
-    m_relayReconnectTimer->start(5000);
-}
-
-void NetworkManager::sendViaRelay(const QUuid& targetUuid, const QJsonObject& obj) {
-    if (!m_relaySocket ||
-        m_relaySocket->state() != QAbstractSocket::ConnectedState ||
-        !m_relayRegistered)
-    {
-        qWarning("[Network] sendViaRelay: ретранслятор недоступен — [%s] отброшен",
-                 qPrintable(obj.value("type").toString("?")));
+void NetworkManager::sendViaRelay(const std::string& targetUuid, const nlohmann::json& obj) {
+    if (!m_relaySocket || !m_relaySocket->is_open() || !m_relayRegistered) {
+        log("sendViaRelay: ретранслятор недоступен — [" +
+            obj.value("type", "?") + "] отброшен", true);
         return;
     }
-    const QJsonObject wrapper{
-        {"type", "RELAY_MSG"},
-        {"to",   targetUuid.toString(QUuid::WithoutBraces)},
-        {"data", obj},
-    };
-    m_relaySocket->write(QJsonDocument(wrapper).toJson(QJsonDocument::Compact) + '\n');
-    log(QString("Relay: [%1] → %2")
-        .arg(obj.value("type").toString("?"),
-             targetUuid.toString(QUuid::WithoutBraces)));
+    nlohmann::json wrapper;
+    wrapper["type"] = "RELAY_MSG";
+    wrapper["to"]   = targetUuid;
+    wrapper["data"] = obj;
+    writeFrame(*m_relaySocket, wrapper);
+    log("Relay: [" + obj.value("type", "?") + "] → " + targetUuid);
 }
 
-void NetworkManager::handleRelayFrame(const QUuid& fromUuid, const QJsonObject& innerObj) {
-    // Уже известный активный пир (например ждём HANDSHAKE_ACK после нашего исходящего)
-    if (m_peers.contains(fromUuid)) {
+void NetworkManager::handleRelayFrame(const std::string& fromUuid, const nlohmann::json& innerObj) {
+    if (m_peers.count(fromUuid)) {
         handleFrame(m_peers[fromUuid], innerObj);
         return;
     }
-    // Входящий relay-пир: создаём pending-запись с его UUID как ключом
-    if (!m_pending.contains(fromUuid)) {
+    if (!m_pending.count(fromUuid)) {
         m_pending[fromUuid] = PeerConnection{
             .uuid   = fromUuid,
             .ip     = SessionManager::instance().relayServerIp(),
@@ -457,1156 +732,846 @@ void NetworkManager::handleRelayFrame(const QUuid& fromUuid, const QJsonObject& 
     handleFrame(m_pending[fromUuid], innerObj);
 }
 
-void NetworkManager::broadcastProfileUpdate(const QString& name) {
-    const QJsonObject msg{
-        {"type", "PROFILE_UPDATE"},
-        {"name", name},
-    };
-    for (const auto& peer : m_peers)
-        sendJson(peer.uuid, msg);
-    log(QString("PROFILE_UPDATE отправлен %1 пирам: \"%2\"")
-        .arg(m_peers.size()).arg(name), true);
+// ── Broadcast / profile ───────────────────────────────────────────────────────
+
+void NetworkManager::broadcastProfileUpdate(const std::string& name) {
+    asio::post(m_io, [this, name]() {
+        nlohmann::json msg;
+        msg["type"] = "PROFILE_UPDATE";
+        msg["name"] = name;
+        for (auto& [uuid, peer] : m_peers)
+            sendFrame(uuid, msg);
+        log("PROFILE_UPDATE → " + std::to_string(m_peers.size()) + " пирам: \"" + name + "\"", true);
+    });
 }
 
-// ── Исходящее подключение ──────────────────────────────────────────────────
+// ── Исходящее подключение ─────────────────────────────────────────────────────
 
 void NetworkManager::connectToPeer(const PeerInfo& peer) {
-    // Предотвращаем дублирующие подключения к одному UUID.
-    // Это критично при взаимных одновременных попытках подключения.
-    if (m_peers.contains(peer.uuid)) {
-        const auto st = m_peers[peer.uuid].state;
-        if (st == ConnectionState::Connected || st == ConnectionState::Connecting) {
-            log(QString("Уже подключены к %1 — пропускаем повторное подключение")
-                .arg(peer.name), true);
-            return;
+    asio::post(m_io, [this, peer]() {
+        auto it = m_peers.find(peer.uuid);
+        if (it != m_peers.end()) {
+            const auto st = it->second.state;
+            if (st == ConnectionState::Connected || st == ConnectionState::Connecting) {
+                log("Уже подключены к " + peer.name + " — пропускаем", true);
+                return;
+            }
         }
-    }
 
-    // ── Режим Client-Server: подключаемся через ретранслятор ─────────────
-    if (SessionManager::instance().portForwardingMode() == PortForwardingMode::ClientServer) {
-        m_reconnectInfo[peer.uuid] = PeerReconnectInfo{
-            .name = peer.name,
-            .ip   = peer.ip,
-            .port = peer.port,
-        };
-        m_peers[peer.uuid] = PeerConnection{
-            .uuid   = peer.uuid,
-            .name   = peer.name,
-            .ip     = peer.ip,
-            .port   = peer.port,
-            .socket = nullptr,
-            .state  = ConnectionState::Connecting,
-            .connectedSince = QDateTime::currentDateTime(),
-        };
-        m_relayPeers.insert(peer.uuid);
-        emit connectionStateChanged(peer.uuid, ConnectionState::Connecting);
-
-        if (m_relayRegistered) {
-            const auto& id = Identity::instance();
-            const QString ownAvatarPath = SessionManager::instance().avatarPath();
-            const QString ownAvatarHash = ownAvatarPath.isEmpty() ? QString()
-                : QString::fromLatin1(SessionManager::computeAvatarHash(ownAvatarPath));
-            const QJsonObject hs{
-                {"type",       "HANDSHAKE"},
-                {"uuid",       id.uuid().toString(QUuid::WithoutBraces)},
-                {"name",       id.displayName()},
-                {"port",       static_cast<int>(m_localPort)},
-                {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
-                {"avatarHash", ownAvatarHash},
-                {"birthday",   SessionManager::instance().birthday()},
-                {"version",    QCoreApplication::applicationVersion()},
+        // Relay-режим: сразу через ретранслятор
+        if (SessionManager::instance().portForwardingMode() == PortForwardingMode::ClientServer) {
+            m_reconnectInfo[peer.uuid] = { peer.name, peer.ip, peer.port };
+            m_peers[peer.uuid] = PeerConnection{
+                .uuid           = peer.uuid,
+                .name           = peer.name,
+                .ip             = peer.ip,
+                .port           = peer.port,
+                .socket         = nullptr,
+                .state          = ConnectionState::Connecting,
+                .connectedSince = currentEpochMs(),
             };
-            sendViaRelay(peer.uuid, hs);
-            log(QString("Relay: HANDSHAKE отправлен → %1").arg(peer.name));
-        } else {
-            qWarning("[Network] connectToPeer via relay: ретранслятор не подключён");
-        }
-        return;
-    }
+            m_relayPeers.insert(peer.uuid);
+            fire([&peer](NetworkEvent& ev){
+                if(ev.onStateChanged) ev.onStateChanged(peer.uuid, ConnectionState::Connecting);
+            });
 
-    log(QString("Connecting to %1 (%2:%3)...")
-        .arg(peer.name, peer.ip).arg(peer.port), true);
-
-    // Сохраняем информацию для возможного переподключения
-    m_reconnectInfo[peer.uuid] = PeerReconnectInfo{
-        .name = peer.name,
-        .ip   = peer.ip,
-        .port = peer.port
-    };
-
-    auto* socket = new QTcpSocket(this);
-
-    // Создаём таймер тайм-аута подключения
-    auto* timeoutTimer = new QTimer(this);
-    timeoutTimer->setSingleShot(true);
-
-    // QPointer: если таймер уже удалён (timeout сработал раньше) — errorOccurred
-    // не будет вызывать deleteLater на уже мёртвый объект.
-    QPointer<QTimer> timerGuard = timeoutTimer;
-
-    connect(timeoutTimer, &QTimer::timeout, this, [this, socket, peer, timerGuard]() {
-        log(QString("Connection timeout to %1").arg(peer.name), true);
-        socket->abort();
-        socket->deleteLater();
-        if (timerGuard) timerGuard->deleteLater();
-
-        // Планируем переподключение
-        scheduleReconnect(peer.uuid);
-    });
-
-    connect(socket, &QTcpSocket::connected, this, [this, socket, peer, timerGuard]() {
-        // Останавливаем таймер тайм-аута
-        if (timerGuard) { timerGuard->stop(); timerGuard->deleteLater(); }
-
-        // Повторная проверка: пока мы ждали TCP-connect, входящий сокет мог уже принять
-        // этот пир. Закрываем дублирующий исходящий сокет.
-        if (m_peers.contains(peer.uuid) &&
-            m_peers[peer.uuid].state == ConnectionState::Connected)
-        {
-            log(QString("Дублирующий исходящий сокет к %1 — уже подключены, закрываем")
-                .arg(peer.name), true);
-            socket->abort();
-            socket->deleteLater();
+            if (m_relayRegistered) {
+                const auto& id = Identity::instance();
+                const std::string avatarPath = SessionManager::instance().avatarPath();
+                const std::string avatarHash = avatarPath.empty() ? std::string{}
+                    : SessionManager::computeAvatarHash(avatarPath);
+                nlohmann::json hs;
+                hs["type"]       = "HANDSHAKE";
+                hs["uuid"]       = id.uuid();
+                hs["name"]       = id.displayName();
+                hs["port"]       = static_cast<int>(m_localPort);
+                hs["systemInfo"] = SystemInfo::instance().toJsonForHandshake(m_externalIp);
+                hs["avatarHash"] = avatarHash;
+                hs["birthday"]   = SessionManager::instance().birthday();
+                hs["version"]    = APP_VERSION;
+                sendViaRelay(peer.uuid, hs);
+                log("Relay: HANDSHAKE → " + peer.name);
+            } else {
+                log("connectToPeer via relay: ретранслятор не подключён");
+            }
             return;
         }
 
-        log(QString("Connected to %1 (%2:%3)")
-            .arg(peer.name, peer.ip).arg(peer.port), true);
+        log("Connecting to " + peer.name + " (" + peer.ip + ":" + std::to_string(peer.port) + ")...", true);
+        m_reconnectInfo[peer.uuid] = { peer.name, peer.ip, peer.port };
 
-        // Создаём запись пира с полным состоянием
-        m_peers[peer.uuid] = PeerConnection{
-            .uuid              = peer.uuid,
-            .name              = peer.name,
-            .ip                = peer.ip,
-            .port              = peer.port,
-            .socket            = socket,
-            .readBuf           = {},
-            .state             = ConnectionState::Connected,
-            .reconnectAttempts = 0,
-            .lastActivity      = QDateTime::currentDateTime(),
-            .connectedSince    = QDateTime::currentDateTime(),
-        };
-
-        // Сбрасываем счётчик переподключений при успешном подключении
-        resetReconnectState(peer.uuid);
-
-        connect(socket, &QTcpSocket::readyRead,
-                this, &NetworkManager::onSocketReadyRead);
-        connect(socket, &QTcpSocket::disconnected,
-                this, &NetworkManager::onSocketDisconnected);
-
-        sendClientHello(socket);
-        log(QString("CLIENT_HELLO отправлен → %1 (%2:%3)")
-            .arg(peer.name, peer.ip).arg(peer.port));
-
-        // Запускаем keepalive
-        startKeepalive(peer.uuid);
-
-        emit connectionStateChanged(peer.uuid, ConnectionState::Connected);
-    });
-
-    connect(socket, &QTcpSocket::errorOccurred, this,
-        [this, socket, peer, timerGuard](QAbstractSocket::SocketError err) {
-            Q_UNUSED(err);
-            if (timerGuard) { timerGuard->stop(); timerGuard->deleteLater(); }
-
-            log(QString("Ошибка подключения к %1: %2")
-                .arg(peer.name, socket->errorString()), true);
-
-            socket->deleteLater();
-
-            // Планируем переподключение с экспоненциальным откатом.
-            // ConnectionRefused тоже обрабатываем — сервер может быть временно недоступен.
+        std::error_code ec;
+        const auto addr = asio::ip::make_address(peer.ip, ec);
+        if (ec) {
             scheduleReconnect(peer.uuid);
+            return;
+        }
+
+        auto sock  = std::make_shared<asio::ip::tcp::socket>(m_io);
+        auto timer = std::make_shared<asio::steady_timer>(m_io);
+
+        fire([&peer](NetworkEvent& ev){
+            if(ev.onStateChanged) ev.onStateChanged(peer.uuid, ConnectionState::Connecting);
         });
 
-    // Обновляем состояние
-    emit connectionStateChanged(peer.uuid, ConnectionState::Connecting);
+        timer->expires_after(std::chrono::milliseconds(kConnectionTimeout));
+        timer->async_wait([this, sock, peer](std::error_code ec) {
+            if (ec) return;
+            log("Connection timeout to " + peer.name, true);
+            std::error_code ce; sock->cancel(ce);
+        });
 
-    // Запускаем таймер тайм-аута
-    timeoutTimer->start(kConnectionTimeout);
+        sock->async_connect({addr, peer.port},
+            [this, sock, timer, peer](std::error_code ec) {
+                timer->cancel();
 
-    socket->connectToHost(peer.ip, peer.port);
-}
+                if (ec) {
+                    if (ec != asio::error::operation_aborted)
+                        log("Ошибка подключения к " + peer.name + ": " + ec.message(), true);
+                    scheduleReconnect(peer.uuid);
+                    return;
+                }
 
-// ── Device pairing: outgoing connection from secondary ─────────────────────
+                // Дубликат: входящее сработало быстрее
+                auto existIt = m_peers.find(peer.uuid);
+                if (existIt != m_peers.end() &&
+                    existIt->second.state == ConnectionState::Connected) {
+                    log("Дублирующий исходящий сокет к " + peer.name + " — закрываем", true);
+                    std::error_code ce; sock->close(ce);
+                    return;
+                }
 
-void NetworkManager::connectToDevice(const QString& host, quint16 port, const QString& code) {
-    log(QString("Подключаемся к главному устройству %1:%2 для привязки...").arg(host).arg(port), true);
+                log("Connected to " + peer.name + " (" + peer.ip + ":" + std::to_string(peer.port) + ")", true);
 
-    auto* socket = new QTcpSocket(this);
-    const QUuid tempId = QUuid::createUuid();
+                m_peers[peer.uuid] = PeerConnection{
+                    .uuid           = peer.uuid,
+                    .name           = peer.name,
+                    .ip             = peer.ip,
+                    .port           = peer.port,
+                    .socket         = sock,
+                    .state          = ConnectionState::Connected,
+                    .lastActivity   = currentEpochMs(),
+                    .connectedSince = currentEpochMs(),
+                };
+                resetReconnectState(peer.uuid);
 
-    m_peers[tempId] = PeerConnection{
-        .uuid            = tempId,
-        .ip              = host,
-        .port            = port,
-        .socket          = socket,
-        .state           = ConnectionState::Connecting,
-        .connectedSince  = QDateTime::currentDateTime(),
-        .pendingPairCode = code,
-    };
+                sendClientHello(*sock);
+                log("CLIENT_HELLO → " + peer.name);
 
-    connect(socket, &QTcpSocket::connected, this, [this, socket, tempId, host, port]() {
-        if (!m_peers.contains(tempId)) return;
-        auto& conn = m_peers[tempId];
-        conn.state = ConnectionState::Connected;
-        conn.lastActivity = QDateTime::currentDateTime();
-
-        connect(socket, &QTcpSocket::readyRead, this, &NetworkManager::onSocketReadyRead);
-        connect(socket, &QTcpSocket::disconnected, this, &NetworkManager::onSocketDisconnected);
-
-        sendClientHello(socket);
-        log(QString("CLIENT_HELLO отправлен → главное устройство %1:%2").arg(host).arg(port));
+                startKeepalive(peer.uuid);
+                fire([&peer](NetworkEvent& ev){
+                    if(ev.onStateChanged) ev.onStateChanged(peer.uuid, ConnectionState::Connected);
+                });
+                startAsyncRead(peer.uuid, false);
+            });
     });
+}
 
-    connect(socket, &QTcpSocket::errorOccurred, this,
-            [this, socket, tempId](QAbstractSocket::SocketError) {
-        log(QString("Ошибка подключения к главному устройству: %1").arg(socket->errorString()), true);
-        emit error(tr("Не удалось подключиться к главному устройству: ") + socket->errorString());
-        m_peers.remove(tempId);
-        socket->deleteLater();
+// ── Device pairing: вторичный → главный ──────────────────────────────────────
+
+void NetworkManager::connectToDevice(const std::string& host, uint16_t port, const std::string& code) {
+    asio::post(m_io, [this, host, port, code]() {
+        log("Подключаемся к главному устройству " + host + ":" + std::to_string(port) + "...", true);
+
+        std::error_code ec;
+        const auto addr = asio::ip::make_address(host, ec);
+        if (ec) {
+            fire([&host](NetworkEvent& ev){
+                if (ev.onError) ev.onError("Невалидный адрес: " + host);
+            });
+            return;
+        }
+
+        auto sock   = std::make_shared<asio::ip::tcp::socket>(m_io);
+        const std::string tempId = generateUuid();
+
+        m_peers[tempId] = PeerConnection{
+            .uuid            = tempId,
+            .ip              = host,
+            .port            = port,
+            .socket          = sock,
+            .state           = ConnectionState::Connecting,
+            .connectedSince  = currentEpochMs(),
+            .pendingPairCode = code,
+        };
+
+        sock->async_connect({addr, port},
+            [this, sock, tempId, host, port](std::error_code ec) {
+                if (ec) {
+                    log("Ошибка подключения к главному устройству: " + ec.message(), true);
+                    fire([&ec](NetworkEvent& ev){
+                        if (ev.onError) ev.onError("Не удалось подключиться к главному устройству: " + ec.message());
+                    });
+                    m_peers.erase(tempId);
+                    return;
+                }
+                auto it = m_peers.find(tempId);
+                if (it == m_peers.end()) return;
+                auto& conn = it->second;
+                conn.state        = ConnectionState::Connected;
+                conn.lastActivity = currentEpochMs();
+
+                sendClientHello(*sock);
+                log("CLIENT_HELLO → главное устройство " + host + ":" + std::to_string(port));
+                startAsyncRead(tempId, false);
+            });
     });
-
-    socket->connectToHost(host, port);
 }
 
-// ── Multi-device relay helpers ─────────────────────────────────────────────
+// ── Multi-device relay helpers ────────────────────────────────────────────────
 
-void NetworkManager::relayToLinkedDevices(const QUuid& exceptUuid, const QJsonObject& frame) {
-    for (auto it = m_peers.cbegin(); it != m_peers.cend(); ++it) {
-        if (it.value().isLinkedDevice && it.key() != exceptUuid)
-            sendJson(it.key(), frame);
-    }
+void NetworkManager::relayToLinkedDevices(const std::string& exceptUuid, const nlohmann::json& frame) {
+    asio::post(m_io, [this, exceptUuid, frame]() {
+        for (auto& [uuid, peer] : m_peers)
+            if (peer.isLinkedDevice && uuid != exceptUuid)
+                sendFrame(uuid, frame);
+    });
 }
 
-QUuid NetworkManager::primaryDeviceUuid() const {
-    for (auto it = m_peers.cbegin(); it != m_peers.cend(); ++it) {
-        if (!it.value().isLinkedDevice) continue;
-        const auto dev = SessionManager::instance().linkedDevice(it.key());
+std::string NetworkManager::primaryDeviceUuid() const {
+    for (auto& [uuid, peer] : m_peers) {
+        if (!peer.isLinkedDevice) continue;
+        const auto dev = SessionManager::instance().linkedDevice(uuid);
         if (dev.has_value() && dev->isPrimary)
-            return it.key();
+            return uuid;
     }
     return {};
 }
 
-// ── Incoming connection ────────────────────────────────────────────────────
+// ── handleFrame ───────────────────────────────────────────────────────────────
 
-void NetworkManager::onNewConnection() {
-    while (m_server->hasPendingConnections()) {
-        auto* socket = m_server->nextPendingConnection();
-
-        const QUuid tempId = QUuid::createUuid();
-
-        // C++20: designated initializers
-        m_pending[tempId] = PeerConnection{
-            .uuid   = tempId,
-            .ip     = socket->peerAddress().toString(),
-            .socket = socket,
-        };
-
-        connect(socket, &QTcpSocket::readyRead, this,
-            [this, tempId]() {
-                if (!m_pending.contains(tempId)) return;
-                auto& conn = m_pending[tempId];
-                const QByteArray incoming = conn.socket->readAll();
-
-                // M-1: проверяем лимит ДО добавления в буфер — иначе уже переполнено
-                if (conn.readBuf.size() + incoming.size() > kMaxBufferSize) {
-                    log(QString("DoS-атака: pending буфер от %1 превысил %2 МБ — отключаем")
-                        .arg(conn.ip).arg(kMaxBufferSize / (1024 * 1024)), true);
-                    conn.socket->abort();
-                    return;
-                }
-                conn.readBuf += incoming;
-
-                tryParseFrames(conn, true /*isPending*/);
-            });
-
-        connect(socket, &QTcpSocket::disconnected, this, [this, tempId]() {
-            if (m_pending.contains(tempId)) {
-                m_pending[tempId].socket->deleteLater();
-                m_pending.remove(tempId);
-            }
-        });
-    }
-}
-
-// ── Frame parsing ──────────────────────────────────────────────────────────
-
-void NetworkManager::tryParseFrames(PeerConnection& conn, bool /*isPending*/) {
-    int newline;
-    while ((newline = conn.readBuf.indexOf('\n')) != -1) {
-        const QByteArray frame = conn.readBuf.left(newline);
-        conn.readBuf = conn.readBuf.mid(newline + 1);
-
-        // Защита от аномально больших JSON-фреймов ДО парсинга:
-        // avatarHash, systemInfo и прочие строки-данные не должны превышать 1 МБ.
-        // Настоящий злоумышленник может попытаться прислать 100 МБ в одном поле —
-        // QJsonDocument попробует разместить это в памяти до проверки типа.
-        static constexpr int kMaxFrameSize = 1 * 1024 * 1024; // 1 МБ
-        if (frame.size() > kMaxFrameSize) {
-            log(QString("Большой фрейм %1 байт от %2 — отброшен до парсинга")
-                .arg(frame.size()).arg(conn.ip), true);
-            continue;
-        }
-
-        if (const auto doc = QJsonDocument::fromJson(frame); !doc.isNull())
-            handleFrame(conn, doc.object());
-    }
-}
-
-// tryParseFrames is inlined in .cpp via lambda; let's do it properly:
-void NetworkManager::onSocketReadyRead() {
-    auto* socket = qobject_cast<QTcpSocket*>(sender());
-    if (!socket) return;
-
-    for (auto& peer : m_peers) {
-        if (peer.socket != socket) continue;
-
-        const QByteArray incoming = socket->readAll();
-
-        // M-1: проверяем лимит ДО добавления в буфер — иначе уже переполнено
-        if (peer.readBuf.size() + incoming.size() > kMaxBufferSize) {
-            log(QString("DoS-атака: буфер пира %1 превысил %2 МБ — отключаем")
-                .arg(peer.name).arg(kMaxBufferSize / (1024 * 1024)), true);
-            socket->abort();
-            return;
-        }
-        peer.readBuf += incoming;
-
-        tryParseFrames(peer, false);
-        break;
-    }
-}
-
-void NetworkManager::handleFrame(PeerConnection& peer, const QJsonObject& obj) {
-    // Rate limiting: скользящее окно 1 сек
-    if (!peer.rateWindow.isValid()) {
-        peer.rateWindow.start();
+void NetworkManager::handleFrame(PeerConnection& peer, const nlohmann::json& obj) {
+    // Rate limiting
+    const auto now = std::chrono::steady_clock::now();
+    if (!peer.rateWindowValid) {
+        peer.rateWindowStart = now;
+        peer.rateWindowValid = true;
         peer.rateCount = 0;
-    } else if (peer.rateWindow.elapsed() >= 1000) {
-        peer.rateWindow.restart();
+    } else if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                   now - peer.rateWindowStart).count() >= 1000) {
+        peer.rateWindowStart = now;
         peer.rateCount = 0;
     }
     if (++peer.rateCount > kMaxFramesPerSecond) {
-        log(QString("Rate limit: %1 превысил %2 фреймов/сек — разрываем соединение")
-                .arg(peer.name.isEmpty() ? peer.ip : peer.name)
-                .arg(kMaxFramesPerSecond), true);
-        peer.socket->abort();
+        const std::string tag = peer.name.empty() ? peer.ip : peer.name;
+        log("Rate limit: " + tag + " превысил " + std::to_string(kMaxFramesPerSecond) + " фреймов/сек — разрываем", true);
+        if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
         return;
     }
 
-    const QString type = obj["type"].toString();
-
-    // Обновляем время последней активности
-    peer.lastActivity = QDateTime::currentDateTime();
-
-    // ── Общий regex для фильтрации управляющих символов (переиспользуется ниже) ───
-    static const QRegularExpression kCtrlCharsHello(QStringLiteral("[\\x00-\\x1F\\x7F]"));
+    const std::string type = obj.value("type", std::string{});
+    peer.lastActivity = currentEpochMs();
 
     if (type == "CLIENT_HELLO") {
-        const QString peerVersion = obj["version"].toString();
-        const QString peerName    = obj["name"].toString()
-                                        .left(256)
-                                        .remove(kCtrlCharsHello)
-                                        .trimmed();
+        const std::string peerVersion = obj.value("version", std::string{});
+        const std::string peerName    = sanitizeCtrl(obj.value("name", std::string{}));
+        log("CLIENT_HELLO от " + peer.ip + ": «" + peerName + "», версия " + peerVersion, true);
 
-        log(QString("CLIENT_HELLO от %1: имя «%2», версия %3")
-                .arg(peer.ip, peerName.isEmpty() ? QStringLiteral("?") : peerName,
-                     peerVersion.isEmpty() ? QStringLiteral("?") : peerVersion), true);
-
-        peer.helloName        = peerName;
-        peer.helloVersion     = peerVersion;
-        peer.isLinkedDevice   = (obj["role"].toString() == "DEVICE");
-
-        if (peer.isLinkedDevice)
-            log(QString("CLIENT_HELLO от %1 «%2»: роль DEVICE (привязанный девайс)")
-                    .arg(peer.ip, peerName));
+        peer.helloName      = peerName;
+        peer.helloVersion   = peerVersion;
+        peer.isLinkedDevice = (obj.value("role", std::string{}) == "DEVICE");
 
         if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
-            log(QString("CLIENT_HELLO отклонён от %1: версия %2 < минимальной %3 — "
-                        "отправляем VERSION_REJECT и разрываем соединение")
-                    .arg(peer.ip, peerVersion, kMinPeerVersion), true);
-            const QJsonObject reject{
-                {"type",       "VERSION_REJECT"},
-                {"minVersion", kMinPeerVersion},
-                {"ourVersion", QCoreApplication::applicationVersion()},
-            };
-            peer.socket->write(QJsonDocument(reject).toJson(QJsonDocument::Compact) + '\n');
-            peer.socket->flush();
-            QTimer::singleShot(200, peer.socket, &QTcpSocket::abort);
+            log("CLIENT_HELLO отклонён от " + peer.ip + ": версия " + peerVersion +
+                " < минимальной " + kMinPeerVersion, true);
+            if (peer.socket) {
+                nlohmann::json reject;
+                reject["type"]       = "VERSION_REJECT";
+                reject["minVersion"] = kMinPeerVersion;
+                reject["ourVersion"] = APP_VERSION;
+                writeFrame(*peer.socket, reject);
+                auto sock = peer.socket;
+                auto t = std::make_shared<asio::steady_timer>(m_io);
+                t->expires_after(std::chrono::milliseconds(200));
+                t->async_wait([sock, t](std::error_code) {
+                    std::error_code ec; sock->close(ec);
+                });
+            }
             return;
         }
 
-        const QJsonObject hello{
-            {"type",    "SERVER_HELLO"},
-            {"version", QCoreApplication::applicationVersion()},
-            {"name",    Identity::instance().displayName()},
-        };
-        peer.socket->write(QJsonDocument(hello).toJson(QJsonDocument::Compact) + '\n');
-        log(QString("SERVER_HELLO отправлен → %1 «%2» (версия %3)")
-                .arg(peer.ip, peerName, peerVersion));
+        nlohmann::json hello;
+        hello["type"]    = "SERVER_HELLO";
+        hello["version"] = APP_VERSION;
+        hello["name"]    = Identity::instance().displayName();
+        if (peer.socket) writeFrame(*peer.socket, hello);
+        log("SERVER_HELLO → " + peer.ip + " «" + peerName + "»");
         return;
     }
 
     if (type == "SERVER_HELLO") {
-        const QString peerVersion = obj["version"].toString();
-        const QString peerName    = obj["name"].toString()
-                                        .left(256)
-                                        .remove(kCtrlCharsHello)
-                                        .trimmed();
-
-        log(QString("SERVER_HELLO от %1: имя «%2», версия %3")
-                .arg(peer.ip, peerName.isEmpty() ? QStringLiteral("?") : peerName,
-                     peerVersion.isEmpty() ? QStringLiteral("?") : peerVersion), true);
+        const std::string peerVersion = obj.value("version", std::string{});
+        const std::string peerName    = sanitizeCtrl(obj.value("name", std::string{}));
+        log("SERVER_HELLO от " + peer.ip + ": «" + peerName + "», версия " + peerVersion, true);
 
         peer.helloName    = peerName;
         peer.helloVersion = peerVersion;
 
         if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
-            log(QString("SERVER_HELLO: версия %1 < минимальной %2 — разрываем соединение")
-                    .arg(peerVersion, kMinPeerVersion), true);
-            peer.socket->abort();
+            log("SERVER_HELLO: версия " + peerVersion + " < минимальной " + kMinPeerVersion + " — разрываем", true);
+            if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
             return;
         }
 
-        log(QString("SERVER_HELLO OK — версии совместимы, отправляем HANDSHAKE → «%1» (%2)")
-                .arg(peerName, peerVersion));
-        sendHandshake(peer.socket);
+        log("SERVER_HELLO OK — отправляем HANDSHAKE → «" + peerName + "»");
+        if (peer.socket) sendHandshake(*peer.socket);
         return;
     }
 
     if (type == "VERSION_REJECT") {
-        const QString minVer   = obj["minVersion"].toString();
-        const QString theirVer = obj["ourVersion"].toString();
-        log(QString("VERSION_REJECT от %1 «%2»: наша версия %3 не поддерживается, "
-                    "требуется ≥ %4 (их версия: %5)")
-                .arg(peer.ip,
-                     peer.helloName.isEmpty() ? peer.ip : peer.helloName,
-                     QCoreApplication::applicationVersion(),
-                     minVer, theirVer), true);
-        emit error(tr("Несовместимая версия: требуется ≥ %1").arg(minVer));
-        peer.socket->abort();
+        const std::string minVer = obj.value("minVersion", std::string{});
+        log("VERSION_REJECT от " + peer.ip + ": требуется ≥ " + minVer, true);
+        fire([&minVer](NetworkEvent& ev){
+            if (ev.onError) ev.onError("Несовместимая версия: требуется ≥ " + minVer);
+        });
+        if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
         return;
     }
 
     // ── Device pairing ────────────────────────────────────────────────────────
-    // Вторичный → главный: запрос привязки с одноразовым кодом
+
     if (type == "DEVICE_PAIR_REQUEST") {
-        const QString code    = obj["code"].toString();
-        const QUuid   devUuid = QUuid(obj["uuid"].toString());
-        const QString devName = obj["name"].toString().left(256)
-                                    .remove(kCtrlCharsHello).trimmed();
+        const std::string code    = obj.value("code", std::string{});
+        const std::string devUuid = obj.value("uuid", std::string{});
+        const std::string devName = sanitizeCtrl(obj.value("name", std::string{}));
 
-        log(QString("DEVICE_PAIR_REQUEST от %1 «%2»: проверяем код...")
-                .arg(peer.ip, devName), true);
-
-        if (devUuid.isNull()) {
-            log(QString("DEVICE_PAIR_REQUEST: невалидный UUID от %1 — отклоняем").arg(peer.ip), true);
-            peer.socket->write(QJsonDocument(
-                DevicePairing::makePairReject("invalid_uuid")).toJson(QJsonDocument::Compact) + '\n');
-            peer.socket->flush();
+        if (devUuid.empty()) {
+            if (peer.socket) writeFrame(*peer.socket, DevicePairing::makePairReject("invalid_uuid"));
             return;
         }
-
         if (!DevicePairing::validateAndConsume(code)) {
-            const QString reason = DevicePairing::currentCode().isEmpty()
-                ? "expired" : "invalid_code";
-            log(QString("DEVICE_PAIR_REQUEST: неверный/просроченный код от %1 «%2» — %3")
-                    .arg(peer.ip, devName, reason), true);
-            peer.socket->write(QJsonDocument(
-                DevicePairing::makePairReject(reason)).toJson(QJsonDocument::Compact) + '\n');
-            peer.socket->flush();
+            const std::string reason = DevicePairing::currentCode().empty() ? "expired" : "invalid_code";
+            if (peer.socket) writeFrame(*peer.socket, DevicePairing::makePairReject(reason));
             return;
         }
 
-        // Код верный — сохраняем вторичный девайс
         LinkedDevice dev;
         dev.uuid      = devUuid;
         dev.name      = devName;
         dev.isPrimary = false;
-        dev.linkedAt  = QDateTime::currentMSecsSinceEpoch();
+        dev.linkedAt  = currentEpochMs();
         SessionManager::instance().addLinkedDevice(dev);
         peer.isLinkedDevice = true;
 
-        log(QString("DEVICE_PAIR_REQUEST: привязан девайс «%1» (%2)")
-                .arg(devName, devUuid.toString(QUuid::WithoutBraces)), true);
+        if (peer.socket)
+            writeFrame(*peer.socket, DevicePairing::makePairAccept(
+                Identity::instance().uuid(), Identity::instance().displayName()));
 
-        peer.socket->write(QJsonDocument(
-            DevicePairing::makePairAccept(
-                Identity::instance().uuid(),
-                Identity::instance().displayName())
-        ).toJson(QJsonDocument::Compact) + '\n');
-        peer.socket->flush();
-
-        emit deviceLinked(devUuid, devName, false /*isPrimary*/);
+        fire([&devUuid, &devName](NetworkEvent& ev){
+            if (ev.onDeviceLinked) ev.onDeviceLinked(devUuid, devName, false);
+        });
         return;
     }
 
-    // Главный → вторичный: подтверждение привязки
     if (type == "DEVICE_PAIR_ACCEPT") {
-        const QUuid   primUuid = QUuid(obj["uuid"].toString());
-        const QString primName = obj["name"].toString().left(256)
-                                     .remove(kCtrlCharsHello).trimmed();
-
-        if (primUuid.isNull()) {
-            log(QString("DEVICE_PAIR_ACCEPT: невалидный UUID от %1").arg(peer.ip), true);
-            return;
-        }
+        const std::string primUuid = obj.value("uuid", std::string{});
+        const std::string primName = sanitizeCtrl(obj.value("name", std::string{}));
+        if (primUuid.empty()) { log("DEVICE_PAIR_ACCEPT: невалидный UUID", true); return; }
 
         LinkedDevice dev;
         dev.uuid      = primUuid;
         dev.name      = primName;
         dev.isPrimary = true;
-        dev.linkedAt  = QDateTime::currentMSecsSinceEpoch();
+        dev.linkedAt  = currentEpochMs();
         SessionManager::instance().addLinkedDevice(dev);
         peer.isLinkedDevice = true;
 
-        log(QString("DEVICE_PAIR_ACCEPT: привязан главный девайс «%1» (%2)")
-                .arg(primName, primUuid.toString(QUuid::WithoutBraces)), true);
-
-        emit deviceLinked(primUuid, primName, true /*isPrimary*/);
+        fire([&primUuid, &primName](NetworkEvent& ev){
+            if (ev.onDeviceLinked) ev.onDeviceLinked(primUuid, primName, true);
+        });
         return;
     }
 
-    // Главный → вторичный: отказ привязки
     if (type == "DEVICE_PAIR_REJECT") {
-        const QString reason = obj["reason"].toString();
-        log(QString("DEVICE_PAIR_REJECT от %1: %2").arg(peer.ip, reason), true);
-        emit error(tr("Привязка отклонена: %1").arg(
-            reason == "invalid_code" ? tr("неверный код")  :
-            reason == "expired"      ? tr("код устарел")   :
-            reason == "invalid_uuid" ? tr("невалидный UUID") : reason));
-        peer.socket->disconnectFromHost();
+        const std::string reason = obj.value("reason", std::string{});
+        const std::string msg =
+            (reason == "invalid_code") ? "Привязка отклонена: неверный код" :
+            (reason == "expired")      ? "Привязка отклонена: код устарел"   :
+            (reason == "invalid_uuid") ? "Привязка отклонена: невалидный UUID" :
+            "Привязка отклонена: " + reason;
+        fire([&msg](NetworkEvent& ev){ if (ev.onError) ev.onError(msg); });
+        if (peer.socket) {
+            std::error_code ec;
+            peer.socket->shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+            peer.socket->close(ec);
+        }
         return;
     }
 
     if (type == "HANDSHAKE") {
-        // M-4: валидируем UUID до сохранения — нулевой UUID недопустим
-        const QUuid parsedUuid = QUuid(obj["uuid"].toString());
-        if (parsedUuid.isNull()) {
-            log(QString("HANDSHAKE: невалидный UUID от %1 — разрываем соединение").arg(peer.ip), true);
-            peer.socket->abort();
+        const std::string parsedUuid = obj.value("uuid", std::string{});
+        if (parsedUuid.empty()) {
+            log("HANDSHAKE: невалидный UUID от " + peer.ip, true);
+            if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
             return;
         }
 
-        // H-1: ограничиваем длину имени (256 символов), удаляем управляющие символы
-        const QString rawName = obj["name"].toString();
-
-        // Проверяем минимальную версию пира
-        const QString peerVersion = obj["version"].toString();
-        const QString peerVersionDisplay = peerVersion.isEmpty() ? QStringLiteral("<неизвестно>") : peerVersion;
-        log(QString("HANDSHAKE от %1: версия пира %2 (наша %3, минимум %4)")
-                .arg(peer.ip)
-                .arg(peerVersionDisplay)
-                .arg(QCoreApplication::applicationVersion())
-                .arg(kMinPeerVersion), true);
+        const std::string peerVersion = obj.value("version", std::string{});
         if (VersionUtils::compare(peerVersion, kMinPeerVersion) < 0) {
-            log(QString("HANDSHAKE отклонён от %1: версия %2 < минимальной %3 — разрываем соединение")
-                    .arg(peer.ip)
-                    .arg(peerVersionDisplay)
-                    .arg(kMinPeerVersion), true);
-            peer.socket->abort();
+            log("HANDSHAKE отклонён от " + peer.ip + ": версия " + peerVersion + " < " + kMinPeerVersion, true);
+            if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
             return;
         }
 
         peer.uuid       = parsedUuid;
-        peer.name       = rawName.left(256).remove(kCtrlCharsHello).trimmed();
-        peer.serverPort = static_cast<quint16>(obj["port"].toInt(0));
-        peer.avatarHash = obj["avatarHash"].toString();
-        peer.birthday   = obj["birthday"].toString().left(10); // "yyyy-MM-dd"
+        peer.name       = sanitizeCtrl(obj.value("name", std::string{}));
+        peer.serverPort = static_cast<uint16_t>(obj.value("port", 0));
+        peer.avatarHash = obj.value("avatarHash", std::string{});
+        peer.birthday   = obj.value("birthday", std::string{}).substr(0, 10);
 
-        // H-2: проверяем размер systemInfo — более 4 КБ не принимаем (защита от DoS)
-        const QJsonObject rawSysInfo = obj["systemInfo"].toObject();
-        if (QJsonDocument(rawSysInfo).toJson(QJsonDocument::Compact).size() <= 4096)
-            peer.systemInfo = rawSysInfo;
-        else
-            log(QString("HANDSHAKE: systemInfo от %1 превышает 4 КБ — игнорируем").arg(peer.ip), true);
-
-        log(QString("HANDSHAKE от %1 (серверный порт: %2, systemInfo получен: %3)")
-            .arg(peer.name).arg(peer.serverPort)
-            .arg(!peer.systemInfo.isEmpty() ? "да" : "нет"));
-
-        // ── Правило «старшего UUID» ────────────────────────────────────────────
-        // Если мы сами сейчас подключаемся к этому же пиру (взаимный connect),
-        // тот у кого UUID лексикографически «больше» оставляет свой исходящий
-        // сокет — входящий молча закрывается. Это предотвращает дублирующие сессии
-        // и гарантирует единственный Double Ratchet стрим на пару.
-        if (peer.socket && m_reconnectInfo.contains(parsedUuid)) {
-            const QString myStr   = Identity::instance().uuid().toString();
-            const QString peerStr = parsedUuid.toString();
-            if (myStr > peerStr) {
-                log(QString("Tie-breaking: наш UUID > %1 — закрываем входящее, сохраняем исходящее")
-                    .arg(peer.name), true);
-                // Откладываем abort() чтобы избежать реентерабельности внутри readyRead
-                QPointer<QTcpSocket> sock = peer.socket;
-                QTimer::singleShot(0, this, [sock]() { if (sock) sock->abort(); });
-                return;
-            }
-            // Наш UUID «меньше» — входящее приоритетнее; isходящий сокет прервётся
-            // сам когда пир не пришлёт HANDSHAKE_ACK (timeout) или закроет соединение.
+        if (obj.contains("systemInfo") && obj["systemInfo"].is_object()) {
+            const std::string sysJson = obj["systemInfo"].dump();
+            if (sysJson.size() <= 4096) peer.systemInfoJson = sysJson;
         }
 
-        emit incomingRequest(peer.uuid, peer.name, peer.ip);
-        emit peerInfoUpdated(peer.uuid);
+        log("HANDSHAKE от " + peer.name + " (порт " + std::to_string(peer.serverPort) + ")");
+
+        // Tie-breaking: если взаимный connect — закрываем входящее при UUID > пира
+        if (peer.socket && m_reconnectInfo.count(parsedUuid)) {
+            if (Identity::instance().uuid() > parsedUuid) {
+                log("Tie-breaking: UUID > " + peer.name + " — закрываем входящее", true);
+                auto sock = peer.socket;
+                asio::post(m_io, [sock]() { std::error_code ec; sock->close(ec); });
+                return;
+            }
+        }
+
+        fire([&parsedUuid, &peer](NetworkEvent& ev){
+            if (ev.onIncomingRequest) ev.onIncomingRequest(parsedUuid, peer.name, peer.ip);
+            if (ev.onPeerInfoUpdated) ev.onPeerInfoUpdated(parsedUuid);
+        });
         return;
     }
 
     if (type == "HANDSHAKE_ACK") {
-        if (obj["accepted"].toBool()) {
-            // Проверяем минимальную версию пира
-            const QString peerVersionAck = obj["version"].toString();
-            const QString peerVersionAckDisplay = peerVersionAck.isEmpty()
-                ? QStringLiteral("<неизвестно>") : peerVersionAck;
-            log(QString("HANDSHAKE_ACK от %1: версия пира %2 (наша %3, минимум %4)")
-                    .arg(peer.ip)
-                    .arg(peerVersionAckDisplay)
-                    .arg(QCoreApplication::applicationVersion())
-                    .arg(kMinPeerVersion), true);
+        if (obj.value("accepted", false)) {
+            const std::string peerVersionAck = obj.value("version", std::string{});
             if (VersionUtils::compare(peerVersionAck, kMinPeerVersion) < 0) {
-                log(QString("HANDSHAKE_ACK отклонён от %1: версия %2 < минимальной %3 — разрываем соединение")
-                        .arg(peer.ip)
-                        .arg(peerVersionAckDisplay)
-                        .arg(kMinPeerVersion), true);
-                peer.socket->abort();
+                log("HANDSHAKE_ACK отклонён от " + peer.ip + ": версия " + peerVersionAck + " < " + kMinPeerVersion, true);
+                if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
                 return;
             }
 
-            const QUuid confirmedUuid = QUuid(obj["uuid"].toString());
-            const QString confirmedName = obj["name"].toString();
+            const std::string confirmedUuid = obj.value("uuid", std::string{});
+            const std::string confirmedName = obj.value("name", std::string{});
 
-            // Если к этому UUID уже есть подключённый пир (входящее сработало быстрее) —
-            // просто закрываем этот дублирующий исходящий сокет без дополнительных действий.
-            if (m_peers.contains(confirmedUuid) &&
-                m_peers[confirmedUuid].state == ConnectionState::Connected &&
-                m_peers[confirmedUuid].socket != peer.socket)
-            {
-                log(QString("HANDSHAKE_ACK: дублирующее соединение к %1 — закрываем лишний сокет")
-                    .arg(confirmedName), true);
-                peer.socket->abort();
+            auto existIt = m_peers.find(confirmedUuid);
+            if (existIt != m_peers.end() &&
+                existIt->second.state == ConnectionState::Connected &&
+                existIt->second.socket != peer.socket) {
+                log("HANDSHAKE_ACK: дублирующее соединение к " + confirmedName + " — закрываем", true);
+                if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
                 return;
             }
 
             peer.uuid = confirmedUuid;
             peer.name = confirmedName;
-            // Сохраняем системную информацию и аватар пира из ACK.
-            // Инициатор получает эти данные здесь — в HANDSHAKE они шли в другую сторону.
-            // H-2: проверяем размер systemInfo из ACK — более 4 КБ не принимаем
-            const QJsonObject rawSysInfoAck = obj["systemInfo"].toObject();
-            if (QJsonDocument(rawSysInfoAck).toJson(QJsonDocument::Compact).size() <= 4096)
-                peer.systemInfo = rawSysInfoAck;
-            else
-                log(QString("HANDSHAKE_ACK: systemInfo от %1 превышает 4 КБ — игнорируем").arg(peer.name), true);
-            peer.avatarHash = obj["avatarHash"].toString();
-            peer.birthday   = obj["birthday"].toString().left(10); // "yyyy-MM-dd"
-            log(QString("HANDSHAKE_ACK принят от %1 (systemInfo: %2)")
-                .arg(peer.name)
-                .arg(!peer.systemInfo.isEmpty() ? "получена" : "отсутствует"));
-            emit peerConnected(peer.uuid, peer.name);
-            // Если это инициатор привязки устройства — отправляем запрос с кодом
-            if (!peer.pendingPairCode.isEmpty()) {
+
+            if (obj.contains("systemInfo") && obj["systemInfo"].is_object()) {
+                const std::string sysJson = obj["systemInfo"].dump();
+                if (sysJson.size() <= 4096) peer.systemInfoJson = sysJson;
+            }
+            peer.avatarHash = obj.value("avatarHash", std::string{});
+            peer.birthday   = obj.value("birthday", std::string{}).substr(0, 10);
+
+            fire([&confirmedUuid, &confirmedName](NetworkEvent& ev){
+                if (ev.onPeerConnected) ev.onPeerConnected(confirmedUuid, confirmedName);
+            });
+
+            if (!peer.pendingPairCode.empty()) {
                 const auto& id = Identity::instance();
-                const QJsonObject req = DevicePairing::makePairRequest(
-                    id.uuid(), id.displayName(), peer.pendingPairCode);
-                peer.socket->write(QJsonDocument(req).toJson(QJsonDocument::Compact) + '\n');
-                log(QString("DEVICE_PAIR_REQUEST отправлен → %1").arg(peer.ip));
+                if (peer.socket) writeFrame(*peer.socket, DevicePairing::makePairRequest(
+                    id.uuid(), id.displayName(), peer.pendingPairCode));
                 peer.pendingPairCode.clear();
             }
-            // Отправляем накопленные сообщения из очереди
             drainMessageQueue(peer.uuid);
         } else {
-            log(QString("HANDSHAKE_ACK отклонён от %1").arg(peer.name));
-            emit error(tr("Подключение отклонено: ") + peer.name);
-            peer.socket->disconnectFromHost();
+            log("HANDSHAKE_ACK отклонён от " + peer.name);
+            fire([&peer](NetworkEvent& ev){
+                if (ev.onError) ev.onError("Подключение отклонено: " + peer.name);
+            });
+            if (peer.socket) {
+                std::error_code ec;
+                peer.socket->shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+                peer.socket->close(ec);
+            }
         }
         return;
     }
 
-    // Обработка PING/PONG для keepalive
-    if (type == "PING") {
-        handlePing(peer, obj);
-        return;
-    }
+    if (type == "PING") { handlePing(peer, obj); return; }
+    if (type == "PONG") { handlePong(peer, obj); return; }
 
-    if (type == "PONG") {
-        handlePong(peer, obj);
-        return;
-    }
-
-    // Пир сменил отображаемое имя — обновляем локально и уведомляем UI
     if (type == "PROFILE_UPDATE") {
-        // H-1: ограничиваем длину имени, удаляем управляющие символы
-        static const QRegularExpression kCtrlCharsUpdate(QStringLiteral("[\\x00-\\x1F\\x7F]"));
-        const QString newName = obj["name"].toString().left(256).remove(kCtrlCharsUpdate).trimmed();
-        if (!newName.isEmpty() && newName != peer.name) {
-            log(QString("PROFILE_UPDATE от %1: новое имя \"%2\"")
-                .arg(peer.name, newName));
+        const std::string newName = sanitizeCtrl(obj.value("name", std::string{}));
+        if (!newName.empty() && newName != peer.name) {
+            log("PROFILE_UPDATE от " + peer.name + ": «" + newName + "»");
             peer.name = newName;
-            emit contactNameUpdated(peer.uuid, newName);
+            fire([&peer, &newName](NetworkEvent& ev){
+                if (ev.onNameUpdated) ev.onNameUpdated(peer.uuid, newName);
+            });
         }
         return;
     }
 
-    // Все остальные типы сообщений передаём наверх
-    emit messageReceived(peer.uuid, obj);
+    // All other frames go to message handler
+    const std::string uuid = peer.uuid;
+    fire([&uuid, &obj](NetworkEvent& ev){
+        if (ev.onMessage) ev.onMessage(uuid, obj);
+    });
 }
 
-void NetworkManager::onSocketDisconnected() {
-    auto* socket = qobject_cast<QTcpSocket*>(sender());
-    if (!socket) return;
+// ── sendClientHello / sendHandshake ───────────────────────────────────────────
 
-    for (auto it = m_peers.begin(); it != m_peers.end(); ++it) {
-        if (it.value().socket == socket) {
-            const QUuid uuid = it.key();
-            const QString name = it.value().name;
+void NetworkManager::sendClientHello(asio::ip::tcp::socket& sock) {
+    const auto& devices = SessionManager::instance().linkedDevices();
+    const bool actingAsDevice = std::any_of(devices.cbegin(), devices.cend(),
+        [](const LinkedDevice& d) { return d.isPrimary; });
 
-            log(QString("Disconnected from %1").arg(name), true);
+    nlohmann::json obj;
+    obj["type"]    = "CLIENT_HELLO";
+    obj["version"] = APP_VERSION;
+    obj["name"]    = Identity::instance().displayName();
+    if (actingAsDevice) obj["role"] = "DEVICE";
+    writeFrame(sock, obj);
+}
 
-            // Останавливаем keepalive
-            stopKeepalive(uuid);
+void NetworkManager::sendHandshake(asio::ip::tcp::socket& sock) {
+    const auto& id = Identity::instance();
+    const std::string avatarPath = SessionManager::instance().avatarPath();
+    const std::string avatarHash = avatarPath.empty() ? std::string{}
+        : SessionManager::computeAvatarHash(avatarPath);
 
-            socket->deleteLater();
-            it.value().socket = nullptr;
-            it.value().state = ConnectionState::Disconnected;
+    nlohmann::json obj;
+    obj["type"]       = "HANDSHAKE";
+    obj["uuid"]       = id.uuid();
+    obj["name"]       = id.displayName();
+    obj["port"]       = static_cast<int>(m_advertisedPort ? m_advertisedPort : m_localPort);
+    obj["systemInfo"] = SystemInfo::instance().toJsonForHandshake(m_externalIp);
+    obj["avatarHash"] = avatarHash;
+    obj["birthday"]   = SessionManager::instance().birthday();
+    obj["version"]    = APP_VERSION;
+    writeFrame(sock, obj);
+}
 
-            m_peers.erase(it);
-            emit peerDisconnected(uuid);
-            emit connectionStateChanged(uuid, ConnectionState::Disconnected);
+// ── sendFrame ─────────────────────────────────────────────────────────────────
 
-            // Планируем переподключение если есть информация о пире
-            if (m_reconnectInfo.contains(uuid)) {
-                scheduleReconnect(uuid);
+void NetworkManager::sendFrame(const std::string& peerUuid, const nlohmann::json& obj) {
+    asio::post(m_io, [this, peerUuid, obj]() {
+        if (m_relayPeers.count(peerUuid)) {
+            sendViaRelay(peerUuid, obj);
+            return;
+        }
+
+        auto it = m_peers.find(peerUuid);
+        if (it == m_peers.end() || !it->second.socket || !it->second.socket->is_open()) {
+            const std::string typeHint = obj.value("type", "?");
+            auto& q = m_messageQueues[peerUuid];
+            if (static_cast<int>(q.size()) < kMaxQueueSize) {
+                q.push(obj);
+                log("sendFrame: [" + typeHint + "] в очередь (" +
+                    std::to_string(q.size()) + "/" + std::to_string(kMaxQueueSize) + ")", true);
+            } else {
+                log("sendFrame: очередь переполнена, [" + typeHint + "] отброшен", true);
             }
             return;
         }
-    }
-}
 
-// ── Send ──────────────────────────────────────────────────────────────────
+        auto& peer = it->second;
+        const std::string frame = obj.dump() + "\n";
+        std::error_code ec;
+        const auto written = asio::write(*peer.socket, asio::buffer(frame), ec);
 
-void NetworkManager::sendClientHello(QTcpSocket* socket) {
-    // role=DEVICE если у нас есть запись о главном (мы вторичный девайс).
-    // При первом подключении (до паринга) роль не выставляем.
-    const auto& devices = SessionManager::instance().linkedDevices();
-    const bool actingAsDevice = std::any_of(devices.cbegin(), devices.cend(),
-        [](const LinkedDevice& d){ return d.isPrimary; });
-
-    QJsonObject obj{
-        {"type",    "CLIENT_HELLO"},
-        {"version", QCoreApplication::applicationVersion()},
-        {"name",    Identity::instance().displayName()},
-    };
-    if (actingAsDevice)
-        obj["role"] = QStringLiteral("DEVICE");
-
-    socket->write(QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n');
-}
-
-void NetworkManager::sendHandshake(QTcpSocket* socket) {
-    const auto& id = Identity::instance();
-    // Вычисляем хэш своего аватара для сравнения на стороне получателя
-    const QString ownAvatarPath = SessionManager::instance().avatarPath();
-    const QString ownAvatarHash = ownAvatarPath.isEmpty() ? QString()
-        : QString::fromLatin1(SessionManager::computeAvatarHash(ownAvatarPath));
-    const QJsonObject obj{
-        {"type",       "HANDSHAKE"},
-        {"uuid",       id.uuid().toString(QUuid::WithoutBraces)},
-        {"name",       id.displayName()},
-        {"port",       static_cast<int>(m_advertisedPort ? m_advertisedPort : m_localPort)},
-        {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
-        {"avatarHash", ownAvatarHash},
-        {"birthday",   SessionManager::instance().birthday()},
-        {"version",    QCoreApplication::applicationVersion()},
-    };
-    socket->write(QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n');
-}
-
-void NetworkManager::sendJson(const QUuid& peerUuid, const QJsonObject& obj) {
-    // Relay-пир: маршрутизируем через ретранслятор
-    if (m_relayPeers.contains(peerUuid)) {
-        sendViaRelay(peerUuid, obj);
-        return;
-    }
-
-    // Проверяем: пир подключён и сокет в рабочем состоянии?
-    if (!m_peers.contains(peerUuid) ||
-        !m_peers[peerUuid].socket ||
-        m_peers[peerUuid].socket->state() != QAbstractSocket::ConnectedState)
-    {
-        // Сокет недоступен — ставим сообщение в очередь для отправки после переподключения
-        const QString typeHint = obj.value("type").toString("?");
-        if (m_messageQueues[peerUuid].size() < kMaxQueueSize) {
-            m_messageQueues[peerUuid].enqueue(obj);
-            log(QString("sendJson: сокет пира недоступен, [%1] добавлен в очередь (%2/%3)")
-                .arg(typeHint)
-                .arg(m_messageQueues[peerUuid].size())
-                .arg(kMaxQueueSize), true);
+        if (ec || written != frame.size()) {
+            log("sendFrame: ОШИБКА записи пиру " + peer.name + " — в очередь", true);
+            auto& q = m_messageQueues[peerUuid];
+            if (static_cast<int>(q.size()) < kMaxQueueSize)
+                q.push(obj);
         } else {
-            log(QString("sendJson: очередь пира переполнена (%1), [%2] отброшен")
-                .arg(kMaxQueueSize).arg(typeHint), true);
+            log("sendFrame: [" + obj.value("type", "?") + "] → " + peer.name +
+                " (" + std::to_string(written) + " байт)");
+            peer.lastActivity = currentEpochMs();
         }
-        return;
-    }
+    });
+}
 
-    auto& peer = m_peers[peerUuid];
-    const QByteArray frame = QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n';
-    const qint64 written = peer.socket->write(frame);
+void NetworkManager::drainMessageQueue(const std::string& uuid) {
+    auto qit = m_messageQueues.find(uuid);
+    if (qit == m_messageQueues.end() || qit->second.empty()) return;
 
-    if (written != frame.size()) {
-        // Запись частично не удалась — логируем и ставим в очередь
-        log(QString("sendJson: ОШИБКА записи пиру %1 (записано %2 из %3 байт) — в очередь")
-            .arg(peer.name).arg(written).arg(frame.size()), true);
-        if (m_messageQueues[peerUuid].size() < kMaxQueueSize)
-            m_messageQueues[peerUuid].enqueue(obj);
-    } else {
-        log(QString("sendJson: [%1] → %2 (%3 байт)")
-            .arg(obj.value("type").toString("?"), peer.name).arg(written));
-        peer.lastActivity = QDateTime::currentDateTime();
+    const std::size_t count = qit->second.size();
+    log("Выгружаем " + std::to_string(count) + " сообщений из очереди → " + uuid, true);
+
+    auto pending = std::move(qit->second);
+    m_messageQueues.erase(qit);
+    while (!pending.empty()) {
+        sendFrame(uuid, pending.front());
+        pending.pop();
     }
 }
 
-void NetworkManager::drainMessageQueue(const QUuid& uuid) {
-    if (!m_messageQueues.contains(uuid) || m_messageQueues[uuid].isEmpty()) return;
+// ── acceptIncoming / rejectIncoming ──────────────────────────────────────────
 
-    const int count = m_messageQueues[uuid].size();
-    log(QString("Отправляем %1 сообщений из очереди пиру %2")
-        .arg(count).arg(uuid.toString(QUuid::WithoutBraces)), true);
+void NetworkManager::acceptIncoming(const std::string& peerUuid) {
+    asio::post(m_io, [this, peerUuid]() {
+        auto eit = m_peers.find(peerUuid);
+        if (eit != m_peers.end() && eit->second.state == ConnectionState::Connected) {
+            log("Дублирующее входящее от " + peerUuid + " — уже подключены, отклоняем", true);
+            rejectIncoming(peerUuid);
+            return;
+        }
 
-    // Выгружаем очередь целиком до повторного вызова sendJson
-    QQueue<QJsonObject> pending = std::move(m_messageQueues[uuid]);
-    m_messageQueues.remove(uuid);
+        for (auto it = m_pending.begin(); it != m_pending.end(); ++it) {
+            if (it->second.uuid != peerUuid) continue;
 
-    while (!pending.isEmpty()) {
-        // sendJson может снова добавить в очередь если сокет уже упал — OK
-        sendJson(uuid, pending.dequeue());
-    }
-}
-
-void NetworkManager::acceptIncoming(const QUuid& peerUuid) {
-    // Если к этому UUID уже есть активное соединение (outgoing победило первым) —
-    // отклоняем входящее дублирующее подключение, чтобы не иметь двух сокетов.
-    if (m_peers.contains(peerUuid) &&
-        m_peers[peerUuid].state == ConnectionState::Connected)
-    {
-        log(QString("Дублирующее входящее от %1 — уже подключены, отклоняем")
-            .arg(peerUuid.toString()), true);
-        rejectIncoming(peerUuid);
-        return;
-    }
-
-    for (auto it = m_pending.begin(); it != m_pending.end(); ++it) {
-        if (it.value().uuid == peerUuid) {
-            auto conn = it.value();
+            auto conn = it->second;
             m_pending.erase(it);
 
-            // Обновляем состояние подключения
-            conn.state          = ConnectionState::Connected;
-            conn.lastActivity   = QDateTime::currentDateTime();
-            conn.connectedSince = QDateTime::currentDateTime();
+            conn.state             = ConnectionState::Connected;
+            conn.lastActivity      = currentEpochMs();
+            conn.connectedSince    = currentEpochMs();
             conn.reconnectAttempts = 0;
 
             m_peers[peerUuid] = conn;
-
-            // Сохраняем информацию для переподключения.
-            // Используем serverPort из HANDSHAKE — это настоящий слушающий порт пира.
-            // conn.port было бы 0 (эфемерный порт не пригоден для переподключения).
-            m_reconnectInfo[peerUuid] = PeerReconnectInfo{
-                .name = conn.name,
-                .ip   = conn.ip,
-                .port = conn.serverPort
-            };
-
-            // Для relay-пиров (socket == nullptr) сигналы TCP не нужны
-            if (conn.socket) {
-                disconnect(conn.socket, &QTcpSocket::readyRead, nullptr, nullptr);
-                connect(conn.socket, &QTcpSocket::readyRead,
-                        this, &NetworkManager::onSocketReadyRead);
-                connect(conn.socket, &QTcpSocket::disconnected,
-                        this, &NetworkManager::onSocketDisconnected);
-            }
+            m_reconnectInfo[peerUuid] = { conn.name, conn.ip, conn.serverPort };
 
             const auto& id = Identity::instance();
-            // Включаем свою системную информацию и аватар в ACK —
-            // инициатор получает данные о нас именно здесь (в HANDSHAKE их нет).
-            const QString ownAvatarPath = SessionManager::instance().avatarPath();
-            const QString ownAvatarHash = ownAvatarPath.isEmpty() ? QString()
-                : QString::fromLatin1(SessionManager::computeAvatarHash(ownAvatarPath));
-            const QJsonObject ack{
-                {"type",       "HANDSHAKE_ACK"},
-                {"accepted",   true},
-                {"uuid",       id.uuid().toString(QUuid::WithoutBraces)},
-                {"name",       id.displayName()},
-                {"systemInfo", SystemInfo::instance().toJsonForHandshake(m_externalIp)},
-                {"avatarHash", ownAvatarHash},
-                {"birthday",   SessionManager::instance().birthday()},
-                {"version",    QCoreApplication::applicationVersion()},
-            };
-            // Отправляем HANDSHAKE_ACK (напрямую или через ретранслятор)
+            const std::string avatarPath = SessionManager::instance().avatarPath();
+            const std::string avatarHash = avatarPath.empty() ? std::string{}
+                : SessionManager::computeAvatarHash(avatarPath);
+
+            nlohmann::json ack;
+            ack["type"]       = "HANDSHAKE_ACK";
+            ack["accepted"]   = true;
+            ack["uuid"]       = id.uuid();
+            ack["name"]       = id.displayName();
+            ack["systemInfo"] = SystemInfo::instance().toJsonForHandshake(m_externalIp);
+            ack["avatarHash"] = avatarHash;
+            ack["birthday"]   = SessionManager::instance().birthday();
+            ack["version"]    = APP_VERSION;
+
             if (conn.socket) {
-                conn.socket->write(
-                    QJsonDocument(ack).toJson(QJsonDocument::Compact) + '\n');
+                writeFrame(*conn.socket, ack);
             } else {
-                // Relay-пир: регистрируем и шлём через ретранслятор
                 m_relayPeers.insert(peerUuid);
                 sendViaRelay(peerUuid, ack);
             }
 
-            log(QString("Принято подключение от %1 (серверный порт: %2)")
-                .arg(conn.name).arg(conn.serverPort));
+            log("Принято подключение от " + conn.name + " (порт " + std::to_string(conn.serverPort) + ")");
 
-            // Keepalive только для прямых TCP-подключений
-            if (conn.socket)
+            if (conn.socket) {
                 startKeepalive(peerUuid);
+                startAsyncRead(peerUuid, false);
+            }
 
-            emit peerConnected(peerUuid, conn.name);
-            emit connectionStateChanged(peerUuid, ConnectionState::Connected);
-
-            // Отправляем накопленные в очереди сообщения
+            fire([&peerUuid, &conn](NetworkEvent& ev){
+                if (ev.onPeerConnected)  ev.onPeerConnected(peerUuid, conn.name);
+                if (ev.onStateChanged)   ev.onStateChanged(peerUuid, ConnectionState::Connected);
+            });
             drainMessageQueue(peerUuid);
             return;
         }
-    }
+    });
 }
 
-void NetworkManager::rejectIncoming(const QUuid& peerUuid) {
-    for (auto it = m_pending.begin(); it != m_pending.end(); ++it) {
-        if (it.value().uuid == peerUuid) {
-            const QJsonObject ack{
-                {"type",     "HANDSHAKE_ACK"},
-                {"accepted", false},
-            };
-            auto* socket = it.value().socket;
-            if (socket) {
-                socket->write(QJsonDocument(ack).toJson(QJsonDocument::Compact) + '\n');
-                // После разрыва — освобождаем сокет. Он удалён из m_pending,
-                // поэтому lambda в onNewConnection не вызовет deleteLater повторно.
-                connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-                QTimer::singleShot(500, socket, &QTcpSocket::disconnectFromHost);
+void NetworkManager::rejectIncoming(const std::string& peerUuid) {
+    asio::post(m_io, [this, peerUuid]() {
+        for (auto it = m_pending.begin(); it != m_pending.end(); ++it) {
+            if (it->second.uuid != peerUuid) continue;
+
+            nlohmann::json ack;
+            ack["type"]     = "HANDSHAKE_ACK";
+            ack["accepted"] = false;
+            auto* sockPtr = it->second.socket.get();
+
+            if (sockPtr && sockPtr->is_open()) {
+                writeFrame(*sockPtr, ack);
+                auto sock  = it->second.socket;
+                auto timer = std::make_shared<asio::steady_timer>(m_io);
+                timer->expires_after(std::chrono::milliseconds(500));
+                timer->async_wait([sock, timer](std::error_code) {
+                    std::error_code ec;
+                    sock->shutdown(asio::ip::tcp::socket::shutdown_both, ec);
+                    sock->close(ec);
+                });
             } else {
-                // Relay-пир: шлём отклонение через ретранслятор
                 sendViaRelay(peerUuid, ack);
             }
             m_pending.erase(it);
             return;
         }
-    }
+    });
 }
 
-bool NetworkManager::isOnline(const QUuid& uuid) const {
-    return m_peers.contains(uuid);
-}
-
-// ── Переподключение с экспоненциальным откатом ─────────────────────────────
+// ── Переподключение ───────────────────────────────────────────────────────────
 
 int NetworkManager::calculateBackoffMs(int attempts) const {
-    // Экспоненциальный откат: 1s, 2s, 4s, 8s, 16s, 30s (max)
-    const int baseDelay = 1000;
-    const int delay = baseDelay * static_cast<int>(qPow(2, qMin(attempts, 5)));
-    return qMin(delay, kMaxReconnectDelay);
+    const int base = 1000;
+    const int delay = base * static_cast<int>(std::pow(2.0, std::min(attempts, 5)));
+    return std::min(delay, kMaxReconnectDelay);
 }
 
-void NetworkManager::scheduleReconnect(const QUuid& uuid) {
-    if (!m_reconnectInfo.contains(uuid)) {
-        log(QString("Нет информации для переподключения к %1")
-            .arg(uuid.toString(QUuid::WithoutBraces)));
+void NetworkManager::scheduleReconnect(const std::string& uuid) {
+    if (!m_reconnectInfo.count(uuid)) {
+        log("Нет информации для переподключения к " + uuid);
         return;
     }
 
-    // Читаем счётчик из отдельного словаря — он не зависит от m_peers
-    const int attempts = m_reconnectAttempts.value(uuid, 0);
-
+    const int attempts = m_reconnectAttempts.count(uuid) ? m_reconnectAttempts[uuid] : 0;
     if (attempts >= kMaxReconnectAttempts) {
-        log(QString("Превышен лимит попыток (%1) для %2")
-            .arg(attempts).arg(m_reconnectInfo[uuid].name), true);
-        emit error(tr("Не удалось переподключиться после %1 попыток").arg(attempts));
-        m_reconnectInfo.remove(uuid);
-        m_reconnectAttempts.remove(uuid);
-        m_messageQueues.remove(uuid);
+        log("Превышен лимит попыток (" + std::to_string(attempts) +
+            ") для " + m_reconnectInfo[uuid].name, true);
+        fire([&attempts](NetworkEvent& ev){
+            if (ev.onError) ev.onError("Не удалось переподключиться после " + std::to_string(attempts) + " попыток");
+        });
+        m_reconnectInfo.erase(uuid);
+        m_reconnectAttempts.erase(uuid);
+        m_messageQueues.erase(uuid);
         return;
     }
 
     const int delayMs = calculateBackoffMs(attempts);
-    log(QString("Переподключение к %1 через %2мс (попытка %3/%4)")
-        .arg(m_reconnectInfo[uuid].name).arg(delayMs)
-        .arg(attempts + 1).arg(kMaxReconnectAttempts), true);
+    log("Переподключение к " + m_reconnectInfo[uuid].name + " через " +
+        std::to_string(delayMs) + "мс (попытка " + std::to_string(attempts+1) +
+        "/" + std::to_string(kMaxReconnectAttempts) + ")", true);
 
-    emit connectionStateChanged(uuid, ConnectionState::Reconnecting);
-
-    // Останавливаем предыдущий таймер чтобы не накапливать
-    if (m_reconnectTimers.contains(uuid)) {
-        m_reconnectTimers[uuid]->stop();
-        m_reconnectTimers[uuid]->deleteLater();
-        m_reconnectTimers.remove(uuid);
-    }
-
-    auto* timer = new QTimer(this);
-    timer->setSingleShot(true);
-    connect(timer, &QTimer::timeout, this, [this, uuid]() {
-        m_reconnectTimers.remove(uuid);
-        attemptReconnect(uuid);
+    fire([&uuid](NetworkEvent& ev){
+        if (ev.onStateChanged) ev.onStateChanged(uuid, ConnectionState::Reconnecting);
     });
-    timer->start(delayMs);
+
+    auto rit = m_reconnectTimers.find(uuid);
+    if (rit != m_reconnectTimers.end()) rit->second->cancel();
+
+    auto timer = std::make_shared<asio::steady_timer>(m_io);
+    timer->expires_after(std::chrono::milliseconds(delayMs));
+    timer->async_wait([this, uuid, timer](std::error_code ec) {
+        m_reconnectTimers.erase(uuid);
+        if (!ec) attemptReconnect(uuid);
+    });
     m_reconnectTimers[uuid] = timer;
 }
 
-void NetworkManager::attemptReconnect(const QUuid& uuid) {
-    if (!m_reconnectInfo.contains(uuid)) return;
-
+void NetworkManager::attemptReconnect(const std::string& uuid) {
+    if (!m_reconnectInfo.count(uuid)) return;
     const auto& info = m_reconnectInfo[uuid];
+    m_reconnectAttempts[uuid] = (m_reconnectAttempts.count(uuid) ? m_reconnectAttempts[uuid] : 0) + 1;
 
-    // Увеличиваем счётчик в отдельном словаре (m_peers может быть пуст)
-    m_reconnectAttempts[uuid] = m_reconnectAttempts.value(uuid, 0) + 1;
-
-    log(QString("Попытка переподключения к %1 (%2:%3), попытка #%4")
-        .arg(info.name, info.ip).arg(info.port)
-        .arg(m_reconnectAttempts[uuid]), true);
+    log("Попытка переподключения к " + info.name + " (" + info.ip + ":" +
+        std::to_string(info.port) + "), #" + std::to_string(m_reconnectAttempts[uuid]), true);
 
     PeerInfo peer;
     peer.uuid = uuid;
     peer.name = info.name;
     peer.ip   = info.ip;
     peer.port = info.port;
-
     connectToPeer(peer);
 }
 
-void NetworkManager::resetReconnectState(const QUuid& uuid) {
-    // Сбрасываем счётчик и останавливаем таймер из отдельных словарей
-    m_reconnectAttempts.remove(uuid);
-
-    if (m_reconnectTimers.contains(uuid)) {
-        m_reconnectTimers[uuid]->stop();
-        m_reconnectTimers[uuid]->deleteLater();
-        m_reconnectTimers.remove(uuid);
+void NetworkManager::resetReconnectState(const std::string& uuid) {
+    m_reconnectAttempts.erase(uuid);
+    auto rit = m_reconnectTimers.find(uuid);
+    if (rit != m_reconnectTimers.end()) {
+        rit->second->cancel();
+        m_reconnectTimers.erase(rit);
     }
-
-    // Сбрасываем устаревшие поля в PeerConnection если пир есть
-    if (m_peers.contains(uuid)) {
-        auto& peer = m_peers[uuid];
-        peer.reconnectAttempts = 0;
-        if (peer.reconnectTimer) {
-            peer.reconnectTimer->stop();
-            peer.reconnectTimer->deleteLater();
-            peer.reconnectTimer = nullptr;
-        }
-    }
+    auto pit = m_peers.find(uuid);
+    if (pit != m_peers.end())
+        pit->second.reconnectAttempts = 0;
 }
 
-// ── Keepalive (PING/PONG) ───────────────────────────────────────────────────
+// ── Keepalive (PING/PONG) ─────────────────────────────────────────────────────
 
-void NetworkManager::startKeepalive(const QUuid& uuid) {
-    if (!m_peers.contains(uuid)) return;
+void NetworkManager::startKeepalive(const std::string& uuid) {
+    auto it = m_peers.find(uuid);
+    if (it == m_peers.end()) return;
+    auto& peer = it->second;
 
-    auto& peer = m_peers[uuid];
+    peer.pingTimer = std::make_shared<asio::steady_timer>(m_io);
+    log("Keepalive started for " + peer.name);
 
-    // Создаём таймер PING если его нет
-    if (!peer.pingTimer) {
-        peer.pingTimer = new QTimer(this);
-        connect(peer.pingTimer, &QTimer::timeout, this, [this, uuid]() {
-            sendPing(uuid);
-        });
-    }
-
-    peer.pingTimer->start(kPingInterval);
-    log(QString("Keepalive started for %1").arg(peer.name));
-
-    // Первый PING сразу после установки keepalive — задержка появится в профиле
-    // через 1-2 секунды, а не через kPingInterval (30 секунд).
-    QTimer::singleShot(0, this, [this, uuid]() { sendPing(uuid); });
+    asio::post(m_io, [this, uuid]() { sendPing(uuid); });
+    schedulePing(uuid);
 }
 
-void NetworkManager::stopKeepalive(const QUuid& uuid) {
-    if (!m_peers.contains(uuid)) return;
+void NetworkManager::schedulePing(const std::string& uuid) {
+    auto it = m_peers.find(uuid);
+    if (it == m_peers.end() || !it->second.pingTimer) return;
+    auto timer = it->second.pingTimer;
 
-    auto& peer = m_peers[uuid];
-    if (peer.pingTimer) {
-        peer.pingTimer->stop();
-        peer.pingTimer->deleteLater();
-        peer.pingTimer = nullptr;
-    }
-    // Останавливаем таймер ожидания PONG если он запущен
-    if (peer.pongTimeoutTimer) {
-        peer.pongTimeoutTimer->stop();
-        peer.pongTimeoutTimer->deleteLater();
-        peer.pongTimeoutTimer = nullptr;
-    }
+    timer->expires_after(std::chrono::milliseconds(kPingInterval));
+    timer->async_wait([this, uuid, timer](std::error_code ec) {
+        auto it2 = m_peers.find(uuid);
+        if (ec || it2 == m_peers.end() || it2->second.pingTimer != timer) return;
+        sendPing(uuid);
+        schedulePing(uuid);
+    });
+}
+
+void NetworkManager::stopKeepalive(const std::string& uuid) {
+    auto it = m_peers.find(uuid);
+    if (it == m_peers.end()) return;
+    auto& peer = it->second;
+    if (peer.pingTimer)        { peer.pingTimer->cancel();        peer.pingTimer.reset(); }
+    if (peer.pongTimeoutTimer) { peer.pongTimeoutTimer->cancel(); peer.pongTimeoutTimer.reset(); }
     peer.awaitingPong = false;
 }
 
-void NetworkManager::sendPing(const QUuid& uuid) {
-    if (!m_peers.contains(uuid)) return;
+void NetworkManager::sendPing(const std::string& uuid) {
+    auto it = m_peers.find(uuid);
+    if (it == m_peers.end()) return;
+    auto& peer = it->second;
 
-    auto& peer = m_peers[uuid];
-
-    // Если уже ждём PONG — не отправляем дублирующий PING.
-    // Таймаут обрабатывается отдельным pongTimeoutTimer.
     if (peer.awaitingPong) {
-        log(QString("PING к %1 пропущен — ожидаем PONG").arg(peer.name));
+        log("PING к " + peer.name + " пропущен — ожидаем PONG");
+        return;
+    }
+    if (!peer.socket || !peer.socket->is_open()) {
+        log("Нет сокета для PING к " + peer.name);
         return;
     }
 
-    if (!peer.socket || peer.socket->state() != QAbstractSocket::ConnectedState) {
-        log(QString("Нет активного сокета для PING к %1").arg(peer.name));
-        return;
-    }
-
-    const QJsonObject ping{
-        {"type", "PING"},
-        {"ts", QDateTime::currentMSecsSinceEpoch()}
-    };
-
-    peer.socket->write(QJsonDocument(ping).toJson(QJsonDocument::Compact) + '\n');
+    nlohmann::json ping;
+    ping["type"] = "PING";
+    ping["ts"]   = currentEpochMs();
+    writeFrame(*peer.socket, ping);
     peer.awaitingPong = true;
-    peer.pingStopwatch.start();
-    log(QString("PING отправлен %1").arg(peer.name));
+    peer.pingStart    = std::chrono::steady_clock::now();
+    log("PING → " + peer.name);
 
-    // Запускаем отдельный таймер ожидания PONG.
-    // Если PONG не придёт за kPongTimeout мс — соединение считается мёртвым.
-    if (!peer.pongTimeoutTimer) {
-        peer.pongTimeoutTimer = new QTimer(this);
-        peer.pongTimeoutTimer->setSingleShot(true);
-        connect(peer.pongTimeoutTimer, &QTimer::timeout, this, [this, uuid]() {
-            if (!m_peers.contains(uuid)) return;
-            auto& p = m_peers[uuid];
-            if (p.awaitingPong) {
-                log(QString("PONG таймаут от %1 — соединение мёртво, разрываем")
-                    .arg(p.name), true);
-                if (p.socket) p.socket->abort();
-            }
-        });
-    }
-    peer.pongTimeoutTimer->start(kPongTimeout);
+    if (!peer.pongTimeoutTimer)
+        peer.pongTimeoutTimer = std::make_shared<asio::steady_timer>(m_io);
+
+    peer.pongTimeoutTimer->expires_after(std::chrono::milliseconds(kPongTimeout));
+    peer.pongTimeoutTimer->async_wait([this, uuid](std::error_code ec) {
+        if (ec) return;
+        auto it2 = m_peers.find(uuid);
+        if (it2 == m_peers.end()) return;
+        auto& p = it2->second;
+        if (p.awaitingPong) {
+            log("PONG таймаут от " + p.name + " — соединение мёртво", true);
+            if (p.socket) { std::error_code ce; p.socket->close(ce); }
+        }
+    });
 }
 
-void NetworkManager::handlePing(PeerConnection& peer, const QJsonObject& obj) {
-    Q_UNUSED(obj);
-
-    // Отвечаем PONG
-    const QJsonObject pong{
-        {"type", "PONG"},
-        {"ts", QDateTime::currentMSecsSinceEpoch()}
-    };
-
-    if (peer.socket && peer.socket->state() == QAbstractSocket::ConnectedState) {
-        peer.socket->write(QJsonDocument(pong).toJson(QJsonDocument::Compact) + '\n');
-        log(QString("PONG sent to %1").arg(peer.name));
+void NetworkManager::handlePing(PeerConnection& peer, const nlohmann::json& /*obj*/) {
+    nlohmann::json pong;
+    pong["type"] = "PONG";
+    pong["ts"]   = currentEpochMs();
+    if (peer.socket && peer.socket->is_open()) {
+        writeFrame(*peer.socket, pong);
+        log("PONG → " + peer.name);
     }
-
-    peer.lastActivity = QDateTime::currentDateTime();
+    peer.lastActivity = currentEpochMs();
 }
 
-void NetworkManager::handlePong(PeerConnection& peer, const QJsonObject& obj) {
-    Q_UNUSED(obj);
-
+void NetworkManager::handlePong(PeerConnection& peer, const nlohmann::json& /*obj*/) {
     peer.awaitingPong = false;
-    peer.lastActivity = QDateTime::currentDateTime();
+    peer.lastActivity = currentEpochMs();
+    if (peer.pongTimeoutTimer) peer.pongTimeoutTimer->cancel();
 
-    // Отменяем таймер ожидания PONG — соединение живо
-    if (peer.pongTimeoutTimer) {
-        peer.pongTimeoutTimer->stop();
-    }
-
-    peer.latencyMs = peer.pingStopwatch.elapsed();
-    log(QString("PONG от %1 (задержка: %2мс)").arg(peer.name).arg(peer.latencyMs));
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - peer.pingStart).count();
+    peer.latencyMs = static_cast<int64_t>(elapsed);
+    log("PONG от " + peer.name + " (" + std::to_string(peer.latencyMs) + " мс)");
 }

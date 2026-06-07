@@ -189,7 +189,7 @@ QString SplashScreen::getRandomPhrase() const {
 
     // 3. "Я люблю {CPU}" — 5% шанс (используем модель CPU из SystemInfo)
     if (roll < 11) {
-        const QString cpu = SystemInfo::instance().cpuModel();
+        const QString cpu = QString::fromStdString(SystemInfo::instance().cpuModel());
         return QString("Я люблю %1").arg(cpu.isEmpty() ? "этот компьютер" : cpu);
     }
 

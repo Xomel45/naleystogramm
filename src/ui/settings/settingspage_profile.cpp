@@ -57,7 +57,7 @@ SettingsProfilePage::SettingsProfilePage(QWidget* parent) : SettingsPageBase(par
     m_profileNameLbl->setObjectName("accountName");
     m_profileNameLbl->setAlignment(Qt::AlignHCenter);
 
-    auto* idLbl = new QLabel(sm.uuid().toString(QUuid::WithoutBraces).left(8) + "…");
+    auto* idLbl = new QLabel(QString::fromStdString(sm.uuid()).left(8) + "…");
     idLbl->setObjectName("accountId");
     idLbl->setAlignment(Qt::AlignHCenter);
 
@@ -143,7 +143,7 @@ SettingsProfilePage::SettingsProfilePage(QWidget* parent) : SettingsPageBase(par
     m_lay->addWidget(makeInfoField(":/icons/nav_profile.png",      tr("Мой ID"),        m_uuidEdit, true));
 
     connect(m_uuidEdit, &QLineEdit::cursorPositionChanged, this, [this]() {
-        const QString full = SessionManager::instance().uuid().toString(QUuid::WithoutBraces);
+        const QString full = QString::fromStdString(SessionManager::instance().uuid());
         QApplication::clipboard()->setText(full);
         m_uuidEdit->setPlaceholderText(tr("Скопировано!"));
         QTimer::singleShot(1500, m_uuidEdit, [this]() {
@@ -197,15 +197,15 @@ static QString displayToIso(const QString& display) {
 
 void SettingsProfilePage::reload() {
     auto& sm = SessionManager::instance();
-    const QString name = sm.displayName();
+    const QString name = QString::fromStdString(sm.displayName());
     m_nameEdit->setText(name);
-    m_uuidEdit->setText(sm.uuid().toString(QUuid::WithoutBraces).left(8) + "…");
-    m_bioEdit->setPlainText(sm.bio());
-    m_birthdayEdit->setText(isoToDisplay(sm.birthday()));
+    m_uuidEdit->setText(QString::fromStdString(sm.uuid()).left(8) + "…");
+    m_bioEdit->setPlainText(QString::fromStdString(sm.bio()));
+    m_birthdayEdit->setText(isoToDisplay(QString::fromStdString(sm.birthday())));
     if (m_profileNameLbl)
         m_profileNameLbl->setText(name.isEmpty() ? tr("(без имени)") : name);
 
-    const QString avatarPath = sm.avatarPath();
+    const QString avatarPath = QString::fromStdString(sm.avatarPath());
     if (!avatarPath.isEmpty() && QFile::exists(avatarPath))
         applyAvatarPixmap(avatarPath);
     else {
@@ -217,16 +217,16 @@ void SettingsProfilePage::reload() {
 bool SettingsProfilePage::save() {
     auto& sm = SessionManager::instance();
     const QString name = m_nameEdit->text().trimmed();
-    if (!name.isEmpty() && name != sm.displayName()) {
+    if (!name.isEmpty() && name.toStdString() != sm.displayName()) {
         Identity::instance().setDisplayName(name);
         emit nameChanged(name);
     }
     const QString bio = m_bioEdit->toPlainText().trimmed();
-    if (bio != sm.bio())
-        sm.setBio(bio);
+    if (bio.toStdString() != sm.bio())
+        sm.setBio(bio.toStdString());
     const QString newBirthday = displayToIso(m_birthdayEdit->text().trimmed());
-    if (newBirthday != sm.birthday())
-        sm.setBirthday(newBirthday);
+    if (newBirthday.toStdString() != sm.birthday())
+        sm.setBirthday(newBirthday.toStdString());
     return true;
 }
 
@@ -254,7 +254,7 @@ void SettingsProfilePage::onAvatarClicked() {
     const QString savePath = cacheDir.filePath("avatar.png");
     if (!scaled.save(savePath, "PNG")) return;
 
-    SessionManager::instance().setAvatarPath(savePath);
+    SessionManager::instance().setAvatarPath(savePath.toStdString());
     applyAvatarPixmap(savePath);
     emit avatarChanged(savePath);
 }

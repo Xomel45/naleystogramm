@@ -2,6 +2,15 @@
 #include "logger.h"
 #include "../crypto/e2e.h"
 #include "../crypto/keyprotector.h"
+#include "../crypto/qt_bridge.h"
+
+// Migration helpers — Phase 6 will migrate these call sites fully
+static inline std::string quid2s(const QUuid& u) {
+    return u.toString(QUuid::WithoutBraces).toStdString();
+}
+static inline void netSend(NetworkManager* net, const QUuid& u, const QJsonObject& o) {
+    net->sendFrame(quid2s(u), bridge::fromQJsonObj(o));
+}
 
 #include <QFile>
 #include <QFileInfo>
@@ -158,7 +167,7 @@ void FileTransfer::sendFileOffer(const QString& offerId) {
     // Шифруем ключ + nonce через E2E сессию.
     // Без активной сессии отправка НЕВОЗМОЖНА: ключ файла не должен идти по сети в открытом виде.
     // Передача завершается с ошибкой — пользователь должен дождаться установки E2E-сессии.
-    if (!m_e2e || !m_e2e->hasSession(t.peerUuid)) {
+    if (!m_e2e || !m_e2e->hasSession(bridge::fromQUuid(t.peerUuid))) {
         LOG_ERROR(FileTransfer, "Offer Failed (No Active Session)");
         emit transferFailed(offerId,
                             tr("Нет E2E-сессии — ключ файла нельзя передать безопасно"));
@@ -167,11 +176,12 @@ void FileTransfer::sendFileOffer(const QString& offerId) {
     }
 
     const QByteArray keyMaterial = t.key + t.nonce;  // 32 + 12 = 44 байта
-    const QJsonObject encKeyEnv = m_e2e->encrypt(t.peerUuid, keyMaterial);
+    const QJsonObject encKeyEnv = bridge::toQJsonObj(
+        m_e2e->encrypt(bridge::fromQUuid(t.peerUuid), bridge::fromQBA(keyMaterial)));
     offer["enc_key_env"] = encKeyEnv;
     LOG_DEBUG(FileTransfer, "Ключ файла зашифрован через E2E-сессию");
 
-    m_net->sendJson(t.peerUuid, offer);
+    netSend(m_net, t.peerUuid, offer);
     LOG_INFO(FileTransfer, "File Offer Sent");
 }
 
@@ -206,8 +216,8 @@ void FileTransfer::startStreaming(const QString& offerId) {
 
     // Эмитим начало передачи
     TransferProgress progress;
-    progress.id               = offerId;
-    progress.fileName         = t.fileName;
+    progress.id               = offerId.toStdString();
+    progress.fileName         = t.fileName.toStdString();
     progress.bytesTransferred = 0;
     progress.totalBytes       = t.fileSize;
     progress.speedBytesPerSec = 0;
@@ -239,7 +249,7 @@ void FileTransfer::sendNextChunk(const QString& offerId) {
         complete["id"]      = offerId;
         complete["hash"]    = QString::fromLatin1(t.fileHash.toHex());
         complete["success"] = true;
-        m_net->sendJson(t.peerUuid, complete);
+        netSend(m_net, t.peerUuid, complete);
 
         t.state = TransferState::Completed;
         emit transferCompleted(offerId, t.filePath, true);
@@ -286,7 +296,7 @@ void FileTransfer::sendNextChunk(const QString& offerId) {
     chunk["tag"]   = QString::fromLatin1(authTag.toBase64());
     chunk["last"]  = isLast;
 
-    m_net->sendJson(t.peerUuid, chunk);
+    netSend(m_net, t.peerUuid, chunk);
 
     // Обновляем статистику
     t.bytesSent += plainChunk.size();
@@ -479,12 +489,15 @@ void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
         t.durationMs         = msg["duration_ms"].toInt(0);
 
         // Расшифровываем ключ
-        if (msg.contains("enc_key_env") && m_e2e && m_e2e->hasSession(from)) {
+        if (msg.contains("enc_key_env") && m_e2e && m_e2e->hasSession(bridge::fromQUuid(from))) {
             const auto keyMaterial = m_e2e->decrypt(
-                from, msg["enc_key_env"].toObject());
-            if (keyMaterial.has_value() && keyMaterial->size() >= kAesKeySize + kGcmNonceSize) {
-                t.key   = keyMaterial->left(kAesKeySize);
-                t.nonce = keyMaterial->mid(kAesKeySize, kGcmNonceSize);
+                bridge::fromQUuid(from),
+                bridge::fromQJsonObj(msg["enc_key_env"].toObject()));
+            if (keyMaterial.has_value() &&
+                keyMaterial->size() >= static_cast<size_t>(kAesKeySize + kGcmNonceSize)) {
+                t.key   = bridge::toQBA(bytesLeft(*keyMaterial, static_cast<size_t>(kAesKeySize)));
+                t.nonce = bridge::toQBA(bytesMid(*keyMaterial, static_cast<size_t>(kAesKeySize),
+                                                 static_cast<size_t>(kGcmNonceSize)));
                 LOG_DEBUG(FileTransfer, "File key decrypted via E2E session");
             } else {
                 LOG_ERROR(FileTransfer, "Failed to decrypt file key via E2E");
@@ -623,8 +636,8 @@ void FileTransfer::handleFileChunk(const QUuid& /*from*/, const QJsonObject& msg
 
         // Эмитим начало передачи
         TransferProgress progress;
-        progress.id               = id;
-        progress.fileName         = t.fileName;
+        progress.id               = id.toStdString();
+        progress.fileName         = t.fileName.toStdString();
         progress.bytesTransferred = 0;
         progress.totalBytes       = t.fileSize;
         progress.speedBytesPerSec = 0;
@@ -751,7 +764,7 @@ void FileTransfer::acceptOffer(const QUuid& from, const QString& offerId) {
     QJsonObject msg;
     msg["type"] = "FILE_ACCEPT";
     msg["id"]   = offerId;
-    m_net->sendJson(from, msg);
+    netSend(m_net, from, msg);
 }
 
 void FileTransfer::rejectOffer(const QUuid& from, const QString& offerId) {
@@ -760,7 +773,7 @@ void FileTransfer::rejectOffer(const QUuid& from, const QString& offerId) {
     QJsonObject msg;
     msg["type"] = "FILE_REJECT";
     msg["id"]   = offerId;
-    m_net->sendJson(from, msg);
+    netSend(m_net, from, msg);
 
     m_incoming.remove(offerId);
 }
@@ -778,7 +791,7 @@ void FileTransfer::cancelTransfer(const QString& transferId) {
     if (m_outgoing.contains(transferId)) {
         auto& t = m_outgoing[transferId];
         t.state = TransferState::Cancelled;
-        m_net->sendJson(t.peerUuid, msg);
+        netSend(m_net, t.peerUuid, msg);
 
         if (t.file) {
             t.file->close();
@@ -791,7 +804,7 @@ void FileTransfer::cancelTransfer(const QString& transferId) {
     if (m_incoming.contains(transferId)) {
         auto& t = m_incoming[transferId];
         t.state = TransferState::Cancelled;
-        m_net->sendJson(t.peerUuid, msg);
+        netSend(m_net, t.peerUuid, msg);
 
         if (t.file) {
             t.file->close();
@@ -831,7 +844,7 @@ void FileTransfer::pauseTransfer(const QString& transferId) {
         QJsonObject msg;
         msg["type"] = "FILE_PAUSE";
         msg["id"]   = transferId;
-        m_net->sendJson(t.peerUuid, msg);
+        netSend(m_net, t.peerUuid, msg);
     }
 
     if (m_incoming.contains(transferId)) {
@@ -854,7 +867,7 @@ void FileTransfer::pauseTransfer(const QString& transferId) {
         QJsonObject msg;
         msg["type"] = "FILE_PAUSE";
         msg["id"]   = transferId;
-        m_net->sendJson(t.peerUuid, msg);
+        netSend(m_net, t.peerUuid, msg);
     }
 }
 
@@ -869,7 +882,7 @@ void FileTransfer::resumeTransfer(const QString& transferId) {
         msg["type"]       = "FILE_RESUME_REQUEST";
         msg["id"]         = transferId;
         msg["last_chunk"] = t.chunksReceived;
-        m_net->sendJson(t.peerUuid, msg);
+        netSend(m_net, t.peerUuid, msg);
     }
 }
 
@@ -926,7 +939,7 @@ void FileTransfer::handleResumeRequest(const QUuid& from, const QJsonObject& msg
     ack["type"]        = "FILE_RESUME_ACK";
     ack["id"]          = id;
     ack["resume_from"] = lastChunk + 1;
-    m_net->sendJson(from, ack);
+    netSend(m_net, from, ack);
 
     // Продолжаем отправку
     sendNextChunk(id);
@@ -966,7 +979,8 @@ void FileTransfer::saveTransferState(const TransferResumeInfo& info) {
     }
 
     if (KeyProtector::instance().isReady()) {
-        const QByteArray encrypted = KeyProtector::instance().encrypt(jsonBytes);
+        const QByteArray encrypted = bridge::toQBA(
+            KeyProtector::instance().encrypt(bridge::fromQBA(jsonBytes)));
         if (!encrypted.isEmpty()) {
             file.write(encrypted);
             LOG_DEBUG(FileTransfer, "Transfer State Saved (Encrypted)");
@@ -998,7 +1012,7 @@ bool FileTransfer::loadTransferState(const QString& transferId,
     QByteArray jsonBytes;
     const bool looksLikeJson = !raw.isEmpty() && raw[0] == '{';
     if (!looksLikeJson && KeyProtector::instance().isReady()) {
-        jsonBytes = KeyProtector::instance().decrypt(raw);
+        jsonBytes = bridge::toQBA(KeyProtector::instance().decrypt(bridge::fromQBA(raw)));
         if (jsonBytes.isEmpty()) {
             LOG_ERROR(FileTransfer, "Transfer State Decryption Failed");
             return false;
@@ -1111,8 +1125,8 @@ void FileTransfer::emitProgress(OutgoingTransfer& t) {
     }
 
     TransferProgress progress;
-    progress.id               = t.id;
-    progress.fileName         = t.fileName;
+    progress.id               = t.id.toStdString();
+    progress.fileName         = t.fileName.toStdString();
     progress.bytesTransferred = t.bytesSent;
     progress.totalBytes       = t.fileSize;
     progress.speedBytesPerSec = t.currentSpeed;
@@ -1134,8 +1148,8 @@ void FileTransfer::emitProgress(IncomingTransfer& t) {
     }
 
     TransferProgress progress;
-    progress.id               = t.id;
-    progress.fileName         = t.fileName;
+    progress.id               = t.id.toStdString();
+    progress.fileName         = t.fileName.toStdString();
     progress.bytesTransferred = t.bytesReceived;
     progress.totalBytes       = t.fileSize;
     progress.speedBytesPerSec = t.currentSpeed;
@@ -1152,11 +1166,11 @@ void FileTransfer::emitProgress(IncomingTransfer& t) {
 
 TransferProgress FileTransfer::getProgress(const QString& transferId) const {
     TransferProgress progress = {};
-    progress.id = transferId;
+    progress.id = transferId.toStdString();
 
     if (m_outgoing.contains(transferId)) {
         const auto& t = m_outgoing[transferId];
-        progress.fileName         = t.fileName;
+        progress.fileName         = t.fileName.toStdString();
         progress.bytesTransferred = t.bytesSent;
         progress.totalBytes       = t.fileSize;
         progress.speedBytesPerSec = t.currentSpeed;
@@ -1167,7 +1181,7 @@ TransferProgress FileTransfer::getProgress(const QString& transferId) const {
         progress.outgoing         = true;
     } else if (m_incoming.contains(transferId)) {
         const auto& t = m_incoming[transferId];
-        progress.fileName         = t.fileName;
+        progress.fileName         = t.fileName.toStdString();
         progress.bytesTransferred = t.bytesReceived;
         progress.totalBytes       = t.fileSize;
         progress.speedBytesPerSec = t.currentSpeed;

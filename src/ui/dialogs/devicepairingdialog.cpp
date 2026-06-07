@@ -104,7 +104,7 @@ DevicePairingDialog::DevicePairingDialog(QWidget* parent) : QDialog(parent) {
 }
 
 void DevicePairingDialog::onNewCode() {
-    const QString code = DevicePairing::generateCode();
+    const QString code = QString::fromStdString(DevicePairing::generateCode());
 
     // Отображаем как "XXX XXX" для читаемости
     m_codeLabel->setText(code.left(3) + QStringLiteral("  ") + code.right(3));
@@ -145,7 +145,7 @@ void DevicePairingDialog::refreshDeviceList() {
     }
 
     const auto devices = SessionManager::instance().linkedDevices();
-    if (devices.isEmpty()) {
+    if (devices.empty()) {
         m_devicesLayout->addWidget(m_noDevicesLabel);
         m_noDevicesLabel->show();
         return;
@@ -155,7 +155,7 @@ void DevicePairingDialog::refreshDeviceList() {
     for (const auto& dev : devices) {
         auto* row = new QHBoxLayout();
 
-        auto* nameLbl = new QLabel(dev.name);
+        auto* nameLbl = new QLabel(QString::fromStdString(dev.name));
         nameLbl->setObjectName("settingsFieldLabel");
 
         auto* roleLbl = new QLabel(dev.isPrimary ? tr("главное") : tr("вторичное"));
@@ -163,7 +163,7 @@ void DevicePairingDialog::refreshDeviceList() {
 
         auto* removeBtn = new QPushButton(tr("Отвязать"));
         removeBtn->setObjectName("dlgCancelBtn");
-        const QUuid uuid = dev.uuid;
+        const std::string uuid = dev.uuid;
         connect(removeBtn, &QPushButton::clicked, this, [this, uuid]() {
             SessionManager::instance().removeLinkedDevice(uuid);
             refreshDeviceList();

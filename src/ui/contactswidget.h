@@ -1,9 +1,9 @@
 #pragma once
 #include <QWidget>
 #include <QUuid>
-#include <QList>
 #include <QDateTime>
 #include <QMap>
+#include <vector>
 #include "../core/types.h"
 
 class QListWidget;
@@ -32,7 +32,7 @@ class ContactsWidget : public QWidget {
 public:
     explicit ContactsWidget(QWidget* parent = nullptr);
 
-    void setContacts(const QList<Contact>& contacts);
+    void setContacts(const std::vector<Contact>& contacts);
     void setPeerPresence(const QUuid& uuid, PeerPresence presence);
     void setPeerOnline(const QUuid& uuid, bool online);
     void updateLastMessage(const QUuid& uuid, const QString& text);
@@ -41,7 +41,7 @@ public:
     void clearUnread(const QUuid& uuid);
 
     // Группы / Каналы
-    void setGroups(const QList<Group>& groups);
+    void setGroups(const std::vector<Group>& groups);
     void addOrUpdateGroup(const Group& g);
     void removeGroup(const QString& groupId);
     void setGroupConnected(const QString& groupId, bool connected);
@@ -79,7 +79,7 @@ private:
 
     // Контакты
     QListWidget*              m_list        {nullptr};
-    QList<Contact>            m_contacts;
+    std::vector<Contact>      m_contacts;
     QMap<QUuid, PeerPresence> m_presence;
     QMap<QUuid, QString>      m_lastMsg;
     QMap<QUuid, QDateTime>    m_lastMsgTime;
@@ -88,7 +88,7 @@ private:
 
     // Группы
     QListWidget*              m_groupsList  {nullptr};
-    QList<Group>              m_groups;
+    std::vector<Group>        m_groups;
     QMap<QString, bool>       m_groupConnected;
     QMap<QString, int>        m_groupUnread;
     QMap<QString, QString>    m_groupLastMsg;
