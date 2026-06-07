@@ -21,11 +21,15 @@ class E2EManager;
 class FileTransfer;
 class CallManager;
 class RemoteShellManager;
+#ifdef HAVE_QT_WEBSOCKETS
 class GroupManager;
+#endif
 class CallWindow;
 class ContactsWidget;
 class ChatWidget;
+#ifdef HAVE_QT_WEBSOCKETS
 class GroupChatWidget;
+#endif
 class SettingsPanel;
 class UpdateBanner;
 class ContactProfileDialog;
@@ -162,10 +166,12 @@ private:
     QMap<QUuid, QTimer*> m_peerTypingTimers;
 
     // Группы и каналы
+#ifdef HAVE_QT_WEBSOCKETS
     GroupManager*    m_groupManager {nullptr};
     GroupChatWidget* m_groupChat    {nullptr};
-    QStackedWidget*  m_rightStack   {nullptr};
     QString          m_activeGroup;  // groupId текущей открытой группы
+#endif
+    QStackedWidget*  m_rightStack   {nullptr};
 
     DemoMode::Token  m_demoToken{0};
     uint32_t         m_netListenerToken{0};

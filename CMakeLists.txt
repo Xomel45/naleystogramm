@@ -36,8 +36,8 @@ find_package(Qt6 REQUIRED COMPONENTS
     Sql
     Concurrent
     LinguistTools
-    WebSockets
     OPTIONAL_COMPONENTS
+    WebSockets
     Multimedia
 )
 
@@ -128,9 +128,6 @@ set(CORE_SOURCES
     src/core/callmanager.cpp
     src/core/remoteshellmanager.h
     src/core/remoteshellmanager.cpp
-    src/core/groupmanager.h
-    src/core/groupmanager.cpp
-
     # Crypto
     src/crypto/securedata.h
     src/crypto/openssl_raii.h
@@ -227,10 +224,6 @@ set(UI_SOURCES
     src/ui/shellwindow.cpp
     src/ui/shellmonitor.h
     src/ui/shellmonitor.cpp
-    src/ui/groupchatwidget.h
-    src/ui/groupchatwidget.cpp
-    src/ui/dialogs/joingroupdialog.h
-    src/ui/dialogs/joingroupdialog.cpp
 
     # Media
     src/media/mediaengine.h
@@ -283,7 +276,6 @@ target_link_libraries(naleystogramm-core PUBLIC
     Qt6::Core
     Qt6::Network
     Qt6::Concurrent
-    Qt6::WebSockets
     OpenSSL::SSL
     OpenSSL::Crypto
 )
@@ -334,6 +326,19 @@ else()
     message(STATUS "Qt6Multimedia:   не найден — голосовые сообщения отключены")
 endif()
 
+# Qt6WebSockets опционален — GroupManager (core + UI)
+if(Qt6WebSockets_FOUND)
+    target_sources(naleystogramm-core PRIVATE
+        src/core/groupmanager.h
+        src/core/groupmanager.cpp
+    )
+    target_link_libraries(naleystogramm-core PUBLIC Qt6::WebSockets)
+    target_compile_definitions(naleystogramm-core PUBLIC HAVE_QT_WEBSOCKETS)
+    message(STATUS "Qt6WebSockets:   найден — группы и каналы включены")
+else()
+    message(STATUS "Qt6WebSockets:   не найден — группы и каналы отключены")
+endif()
+
 # libcurl (UpdateChecker — HTTPS без QNetworkAccessManager)
 find_package(CURL QUIET)
 if(CURL_FOUND)
@@ -359,6 +364,16 @@ endif()
 # ██  naleystogramm  (Qt desktop executable)  ██
 # ══════════════════════════════════════════════════════════════════════════════
 add_executable(naleystogramm ${UI_SOURCES})
+
+# GroupChatWidget + JoinGroupDialog — только при наличии Qt6WebSockets
+if(Qt6WebSockets_FOUND)
+    target_sources(naleystogramm PRIVATE
+        src/ui/groupchatwidget.h
+        src/ui/groupchatwidget.cpp
+        src/ui/dialogs/joingroupdialog.h
+        src/ui/dialogs/joingroupdialog.cpp
+    )
+endif()
 
 add_dependencies(naleystogramm translations)
 

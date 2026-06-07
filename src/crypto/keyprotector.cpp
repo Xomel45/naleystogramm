@@ -52,7 +52,9 @@ bool KeyProtector::init(const std::filesystem::path& dataDir) {
     f.write(reinterpret_cast<const char*>(m_masterKey.data()), 32);
     f.close();
 
+#ifndef _WIN32
     ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
+#endif
     return true;
 }
 

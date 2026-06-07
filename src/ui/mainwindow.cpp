@@ -24,9 +24,11 @@
 #include "shellwindow.h"
 #include "shellmonitor.h"
 #include "sidedrawer.h"
+#ifdef HAVE_QT_WEBSOCKETS
 #include "groupchatwidget.h"
 #include "dialogs/joingroupdialog.h"
 #include "../core/groupmanager.h"
+#endif
 #include "../media/mediaengine.h"
 #include "../core/identity.h"
 #include "../core/updatechecker.h"
@@ -582,6 +584,7 @@ void MainWindow::setupUi() {
         m_chat->prependHistory(QList<Message>(older.begin(), older.end()));
     });
 
+#ifdef HAVE_QT_WEBSOCKETS
     // GroupChatWidget — добавляем рядом с m_chat в стек
     m_groupChat = new GroupChatWidget();
     connect(m_groupChat, &GroupChatWidget::sendMessage, this, [this](const QString& text) {
@@ -686,10 +689,14 @@ void MainWindow::setupUi() {
         }
     });
 
-    // Правая панель: стек из m_chat и m_groupChat
+#endif // HAVE_QT_WEBSOCKETS
+
+    // Правая панель: стек из m_chat (и m_groupChat при наличии WebSockets)
     m_rightStack = new QStackedWidget;
     m_rightStack->addWidget(m_chat);
+#ifdef HAVE_QT_WEBSOCKETS
     m_rightStack->addWidget(m_groupChat);
+#endif
     m_rightStack->setCurrentWidget(m_chat);
 
     splitter->addWidget(m_leftStack);
@@ -1321,7 +1328,9 @@ void MainWindow::onAddContactClicked() {
 
 void MainWindow::onContactSelected(QUuid uuid) {
     m_activePeer  = uuid;
+#ifdef HAVE_QT_WEBSOCKETS
     m_activeGroup.clear();
+#endif
     m_contacts->clearUnread(uuid);
     m_rightStack->setCurrentWidget(m_chat);
     const std::string sid = quid2s(uuid);

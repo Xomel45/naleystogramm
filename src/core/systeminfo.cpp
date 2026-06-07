@@ -84,6 +84,7 @@ void SystemInfo::collect() {
             m_ramAmount.c_str(), m_osName.c_str());
 }
 
+#ifdef __linux__
 void SystemInfo::collectLinux() {
     m_deviceType = "PC";
 
@@ -137,6 +138,7 @@ void SystemInfo::collectLinux() {
         m_ramAmount = "неизвестно";
     }
 }
+#endif // __linux__
 
 void SystemInfo::collectFallback() {
     m_deviceType = "PC";
