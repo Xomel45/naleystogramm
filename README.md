@@ -4,7 +4,7 @@
 
 **Зашифрованный P2P-мессенджер без серверов и слежки**
 
-[![Version](https://img.shields.io/badge/version-0.8.0-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
+[![Version](https://img.shields.io/badge/version-0.8.1-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4a4a7a?style=flat-square)](#установка)
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52?style=flat-square)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
@@ -89,17 +89,17 @@ Naleystogramm — десктопный мессенджер с прямым за
 
 ```bash
 # AppImage — работает на любом дистрибутиве, Qt не нужен
-chmod +x Naleystogramm-0.8.0-x86_64.AppImage
-./Naleystogramm-0.8.0-x86_64.AppImage
+chmod +x Naleystogramm-0.8.1-x86_64.AppImage
+./Naleystogramm-0.8.1-x86_64.AppImage
 
 # Arch Linux / pacman
-sudo pacman -U naleystogramm-0.8.0-1-x86_64.pkg.tar.zst
+sudo pacman -U naleystogramm-0.8.1-1-x86_64.pkg.tar.zst
 
 # Debian / Ubuntu / Mint
-sudo dpkg -i naleystogramm_0.8.0_amd64.deb
+sudo dpkg -i naleystogramm_0.8.1_amd64.deb
 
 # Fedora / RHEL / openSUSE
-sudo dnf install ./naleystogramm-0.8.0-1.x86_64.rpm
+sudo dnf install ./naleystogramm-0.8.1-1.x86_64.rpm
 ```
 
 ### Windows
@@ -175,7 +175,7 @@ cmake --build build-win -j$(( $(nproc) - 2 ))
 ./deploy.sh release all --clean
 ```
 
-Артефакты: `builds/releases/0.8.0-linux/` и `builds/releases/0.8.0-windows/` (+ `.zip`)
+Артефакты: `builds/releases/0.8.1-linux/` и `builds/releases/0.8.1-windows/` (+ `.zip`)
 
 ---
 
@@ -210,6 +210,24 @@ deploy.sh         — скрипт сборки релизов
 ---
 
 ## Changelog
+
+### v0.8.1 «Шалунишко»
+
+**Совместимость и переносимость**
+- Qt6WebSockets теперь опционален: основной P2P-мессенджер собирается и работает без него; группы и каналы недоступны только при его отсутствии — актуально для Windows-релизов и дистрибутивов без пакета `qt6-websockets`
+- Исправлена кросс-компиляция под Windows (MinGW-w64): `collectLinux()` в `systeminfo.cpp` обёрнута в `#ifdef __linux__`; `chmod` в `keyprotector.cpp` — в `#ifndef _WIN32`
+
+**Интернационализация**
+- Добавлены три новых языка интерфейса: **Беларуская**, **Українська**, **Deutsch** (всего теперь пять: ru / en / be / uk / de)
+- Выбор языка — в Настройках → Интерфейс; применяется мгновенно без перезапуска
+
+**Архитектура**
+- Ядро (`naleystogramm-core`) выделено в отдельный статический таргет CMake без прямой зависимости от Qt — первый шаг к общему C++-ядру с Android-версией через JNI
+- Все внутренние типы ядра переведены на `std::string`, `int64_t`, `std::vector<uint8_t>` вместо Qt-специфичных классов
+
+*Изменения в Android-версии — см. [naleystogramm-mobile](https://github.com/Xomel45/naleystogramm-mobile)*
+
+---
 
 ### v0.8.0 «Хномык»
 
@@ -343,6 +361,6 @@ deploy.sh         — скрипт сборки релизов
 
 <div align="center">
 
-*v0.8.0 «Хномык»*
+*v0.8.1 «Шалунишко»*
 
 </div>
