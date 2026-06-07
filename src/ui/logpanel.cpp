@@ -1,5 +1,6 @@
 #include "logpanel.h"
 #include "thememanager.h"
+#include <QDateTime>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPlainTextEdit>
@@ -123,7 +124,7 @@ void LogPanel::appendEntry(const LogEntry& entry) {
         return "?";
     }();
 
-    const QString timeStr = entry.timestamp.toString("hh:mm:ss.zzz");
+    const QString timeStr = QDateTime::fromMSecsSinceEpoch(entry.timestamp).toString("hh:mm:ss.zzz");
 
     // Формируем текст записи
     const QString line = QString("[%1] [%2] [%3] %4")

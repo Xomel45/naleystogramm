@@ -110,7 +110,7 @@ void DevicePairingDialog::onNewCode() {
     m_codeLabel->setText(code.left(3) + QStringLiteral("  ") + code.right(3));
 
     // QR кодирует URI вида naleys://pair?ip=…&port=…&code=…
-    const QString ip  = NetworkManager::detectLocalLanIp();
+    const QString ip  = QString::fromStdString(NetworkManager::detectLocalLanIp());
     const QString uri = QStringLiteral("naleys://pair?ip=%1&port=%2&code=%3")
                             .arg(ip)
                             .arg(NetworkManager::kDefaultPort)

@@ -119,7 +119,9 @@ bool GroupChatWidget::eventFilter(QObject* obj, QEvent* event) {
 
 void GroupChatWidget::openGroup(const Group& g) {
     m_group = g;
-    m_nameLabel->setText(g.name.isEmpty() ? g.serverUrl : g.name);
+    m_nameLabel->setText(g.name.empty()
+        ? QString::fromStdString(g.serverUrl)
+        : QString::fromStdString(g.name));
     const QString typeStr = g.type == GroupType::Channel ? "Канал" : "Группа";
     m_statusLabel->setText(typeStr + " · подключение…");
 
@@ -189,13 +191,13 @@ QWidget* GroupChatWidget::makeBubble(const GroupMessage& msg) {
 
     if (!msg.outgoing) {
         // Имя отправителя над пузырём (как в TG-группах)
-        auto* senderLbl = new QLabel(msg.sender);
+        auto* senderLbl = new QLabel(QString::fromStdString(msg.sender));
         senderLbl->setStyleSheet(QString("font-size:11px;font-weight:600;color:%1;padding-left:8px;")
                                  .arg(p.accent));
         rowLay->addWidget(senderLbl);
     }
 
-    auto* bubble = new QLabel(msg.text.toHtmlEscaped().replace("\n", "<br>"));
+    auto* bubble = new QLabel(QString::fromStdString(msg.text).toHtmlEscaped().replace("\n", "<br>"));
     bubble->setWordWrap(true);
     bubble->setTextInteractionFlags(Qt::TextSelectableByMouse);
     bubble->setMaximumWidth(480);

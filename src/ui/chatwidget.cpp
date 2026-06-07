@@ -515,15 +515,16 @@ void ChatWidget::loadHistory(const QList<Message>& messages) {
     m_msgLayout->addStretch();
 
     for (const auto& msg : messages) {
+        const QDateTime ts = QDateTime::fromMSecsSinceEpoch(msg.timestamp);
         if (msg.isVoice) {
             // filePath хранится в text при сохранении голосовых
             appendVoiceMessage(msg.outgoing, msg.voiceDurationMs,
-                               msg.timestamp, msg.text);
-        } else if (!msg.fileName.isEmpty()) {
-            appendMessage(QString("⊕ %1").arg(msg.fileName),
-                          msg.outgoing, msg.timestamp);
+                               ts, QString::fromStdString(msg.text));
+        } else if (!msg.fileName.empty()) {
+            appendMessage(QString("⊕ %1").arg(QString::fromStdString(msg.fileName)),
+                          msg.outgoing, ts);
         } else {
-            appendMessage(msg.text, msg.outgoing, msg.timestamp);
+            appendMessage(QString::fromStdString(msg.text), msg.outgoing, ts);
         }
     }
 }
@@ -538,13 +539,14 @@ void ChatWidget::prependHistory(const QList<Message>& msgs) {
     // Вставляем старые сообщения сразу после stretch (idx=0) → перед существующими
     int idx = 1;
     for (const auto& msg : msgs) {
+        const QDateTime ts = QDateTime::fromMSecsSinceEpoch(msg.timestamp);
         QWidget* w;
         if (msg.isVoice) {
-            w = makeVoiceBubble(msg.outgoing, msg.voiceDurationMs, msg.timestamp, msg.text);
-        } else if (!msg.fileName.isEmpty()) {
-            w = makeBubble(QString("⊕ %1").arg(msg.fileName), msg.outgoing, msg.timestamp);
+            w = makeVoiceBubble(msg.outgoing, msg.voiceDurationMs, ts, QString::fromStdString(msg.text));
+        } else if (!msg.fileName.empty()) {
+            w = makeBubble(QString("⊕ %1").arg(QString::fromStdString(msg.fileName)), msg.outgoing, ts);
         } else {
-            w = makeBubble(msg.text, msg.outgoing, msg.timestamp);
+            w = makeBubble(QString::fromStdString(msg.text), msg.outgoing, ts);
         }
         m_msgLayout->insertWidget(idx++, w);
     }

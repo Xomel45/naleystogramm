@@ -35,6 +35,7 @@
 #include "../core/sessionmanager.h"
 #include "../core/logger.h"
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QTimer>
 #include <QSplitter>
 #include <QStyle>
@@ -62,6 +63,20 @@
 #include <QCloseEvent>
 #include <QIcon>
 #include <QSize>
+
+// ── Migration helpers ──────────────────────────────────────────────────────────
+static inline std::string quid2s(const QUuid& u) {
+    return u.toString(QUuid::WithoutBraces).toStdString();
+}
+static inline QUuid s2quid(const std::string& s) {
+    return QUuid::fromString(QString::fromStdString(s));
+}
+static inline void mwSend(NetworkManager* net, const QUuid& u, const QJsonObject& o) {
+    net->sendFrame(quid2s(u), bridge::fromQJsonObj(o));
+}
+static inline void mwSendS(NetworkManager* net, const std::string& u, const QJsonObject& o) {
+    net->sendFrame(u, bridge::fromQJsonObj(o));
+}
 
 MainWindow::MainWindow(App& app, QWidget* parent)
     : QMainWindow(parent)
@@ -162,10 +177,10 @@ MainWindow::MainWindow(App& app, QWidget* parent)
             m_fileTransfer->acceptOffer(from, offerId);
         } else {
             // Обычный файл — показываем диалог подтверждения
-            const Contact c = m_storage->getContact(from);
-            const QString senderName = c.uuid.isNull()
+            const Contact c = m_storage->getContact(quid2s(from));
+            const QString senderName = c.uuid.empty()
                 ? from.toString(QUuid::WithoutBraces).left(8)
-                : c.name;
+                : QString::fromStdString(c.name);
             auto* dlg = new FileAcceptDialog(senderName, name, size, offerId, this);
             dlg->setAttribute(Qt::WA_DeleteOnClose);
             connect(dlg, &FileAcceptDialog::accepted,
@@ -195,12 +210,12 @@ MainWindow::MainWindow(App& app, QWidget* parent)
         if (durationMs > 0) {
             // Голосовое сообщение
             Message voiceMsg;
-            voiceMsg.peerUuid       = peer;
-            voiceMsg.outgoing       = outgoing;
-            voiceMsg.isVoice        = true;
+            voiceMsg.peerUuid        = quid2s(peer);
+            voiceMsg.outgoing        = outgoing;
+            voiceMsg.isVoice         = true;
             voiceMsg.voiceDurationMs = durationMs;
-            voiceMsg.text           = filePath;  // путь к файлу для воспроизведения
-            voiceMsg.timestamp      = now;
+            voiceMsg.text            = filePath.toStdString();
+            voiceMsg.timestamp       = now.toMSecsSinceEpoch();
             if (m_storage->saveMessage(voiceMsg) <= 0)
                 qWarning("[Main] Не удалось сохранить голосовое сообщение");
 
@@ -211,10 +226,10 @@ MainWindow::MainWindow(App& app, QWidget* parent)
             const QString fileName = QFileInfo(filePath).fileName();
             if (!outgoing) {
                 Message fileMsg;
-                fileMsg.peerUuid  = peer;
+                fileMsg.peerUuid  = quid2s(peer);
                 fileMsg.outgoing  = false;
-                fileMsg.fileName  = fileName;
-                fileMsg.timestamp = now;
+                fileMsg.fileName  = fileName.toStdString();
+                fileMsg.timestamp = now.toMSecsSinceEpoch();
                 if (m_storage->saveMessage(fileMsg) <= 0)
                     qWarning("[Main] Не удалось сохранить входящий файл");
 
@@ -231,31 +246,100 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     });
 
     // Подключаем логирование сети к централизованному логгеру
-    connect(m_network, &NetworkManager::connectionLog, this, [](const QString& msg) {
-        Logger::instance().info(LogComponent::Network, msg);
+    connect(m_settings, &SettingsPanel::verboseLoggingChanged, this, [this](bool v) {
+        if (m_network) m_network->setVerboseLogging(v);
     });
-    connect(m_settings, &SettingsPanel::verboseLoggingChanged,
-            m_network,  &NetworkManager::setVerboseLogging);
 
-    connect(m_network, &NetworkManager::ready,             this, &MainWindow::onAppReady);
-    connect(m_network, &NetworkManager::ready,
-            m_settings, [this](const QString& ip, quint16 port, bool) {
-                m_settings->setExternalAddress(ip, port);
-            });
-    connect(m_network, &NetworkManager::externalIpDiscovered,
-            m_settings, [this](const QString& ip) {
-                m_settings->setExternalAddress(ip, m_network->advertisedPort());
-            });
-    connect(m_network, &NetworkManager::incomingRequest,   this, &MainWindow::onIncomingRequest);
-    connect(m_network, &NetworkManager::peerConnected,     this, &MainWindow::onPeerConnected);
-    connect(m_network, &NetworkManager::peerDisconnected,  this, &MainWindow::onPeerDisconnected);
-    connect(m_network, &NetworkManager::messageReceived,   this, &MainWindow::onMessageReceived);
-    connect(m_network, &NetworkManager::contactNameUpdated,this, &MainWindow::onContactNameUpdated);
-
-    // Обновляем индикатор присутствия при каждом изменении состояния подключения.
-    // Connected → 🟢, Reconnecting/Connecting → 🟡, Disconnected → ⚫
-    connect(m_network, &NetworkManager::connectionStateChanged,
-            this, [this](QUuid uuid, ConnectionState state) {
+    // Регистрируем единый listener для всех событий NetworkManager
+    // Все callback-и вызываются на io_context-потоке → диспетчеризуем на Qt-поток
+    {
+        NetworkEvent ev;
+        ev.onLog = [](const std::string& msg) {
+            Logger::instance().info(LogComponent::Network, msg);
+        };
+        ev.onReady = [this](const std::string& ip, uint16_t port, bool upnpOk) {
+            const QString qip = QString::fromStdString(ip);
+            QMetaObject::invokeMethod(this, [this, qip, port, upnpOk]() {
+                onAppReady(qip, static_cast<quint16>(port), upnpOk);
+                m_settings->setExternalAddress(qip, static_cast<quint16>(port));
+            }, Qt::QueuedConnection);
+        };
+        ev.onExternalIp = [this](const std::string& ip) {
+            const QString qip = QString::fromStdString(ip);
+            QMetaObject::invokeMethod(this, [this, qip]() {
+                m_lastIp = qip;
+                updateStatusBar(m_lastIp, m_lastPort, m_lastUpnp);
+                m_settings->setExternalAddress(qip, m_network->advertisedPort());
+            }, Qt::QueuedConnection);
+        };
+        ev.onUpnpResult = [this](bool ok) {
+            QMetaObject::invokeMethod(this, [this, ok]() {
+                m_lastUpnp = ok;
+                updateStatusBar(m_lastIp, m_lastPort, m_lastUpnp);
+                if (m_upnpBtn) {
+                    m_upnpBtn->setText(ok ? tr("UPnP ✓") : tr("UPnP ✗"));
+                    m_upnpBtn->setEnabled(!ok);
+                    m_upnpBtn->setCursor(ok ? Qt::ArrowCursor : Qt::PointingHandCursor);
+                    m_upnpBtn->setToolTip(ok
+                        ? tr("UPnP: порты успешно проброшены (%1)").arg(m_lastPort)
+                        : tr("Не удалось открыть порты автоматически.\n"
+                             "Пробросьте порты 47821–47841 вручную в настройках роутера\n"
+                             "или включите DMZ.\n\nНажмите для повторной попытки."));
+                }
+            }, Qt::QueuedConnection);
+        };
+        ev.onOpenPortResult = [this](bool open) {
+            QMetaObject::invokeMethod(this, [this, open]() {
+                if (!m_openPortBtn) return;
+                const quint16 port = SessionManager::instance().manualPublicPort();
+                m_openPortBtn->setText(
+                    open ? tr("Open Port: %1 ✓").arg(port)
+                         : tr("Open Port: %1 ✗").arg(port));
+                m_openPortBtn->setToolTip(
+                    open ? tr("Порт %1 доступен снаружи").arg(port)
+                         : tr("Порт %1 недоступен или роутер не поддерживает hairpin NAT.\n"
+                              "Попробуйте подключиться с другого устройства чтобы убедиться\n"
+                              "что порт реально открыт в роутере.").arg(port));
+            }, Qt::QueuedConnection);
+        };
+        ev.onIncomingRequest = [this](const std::string& uuid, const std::string& name, const std::string& ip) {
+            const QUuid qu = s2quid(uuid);
+            const QString qn = QString::fromStdString(name);
+            const QString qi = QString::fromStdString(ip);
+            QMetaObject::invokeMethod(this, [this, qu, qn, qi]() {
+                onIncomingRequest(qu, qn, qi);
+            }, Qt::QueuedConnection);
+        };
+        ev.onPeerConnected = [this](const std::string& uuid, const std::string& name) {
+            const QUuid qu = s2quid(uuid);
+            const QString qn = QString::fromStdString(name);
+            QMetaObject::invokeMethod(this, [this, qu, qn]() {
+                onPeerConnected(qu, qn);
+            }, Qt::QueuedConnection);
+        };
+        ev.onPeerDisconnected = [this](const std::string& uuid) {
+            const QUuid qu = s2quid(uuid);
+            QMetaObject::invokeMethod(this, [this, qu]() {
+                onPeerDisconnected(qu);
+            }, Qt::QueuedConnection);
+        };
+        ev.onMessage = [this](const std::string& uuid, const nlohmann::json& msg) {
+            const QUuid qu = s2quid(uuid);
+            const QJsonObject qmsg = bridge::toQJsonObj(msg);
+            QMetaObject::invokeMethod(this, [this, qu, qmsg]() {
+                onMessageReceived(qu, qmsg);
+            }, Qt::QueuedConnection);
+        };
+        ev.onNameUpdated = [this](const std::string& uuid, const std::string& name) {
+            const QUuid qu = s2quid(uuid);
+            const QString qn = QString::fromStdString(name);
+            QMetaObject::invokeMethod(this, [this, qu, qn]() {
+                onContactNameUpdated(qu, qn);
+            }, Qt::QueuedConnection);
+        };
+        ev.onStateChanged = [this](const std::string& uuid, ConnectionState state) {
+            const QUuid qu = s2quid(uuid);
+            QMetaObject::invokeMethod(this, [this, qu, state]() {
                 PeerPresence presence;
                 switch (state) {
                 case ConnectionState::Connected:
@@ -269,45 +353,17 @@ MainWindow::MainWindow(App& app, QWidget* parent)
                     presence = PeerPresence::Offline;
                     break;
                 }
-                m_contacts->setPeerPresence(uuid, presence);
-            });
-
-    // Внешний IP может прийти раньше или позже UPnP — обновляем статус-бар сразу
-    connect(m_network, &NetworkManager::externalIpDiscovered, this, [this](const QString& ip) {
-        m_lastIp = ip;
-        updateStatusBar(m_lastIp, m_lastPort, m_lastUpnp);
-    });
-
-    // UPnP завершается асинхронно — обновляем кнопку и статус-бар
-    connect(m_network, &NetworkManager::upnpMappingResult, this, [this](bool ok) {
-        m_lastUpnp = ok;
-        updateStatusBar(m_lastIp, m_lastPort, m_lastUpnp);
-        if (m_upnpBtn) {
-            m_upnpBtn->setText(ok ? tr("UPnP ✓") : tr("UPnP ✗"));
-            // При неудаче — кнопка активна для повтора, при успехе — просто статус
-            m_upnpBtn->setEnabled(!ok);
-            m_upnpBtn->setCursor(ok ? Qt::ArrowCursor : Qt::PointingHandCursor);
-            m_upnpBtn->setToolTip(ok
-                ? tr("UPnP: порты успешно проброшены (%1)").arg(m_lastPort)
-                : tr("Не удалось открыть порты автоматически.\n"
-                     "Пробросьте порты 47821–47841 вручную в настройках роутера\n"
-                     "или включите DMZ.\n\nНажмите для повторной попытки."));
-        }
-    });
-
-    // Open Port: запускаем проверку доступности после обнаружения внешнего IP
-    connect(m_network, &NetworkManager::openPortCheckResult, this, [this](bool open) {
-        if (!m_openPortBtn) return;
-        const quint16 port = SessionManager::instance().manualPublicPort();
-        m_openPortBtn->setText(
-            open ? tr("Open Port: %1 ✓").arg(port)
-                 : tr("Open Port: %1 ✗").arg(port));
-        m_openPortBtn->setToolTip(
-            open ? tr("Порт %1 доступен снаружи").arg(port)
-                 : tr("Порт %1 недоступен или роутер не поддерживает hairpin NAT.\n"
-                      "Попробуйте подключиться с другого устройства чтобы убедиться\n"
-                      "что порт реально открыт в роутере.").arg(port));
-    });
+                m_contacts->setPeerPresence(qu, presence);
+            }, Qt::QueuedConnection);
+        };
+        ev.onPeerInfoUpdated = [this](const std::string& uuid) {
+            const QUuid qu = s2quid(uuid);
+            QMetaObject::invokeMethod(this, [this, qu]() {
+                emit peerInfoUpdated(qu);
+            }, Qt::QueuedConnection);
+        };
+        m_netListenerToken = m_network->addListener(std::move(ev));
+    }
     m_e2e->onSessionEstablished = [this](const std::string& id) {
         QMetaObject::invokeMethod(this, [this, id]() {
             onSessionEstablished(QUuid::fromString(QString::fromStdString(id)));
@@ -326,9 +382,10 @@ MainWindow::MainWindow(App& app, QWidget* parent)
             this, &MainWindow::onBlockContact);
     connect(m_contacts, &ContactsWidget::muteRequested,
             this, [this](const QUuid& uuid) {
-                Contact c = m_storage->getContact(uuid);
-                if (c.uuid.isNull()) return;
-                (void)m_storage->setContactMuted(uuid, !c.isMuted);
+                const std::string sid = quid2s(uuid);
+                Contact c = m_storage->getContact(sid);
+                if (c.uuid.empty()) return;
+                (void)m_storage->setContactMuted(sid, !c.isMuted);
                 m_contacts->setContacts(m_storage->allContacts());
             });
     connect(m_contacts, &ContactsWidget::deleteChatRequested,
@@ -353,12 +410,13 @@ MainWindow::MainWindow(App& app, QWidget* parent)
 #endif
 
     // Тихая проверка обновлений — не дёргает если проверяли < 6 часов назад
-    auto* checker = new UpdateChecker(this);
-    connect(checker, &UpdateChecker::updateAvailable,
-            this, [this](const UpdateInfo& info) {
-                m_updateBanner->showUpdate(info);
-            });
-    checker->checkInBackground();
+    m_updateChecker = new UpdateChecker();
+    m_updateChecker->subscribeUpdateAvailable([this](const UpdateInfo& info) {
+        QMetaObject::invokeMethod(this, [this, info]() {
+            m_updateBanner->showUpdate(info);
+        }, Qt::QueuedConnection);
+    });
+    m_updateChecker->checkInBackground();
 
     // ── System tray ──────────────────────────────────────────────────────────
     m_tray = new QSystemTrayIcon(QIcon(QStringLiteral(":/icons/app_icon.png")), this);
@@ -387,12 +445,12 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     // ── Typing indicators (исходящие) ────────────────────────────────────────
     connect(m_chat, &ChatWidget::typingStarted, this, [this]() {
         if (m_activePeer.isNull()) return;
-        m_network->sendJson(m_activePeer,
+        mwSend(m_network, m_activePeer,
             QJsonObject{{"type", "TYPING"}, {"state", "start"}});
     });
     connect(m_chat, &ChatWidget::typingStopped, this, [this]() {
         if (m_activePeer.isNull()) return;
-        m_network->sendJson(m_activePeer,
+        mwSend(m_network, m_activePeer,
             QJsonObject{{"type", "TYPING"}, {"state", "stop"}});
     });
 }
@@ -464,7 +522,7 @@ void MainWindow::setupUi() {
 
     // Гамбургер → боковой ящик
     connect(m_hamburgerBtn, &QPushButton::clicked, this, [this]() {
-        const QString name = Identity::instance().displayName();
+        const QString name = QString::fromStdString(Identity::instance().displayName());
         const QString ownPath = QString::fromStdString(SessionManager::instance().avatarPath());
         QPixmap avatar((!ownPath.isEmpty() && QFile::exists(ownPath))
                        ? ownPath : ":/icons/not-avatar.png");
@@ -497,7 +555,7 @@ void MainWindow::setupUi() {
     m_settings = new SettingsPanel(central);
     connect(m_settings, &SettingsPanel::nameChanged,
             this, [this](const QString& name) {
-                if (m_network) m_network->broadcastProfileUpdate(name);
+                if (m_network) m_network->broadcastProfileUpdate(name.toStdString());
             });
     connect(m_settings, &SettingsPanel::avatarChanged,
             this, [this](const QString&) { loadOwnAvatar(); });
@@ -505,7 +563,7 @@ void MainWindow::setupUi() {
             this, [this](bool on) { m_chat->setEnterSends(on); });
     connect(m_settings, &SettingsPanel::connectToDeviceRequested,
             this, [this](const QString& host, quint16 port, const QString& code) {
-                if (m_network) m_network->connectToDevice(host, port, code);
+                if (m_network) m_network->connectToDevice(host.toStdString(), port, code.toStdString());
             });
 
     // ── Правая панель — чат ───────────────────────────────────────────────
@@ -520,7 +578,7 @@ void MainWindow::setupUi() {
         if (m_activePeer.isNull()) return;
         const int newOffset = m_chat->historyOffset() + 50;
         m_chat->setHistoryOffset(newOffset);
-        const auto older = m_storage->getMessages(m_activePeer, 50, newOffset);
+        const auto older = m_storage->getMessages(quid2s(m_activePeer), 50, newOffset);
         m_chat->prependHistory(QList<Message>(older.begin(), older.end()));
     });
 
@@ -534,10 +592,10 @@ void MainWindow::setupUi() {
         } else {
             // Показываем своё сообщение сразу (оптимистично)
             GroupMessage gm;
-            gm.groupId  = m_activeGroup;
+            gm.groupId  = m_activeGroup.toStdString();
             gm.sender   = m_groupManager->groupById(m_activeGroup).username;
-            gm.text     = text;
-            gm.ts       = QDateTime::currentSecsSinceEpoch();
+            gm.text     = text.toStdString();
+            gm.ts       = QDateTime::currentMSecsSinceEpoch();
             gm.outgoing = true;
             m_groupChat->appendMessage(gm);
             m_contacts->updateGroupLastMessage(m_activeGroup, text);
@@ -565,11 +623,13 @@ void MainWindow::setupUi() {
         if (m_activeGroup == gid) m_groupChat->setConnected(false);
     });
     connect(m_groupManager, &GroupManager::messageReceived, this, [this](const GroupMessage& msg) {
-        m_contacts->updateGroupLastMessage(msg.groupId, msg.sender + ": " + msg.text);
-        if (m_activeGroup == msg.groupId) {
+        const QString qgid = QString::fromStdString(msg.groupId);
+        m_contacts->updateGroupLastMessage(qgid,
+            QString::fromStdString(msg.sender + ": " + msg.text));
+        if (m_activeGroup == qgid) {
             m_groupChat->appendMessage(msg);
         } else {
-            m_contacts->incrementGroupUnread(msg.groupId);
+            m_contacts->incrementGroupUnread(qgid);
         }
     });
     connect(m_groupManager, &GroupManager::historyLoaded,
@@ -610,7 +670,7 @@ void MainWindow::setupUi() {
         m_groupChat->setConnected(m_contacts->isGroupConnected(gid));
 
         // Загружаем историю из БД
-        const auto histVec = m_storage->getGroupMessages(gid, 50, 0);
+        const auto histVec = m_storage->getGroupMessages(gid.toStdString(), 50, 0);
         m_groupChat->loadHistory(QList<GroupMessage>(histVec.begin(), histVec.end()));
         m_contacts->clearGroupUnread(gid);
 
@@ -801,14 +861,14 @@ void MainWindow::refreshOwnDisplay() {
     auto& dm = DemoMode::instance();
     auto& id = Identity::instance();
     if (m_nameLabel)
-        m_nameLabel->setText(QString::fromStdString(dm.displayName(id.displayName().toStdString())));
+        m_nameLabel->setText(QString::fromStdString(dm.displayName(id.displayName())));
     updateStatusBar(m_lastIp, m_lastPort, m_lastUpnp);
 }
 
 // ── Вспомогательные проверки конфиденциальности ──────────────────────────
 
 bool MainWindow::isKnownContact(const QUuid& uuid) const {
-    return !m_storage->getContact(uuid).uuid.isNull();
+    return !m_storage->getContact(quid2s(uuid)).uuid.empty();
 }
 
 bool MainWindow::checkPrivacy(PrivacyLevel level, const QUuid& from) const {
@@ -839,79 +899,69 @@ void MainWindow::onAppReady(const QString& ip, quint16 port, bool upnp) {
 }
 
 void MainWindow::onIncomingRequest(QUuid uuid, QString name, QString ip) {
-    // Известный контакт — принимаем переподключение автоматически без диалога.
-    // Это критично для стабильной работы: без авто-принятия переподключение
-    // требует ручного подтверждения каждый раз.
-    if (!m_storage->getContact(uuid).uuid.isNull()) {
-        m_network->acceptIncoming(uuid);
+    const std::string sid = quid2s(uuid);
+    if (!m_storage->getContact(sid).uuid.empty()) {
+        m_network->acceptIncoming(sid);
         statusBar()->showMessage(tr("%1 переподключился").arg(name), 4000);
         m_contacts->setPeerOnline(uuid, true);
         qDebug("[Main] Авто-принято переподключение от известного контакта: %s",
                qPrintable(name));
-        // Синхронизируем имя при переподключении — пир мог сменить ник
         onContactNameUpdated(uuid, name);
         return;
     }
 
-    // Новый неизвестный пир — показываем диалог подтверждения
     auto* dlg = new IncomingDialog(name, ip, this);
     if (dlg->exec() == QDialog::Accepted) {
-        m_network->acceptIncoming(uuid);
-        if (m_storage->getContact(uuid).uuid.isNull()) {
+        m_network->acceptIncoming(sid);
+        if (m_storage->getContact(sid).uuid.empty()) {
             Contact c;
-            c.uuid = uuid; c.name = name; c.ip = ip;
+            c.uuid = sid;
+            c.name = name.toStdString();
+            c.ip   = ip.toStdString();
             if (!m_storage->addContact(c))
                 qWarning("[Main] Не удалось сохранить контакт %s", qPrintable(name));
             m_contacts->setContacts(m_storage->allContacts());
         }
     } else {
-        m_network->rejectIncoming(uuid);
+        m_network->rejectIncoming(sid);
     }
     dlg->deleteLater();
 }
 
 void MainWindow::onPeerConnected(QUuid uuid, QString name) {
+    const std::string sid = quid2s(uuid);
     m_contacts->setPeerOnline(uuid, true);
     statusBar()->showMessage(tr("%1 connected").arg(name), 3000);
 
-    // Обновляем имя контакта из HANDSHAKE_ACK — пир сам сообщает своё актуальное имя
     onContactNameUpdated(uuid, name);
 
     QJsonObject keyMsg;
     keyMsg["type"]   = "KEY_BUNDLE";
     keyMsg["bundle"] = bridge::toQJsonObj(m_e2e->ourBundleJson());
-    m_network->sendJson(uuid, keyMsg);
+    mwSend(m_network, uuid, keyMsg);
 
-    // Сохраняем системную информацию пира в БД — чтобы показывалась и когда пир офлайн
-    const auto info    = m_network->getPeerInfo(uuid);
-    if (!info.systemInfo.isEmpty()) {
-        const std::string infoJson = QString::fromUtf8(
-            QJsonDocument(info.systemInfo).toJson(QJsonDocument::Compact)).toStdString();
-        if (!m_storage->updateContactSystemInfo(uuid, infoJson))
-            qWarning("[Main] Не удалось сохранить systemInfo для %s",
-                     qPrintable(name));
+    const auto info = m_network->getPeerInfo(sid);
+    if (!info.systemInfoJson.empty()) {
+        if (!m_storage->updateContactSystemInfo(sid, info.systemInfoJson))
+            qWarning("[Main] Не удалось сохранить systemInfo для %s", qPrintable(name));
     }
-    if (!info.birthday.isEmpty())
-        (void)m_storage->updateContactBirthday(uuid, info.birthday);
+    if (!info.birthday.empty())
+        (void)m_storage->updateContactBirthday(sid, info.birthday);
 
-    // Проверяем аватар пира: запрашиваем если хэш изменился или нет в кэше
-    const Contact stored = m_storage->getContact(uuid);
-    if (!info.avatarHash.isEmpty() && info.avatarHash != stored.avatarHash) {
-        // Хэш изменился — запрашиваем свежий аватар
-        m_network->sendJson(uuid, QJsonObject{{"type", "AVATAR_REQUEST"}});
+    const Contact stored = m_storage->getContact(sid);
+    if (!info.avatarHash.empty() && info.avatarHash != stored.avatarHash) {
+        mwSend(m_network, uuid, QJsonObject{{"type", "AVATAR_REQUEST"}});
         qDebug("[Main] Запрос аватара у %s (хэш изменился)", qPrintable(name));
-    } else if (!stored.avatarPath.isEmpty() && QFile::exists(stored.avatarPath)) {
-        // Хэш совпал и файл на диске есть — показываем кэш немедленно
-        qDebug("[Main] Аватар %s из кэша: %s", qPrintable(name), qPrintable(stored.avatarPath));
+    } else if (!stored.avatarPath.empty() && QFile::exists(QString::fromStdString(stored.avatarPath))) {
+        qDebug("[Main] Аватар %s из кэша: %s", qPrintable(name), stored.avatarPath.c_str());
         if (m_activePeer == uuid)
-            m_chat->setAvatar(QPixmap(stored.avatarPath));
-        // Обновляем список контактов: аватар появится в иконке элемента
+            m_chat->setAvatar(QPixmap(QString::fromStdString(stored.avatarPath)));
         m_contacts->setContacts(m_storage->allContacts());
     }
 }
 
 void MainWindow::onPeerDisconnected(QUuid uuid) {
-    m_storage->updateLastSeen(uuid);
+    m_storage->updateLastSeen(quid2s(uuid));
     m_contacts->setPeerOnline(uuid, false);
     // Перезагружаем контакты чтобы обновить lastSeen в списке
     const auto updated = m_storage->allContacts();
@@ -921,16 +971,16 @@ void MainWindow::onPeerDisconnected(QUuid uuid) {
 }
 
 void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
+    const std::string sfrom = quid2s(from);
     // Игнорируем все сообщения (в т.ч. ключевой обмен) от заблокированных контактов
     {
-        const Contact sender = m_storage->getContact(from);
-        if (!sender.uuid.isNull() && sender.isBlocked) {
+        const Contact sender = m_storage->getContact(sfrom);
+        if (!sender.uuid.empty() && sender.isBlocked) {
             qDebug("[Main] Сообщение от заблокированного %s — игнорируем",
                    qPrintable(from.toString(QUuid::WithoutBraces)));
             return;
         }
-        // Также проверяем blocked_list — сюда попадают удалённые но заблокированные контакты
-        if (sender.uuid.isNull() && m_storage->isUuidBlocked(from)) {
+        if (sender.uuid.empty() && m_storage->isUuidBlocked(sfrom)) {
             qDebug("[Main] Сообщение от удалённого заблокированного %s — игнорируем",
                    qPrintable(from.toString(QUuid::WithoutBraces)));
             return;
@@ -944,8 +994,8 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         if (m_activePeer == from) {
             const QString state = msg["state"].toString();
             if (state == "start") {
-                const Contact c = m_storage->getContact(from);
-                m_chat->showTypingIndicator(c.name);
+                const Contact c = m_storage->getContact(sfrom);
+                m_chat->showTypingIndicator(QString::fromStdString(c.name));
                 // Авто-скрытие через 5 сек если stop не пришёл
                 auto*& timer = m_peerTypingTimers[from];
                 if (!timer) {
@@ -1002,27 +1052,20 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
 
     if (type == "KEY_BUNDLE") {
         if (!m_e2e->hasSession(bridge::fromQUuid(from))) {
-            // Детерминированное соглашение: инициирует тот, чей UUID меньше.
-            // Это гарантирует что ровно одна сторона вызовет initiateSession
-            // даже при одновременном взаимном подключении (= один initiator, один responder).
-            // Без этого оба вызывают initiateSession → оба становятся sender-ами
-            // → несовместимые состояния ratchet → разные Safety Numbers → мусор вместо сообщений.
-            const QUuid ours = Identity::instance().uuid();
-            if (ours < from) {
-                // Наш UUID меньше — мы инициируем X3DH-сессию
+            const std::string oursStr = Identity::instance().uuid();
+            if (oursStr < sfrom) {
                 const QJsonObject initMsg = bridge::toQJsonObj(
                     m_e2e->initiateSession(bridge::fromQUuid(from),
                                            bridge::fromQJsonObj(msg["bundle"].toObject())));
-                if (!initMsg.isEmpty()) m_network->sendJson(from, initMsg);
+                if (!initMsg.isEmpty()) mwSend(m_network, from, initMsg);
             }
-            // Иначе — наш UUID больше, ждём KEY_INIT от пира (он инициатор)
         }
         return;
     }
     if (type == "KEY_INIT") {
         const QJsonObject reply = bridge::toQJsonObj(
             m_e2e->acceptSession(bridge::fromQUuid(from), bridge::fromQJsonObj(msg)));
-        if (!reply.isEmpty()) m_network->sendJson(from, reply);
+        if (!reply.isEmpty()) mwSend(m_network, from, reply);
         return;
     }
     if (type == "KEY_ACK") return;
@@ -1055,7 +1098,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         const QString hash = QString::fromStdString(
             SessionManager::computeAvatarHash(ownPath.toStdString()));
 
-        m_network->sendJson(from, QJsonObject{
+        mwSend(m_network, from, QJsonObject{
             {"type", "AVATAR_DATA"},
             {"data", QString::fromLatin1(pngData.toBase64())},
             {"hash", hash},
@@ -1083,29 +1126,31 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         if (env.isEmpty()) return;
         env["msg_id"] = msgId.isEmpty()
             ? QUuid::createUuid().toString(QUuid::WithoutBraces) : msgId;
-        m_network->sendJson(toUuid, env);
+        mwSend(m_network, toUuid, env);
 
+        const QDateTime nowDt = QDateTime::currentDateTime();
         Message saved;
-        saved.peerUuid  = toUuid; saved.outgoing = true;
-        saved.text      = text;   saved.timestamp = QDateTime::currentDateTime();
-        saved.ciphertext = QJsonDocument(env).toJson();
+        saved.peerUuid   = quid2s(toUuid);
+        saved.outgoing   = true;
+        saved.text       = text.toStdString();
+        saved.timestamp  = nowDt.toMSecsSinceEpoch();
+        saved.ciphertext = bridge::fromQBA(QJsonDocument(env).toJson());
         (void)m_storage->saveMessage(saved);
 
         if (m_activePeer == toUuid) {
-            m_chat->appendMessage(text, true, saved.timestamp, env["msg_id"].toString());
+            m_chat->appendMessage(text, true, nowDt, env["msg_id"].toString());
             m_contacts->updateLastMessage(toUuid, text);
         }
 
-        // Уведомляем остальные вторичные устройства
         const QJsonObject relay{
             {"type",      "DEVICE_RELAY_MSG"},
             {"to_uuid",   toUuid.toString(QUuid::WithoutBraces)},
             {"msg_id",    env["msg_id"].toString()},
             {"text",      text},
             {"outgoing",  true},
-            {"timestamp", saved.timestamp.toString(Qt::ISODate)},
+            {"timestamp", nowDt.toString(Qt::ISODate)},
         };
-        m_network->relayToLinkedDevices(from, relay);
+        m_network->relayToLinkedDevices(sfrom, bridge::fromQJsonObj(relay));
         return;
     }
 
@@ -1121,23 +1166,27 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
             msg["timestamp"].toString(), Qt::ISODate);
         if (peerUuid.isNull() || text.isEmpty()) return;
 
-        if (m_storage->getContact(peerUuid).uuid.isNull()) {
+        const std::string speer = quid2s(peerUuid);
+        if (m_storage->getContact(speer).uuid.empty()) {
             const QString name = msg["from_name"].toString();
-            Contact tmp; tmp.uuid = peerUuid;
-            tmp.name = name.isEmpty()
-                ? peerUuid.toString(QUuid::WithoutBraces).left(8) : name;
+            Contact tmp;
+            tmp.uuid = speer;
+            tmp.name = (name.isEmpty()
+                ? peerUuid.toString(QUuid::WithoutBraces).left(8) : name).toStdString();
             (void)m_storage->addContact(tmp);
             m_contacts->setContacts(m_storage->allContacts());
         }
 
+        const QDateTime tsFinal = ts.isValid() ? ts : QDateTime::currentDateTime();
         Message saved;
-        saved.peerUuid  = peerUuid; saved.outgoing = outgoing;
-        saved.text      = text;
-        saved.timestamp = ts.isValid() ? ts : QDateTime::currentDateTime();
+        saved.peerUuid  = speer;
+        saved.outgoing  = outgoing;
+        saved.text      = text.toStdString();
+        saved.timestamp = tsFinal.toMSecsSinceEpoch();
         (void)m_storage->saveMessage(saved);
 
         if (m_activePeer == peerUuid)
-            m_chat->appendMessage(text, outgoing, saved.timestamp, msgId);
+            m_chat->appendMessage(text, outgoing, tsFinal, msgId);
         else if (!outgoing)
             m_contacts->incrementUnread(peerUuid);
         m_contacts->updateLastMessage(peerUuid, text);
@@ -1152,25 +1201,23 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         }
 
         // Авто-добавляем неизвестного отправителя — иначе saveMessage упадёт на FK-ограничении
-        if (m_storage->getContact(from).uuid.isNull()) {
-            const auto info = m_network->getPeerInfo(from);
+        if (m_storage->getContact(sfrom).uuid.empty()) {
+            const auto info = m_network->getPeerInfo(sfrom);
             Contact tmp;
-            tmp.uuid = from;
-            tmp.name = info.name.isEmpty()
-                ? from.toString(QUuid::WithoutBraces).left(8)
+            tmp.uuid = sfrom;
+            tmp.name = info.name.empty()
+                ? from.toString(QUuid::WithoutBraces).left(8).toStdString()
                 : info.name;
             tmp.ip   = info.ip;
             tmp.port = info.serverPort;
             if (!m_storage->addContact(tmp))
-                qWarning("[Main] Не удалось авто-добавить контакт %s",
-                         qPrintable(tmp.name));
+                qWarning("[Main] Не удалось авто-добавить контакт %s", tmp.name.c_str());
             m_contacts->setContacts(m_storage->allContacts());
-            qDebug("[Main] Авто-добавлен неизвестный отправитель: %s", qPrintable(tmp.name));
+            qDebug("[Main] Авто-добавлен неизвестный отправитель: %s", tmp.name.c_str());
         }
 
         const auto plain = m_e2e->decrypt(bridge::fromQUuid(from), bridge::fromQJsonObj(msg));
         if (!plain.has_value()) {
-            // Ключи не совпадают — показываем системное сообщение вместо тихого падения
             qWarning("[Main] Ошибка расшифровки от %s",
                      qPrintable(from.toString(QUuid::WithoutBraces)));
             if (m_activePeer == from)
@@ -1182,44 +1229,45 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         }
         const QString text = QString::fromUtf8(bridge::toQBA(*plain));
 
-        // Отправляем ACK чтобы отправитель увидел иконку доставки
         const QString ackId = msg["msg_id"].toString();
         if (!ackId.isEmpty()) {
-            m_network->sendJson(from, QJsonObject{
+            mwSend(m_network, from, QJsonObject{
                 {"type", "MSG_ACK"},
                 {"msg_id", ackId}
             });
         }
 
+        const QDateTime nowDt = QDateTime::currentDateTime();
         Message m;
-        m.peerUuid = from; m.outgoing = false;
-        m.text = text; m.timestamp = QDateTime::currentDateTime();
-        m.ciphertext = QJsonDocument(msg).toJson();
+        m.peerUuid   = sfrom;
+        m.outgoing   = false;
+        m.text       = text.toStdString();
+        m.timestamp  = nowDt.toMSecsSinceEpoch();
+        m.ciphertext = bridge::fromQBA(QJsonDocument(msg).toJson());
         if (m_storage->saveMessage(m) <= 0)
             qWarning("[Main] Failed to save incoming message");
 
         if (m_activePeer == from) {
-            m_chat->appendMessage(text, false, QDateTime::currentDateTime());
+            m_chat->appendMessage(text, false, nowDt);
             m_chat->hideTypingIndicator();
         } else {
             m_contacts->incrementUnread(from);
-            // Уведомление в трей если окно скрыто и контакт не заглушён
-            const Contact sender = m_storage->getContact(from);
+            const Contact sender = m_storage->getContact(sfrom);
             if (!sender.isMuted && m_tray && (isHidden() || isMinimized())) {
-                const QString senderName = sender.uuid.isNull()
+                const QString senderName = sender.uuid.empty()
                     ? from.toString(QUuid::WithoutBraces).left(8)
-                    : sender.name;
+                    : QString::fromStdString(sender.name);
                 m_tray->showMessage(senderName, text,
                     QSystemTrayIcon::Information, 4000);
             }
         }
         m_contacts->updateLastMessage(from, text);
 
-        // Пересылаем расшифрованный текст на все подключённые вторичные устройства
         {
-            const Contact sender = m_storage->getContact(from);
-            const QString senderName = sender.uuid.isNull()
-                ? from.toString(QUuid::WithoutBraces).left(8) : sender.name;
+            const Contact sender = m_storage->getContact(sfrom);
+            const QString senderName = sender.uuid.empty()
+                ? from.toString(QUuid::WithoutBraces).left(8)
+                : QString::fromStdString(sender.name);
             const QJsonObject relay{
                 {"type",      "DEVICE_RELAY_MSG"},
                 {"from_uuid", from.toString(QUuid::WithoutBraces)},
@@ -1227,9 +1275,9 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
                 {"msg_id",    ackId},
                 {"text",      text},
                 {"outgoing",  false},
-                {"timestamp", QDateTime::currentDateTime().toString(Qt::ISODate)},
+                {"timestamp", nowDt.toString(Qt::ISODate)},
             };
-            m_network->relayToLinkedDevices(from, relay);
+            m_network->relayToLinkedDevices(sfrom, bridge::fromQJsonObj(relay));
         }
         return;
     }
@@ -1248,25 +1296,27 @@ void MainWindow::onAddContactClicked() {
     const QString connStr = dlg->connectionString();
     dlg->deleteLater();
 
-    const auto peer = Identity::parseConnectionString(connStr);
+    const auto peer = Identity::parseConnectionString(connStr.toStdString());
     if (!peer) {
         QMessageBox::warning(this, tr("Invalid format"),
             tr("Connection string is invalid.\nFormat: UUID@IP:Port"));
         return;
     }
 
-    if (m_storage->getContact(peer->uuid).uuid.isNull()) {
+    if (m_storage->getContact(peer->uuid).uuid.empty()) {
         Contact c;
         c.uuid = peer->uuid;
-        c.name = peer->uuid.toString(QUuid::WithoutBraces).left(8);
-        c.ip = peer->ip;     c.port = peer->port;
+        c.name = peer->uuid.substr(0, 8);
+        c.ip   = peer->ip;
+        c.port = peer->port;
         if (!m_storage->addContact(c))
             qWarning("[Main] Failed to save new contact");
         m_contacts->setContacts(m_storage->allContacts());
     }
 
     m_network->connectToPeer(*peer);
-    statusBar()->showMessage(tr("Connecting to %1:%2...").arg(peer->ip).arg(peer->port), 4000);
+    statusBar()->showMessage(
+        tr("Connecting to %1:%2...").arg(QString::fromStdString(peer->ip)).arg(peer->port), 4000);
 }
 
 void MainWindow::onContactSelected(QUuid uuid) {
@@ -1274,38 +1324,35 @@ void MainWindow::onContactSelected(QUuid uuid) {
     m_activeGroup.clear();
     m_contacts->clearUnread(uuid);
     m_rightStack->setCurrentWidget(m_chat);
-    const Contact c = m_storage->getContact(uuid);
+    const std::string sid = quid2s(uuid);
+    const Contact c = m_storage->getContact(sid);
 
-    // Проверяем совместимость: если запись создана более новой версией приложения —
-    // предупреждаем один раз за сессию (новые поля могут отображаться некорректно).
     if (!m_shownCompatWarnings.contains(uuid)) {
         const QString current = QLatin1String(UpdateChecker::kCurrentVersion);
-        if (VersionUtils::isNewerThan(c.versionCreated, current)) {
+        if (VersionUtils::isNewerThan(c.versionCreated, current.toStdString())) {
             m_shownCompatWarnings.insert(uuid);
             QMessageBox::information(this, tr("Предупреждение совместимости"),
                 tr("Контакт <b>%1</b> использует более новую версию приложения (v%2).<br>"
                    "Некоторые данные могут отображаться некорректно.<br>"
                    "Обновите приложение до последней версии.")
-                .arg(c.name, c.versionCreated));
+                .arg(QString::fromStdString(c.name), QString::fromStdString(c.versionCreated)));
         }
     }
 
-    m_chat->openConversation(c.name, m_network->isOnline(uuid));
+    m_chat->openConversation(QString::fromStdString(c.name), m_network->isOnline(sid));
 
-    // Предобработка истории: заменяем текст сообщений из будущих версий заглушкой
-    auto msgs = m_storage->getMessages(uuid, 50);
-    const QString current = QLatin1String(UpdateChecker::kCurrentVersion);
+    auto msgs = m_storage->getMessages(sid, 50);
+    const std::string current = UpdateChecker::kCurrentVersion;
     for (auto& msg : msgs) {
         if (!msg.isVoice && VersionUtils::isNewerThan(msg.versionCreated, current))
-            msg.text = tr("[Сообщение из более новой версии — обновите приложение]");
+            msg.text = tr("[Сообщение из более новой версии — обновите приложение]").toStdString();
     }
     m_chat->loadHistory(QList<Message>(msgs.begin(), msgs.end()));
 
-    // Передаём UUID для сигнала openProfileRequested (клик по аватару)
     m_chat->setPeerUuid(uuid);
-    // Загружаем кэшированный аватар если есть
-    if (!c.avatarPath.isEmpty() && QFile::exists(c.avatarPath))
-        m_chat->setAvatar(QPixmap(c.avatarPath));
+    const QString avatarPath = QString::fromStdString(c.avatarPath);
+    if (!c.avatarPath.empty() && QFile::exists(avatarPath))
+        m_chat->setAvatar(QPixmap(avatarPath));
     else
         m_chat->setAvatar({});
 }
@@ -1313,21 +1360,24 @@ void MainWindow::onContactSelected(QUuid uuid) {
 void MainWindow::onSendMessage(const QString& text) {
     if (m_activePeer.isNull() || text.trimmed().isEmpty()) return;
 
-    // Если мы вторичное устройство — пересылаем через главное
-    const QUuid primaryUuid = m_network->primaryDeviceUuid();
-    if (!primaryUuid.isNull()) {
+    const std::string sprimary = m_network->primaryDeviceUuid();
+    if (!sprimary.empty()) {
+        const QUuid primaryUuid = s2quid(sprimary);
         const QString msgId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        m_network->sendJson(primaryUuid, QJsonObject{
+        mwSend(m_network, primaryUuid, QJsonObject{
             {"type",    "DEVICE_MSG_SEND"},
             {"to_uuid", m_activePeer.toString(QUuid::WithoutBraces)},
             {"msg_id",  msgId},
             {"text",    text},
         });
+        const QDateTime nowDt = QDateTime::currentDateTime();
         Message msg;
-        msg.peerUuid  = m_activePeer; msg.outgoing = true;
-        msg.text      = text; msg.timestamp = QDateTime::currentDateTime();
+        msg.peerUuid  = quid2s(m_activePeer);
+        msg.outgoing  = true;
+        msg.text      = text.toStdString();
+        msg.timestamp = nowDt.toMSecsSinceEpoch();
         (void)m_storage->saveMessage(msg);
-        m_chat->appendMessage(text, true, msg.timestamp, msgId);
+        m_chat->appendMessage(text, true, nowDt, msgId);
         m_contacts->updateLastMessage(m_activePeer, text);
         return;
     }
@@ -1343,17 +1393,20 @@ void MainWindow::onSendMessage(const QString& text) {
         m_e2e->encrypt(bridge::fromQUuid(m_activePeer), bridge::fromQBA(text.toUtf8())));
     if (env.isEmpty()) return;
     env["msg_id"] = msgId;
-    m_network->sendJson(m_activePeer, env);
+    mwSend(m_network, m_activePeer, env);
     m_pendingAcks[msgId] = m_activePeer;
 
+    const QDateTime nowDt = QDateTime::currentDateTime();
     Message msg;
-    msg.peerUuid = m_activePeer; msg.outgoing = true;
-    msg.text = text; msg.timestamp = QDateTime::currentDateTime();
-    msg.ciphertext = QJsonDocument(env).toJson();
+    msg.peerUuid  = quid2s(m_activePeer);
+    msg.outgoing  = true;
+    msg.text      = text.toStdString();
+    msg.timestamp = nowDt.toMSecsSinceEpoch();
+    msg.ciphertext = bridge::fromQBA(QJsonDocument(env).toJson());
     if (m_storage->saveMessage(msg) <= 0)
         qWarning("[Main] Failed to save outgoing message");
 
-    m_chat->appendMessage(text, true, QDateTime::currentDateTime(), msgId);
+    m_chat->appendMessage(text, true, nowDt, msgId);
     m_contacts->updateLastMessage(m_activePeer, text);
 }
 
@@ -1389,12 +1442,12 @@ void MainWindow::onSendVoice(const QString& filePath, int durationMs) {
 
     // Сохраняем в историю (filePath — в поле text, is_voice=true)
     Message msg;
-    msg.peerUuid        = m_activePeer;
+    msg.peerUuid        = quid2s(m_activePeer);
     msg.outgoing        = true;
     msg.isVoice         = true;
     msg.voiceDurationMs = durationMs;
-    msg.text            = filePath;
-    msg.timestamp       = now;
+    msg.text            = filePath.toStdString();
+    msg.timestamp       = now.toMSecsSinceEpoch();
     if (m_storage->saveMessage(msg) <= 0)
         qWarning("[Main] Не удалось сохранить исходящее голосовое");
 }
@@ -1406,14 +1459,14 @@ void MainWindow::onCallRequested(QUuid peerUuid) {
         QMessageBox::information(this, "Звонок", "Уже идёт звонок");
         return;
     }
-    const auto info = m_network->getPeerInfo(peerUuid);
+    const auto info = m_network->getPeerInfo(quid2s(peerUuid));
     if (info.state != ConnectionState::Connected) {
         QMessageBox::warning(this, "Звонок", "Пир не подключён");
         return;
     }
 
     m_callWindow = new CallWindow(this);
-    m_callWindow->setPeerName(info.name);
+    m_callWindow->setPeerName(QString::fromStdString(info.name));
     m_callWindow->setState(CallWindow::State::Calling);
     connect(m_callWindow, &CallWindow::muteToggled,
             m_callManager->mediaEngine(), &MediaEngine::setMuted);
@@ -1429,7 +1482,7 @@ void MainWindow::onCallRequested(QUuid peerUuid) {
 #endif
     m_callWindow->show();
 
-    m_callManager->initiateCall(peerUuid, QHostAddress(info.ip));
+    m_callManager->initiateCall(peerUuid, QHostAddress(QString::fromStdString(info.ip)));
 }
 
 void MainWindow::onIncomingCall(QUuid from, QString callerName, QString callId) {
@@ -1479,9 +1532,10 @@ void MainWindow::onCallEnded(QUuid /*peer*/) {
 
 void MainWindow::onShowMyId() {
     const auto& id = Identity::instance();
-    const QString ip   = m_network->externalIp();
+    const std::string ipStr = m_network->externalIp();
+    const QString ip   = QString::fromStdString(ipStr);
     const quint16 port = m_network->advertisedPort();
-    const QString connStr = id.connectionString(ip, port);
+    const QString connStr = QString::fromStdString(id.connectionString(ipStr, port));
 
     QMessageBox dlg(this);
     dlg.setWindowTitle(tr("My ID"));
@@ -1510,9 +1564,9 @@ void MainWindow::onEditName() {
     bool ok;
     const QString name = QInputDialog::getText(
         this, tr("Edit name"), tr("New name:"),
-        QLineEdit::Normal, Identity::instance().displayName(), &ok);
+        QLineEdit::Normal, QString::fromStdString(Identity::instance().displayName()), &ok);
     if (ok && !name.trimmed().isEmpty()) {
-        Identity::instance().setDisplayName(name.trimmed());
+        Identity::instance().setDisplayName(name.trimmed().toStdString());
     }
 }
 
@@ -1536,7 +1590,7 @@ void MainWindow::onAvatarDataReceived(QUuid from,
     f.write(pngData);
     f.close();
 
-    if (!m_storage->updateAvatar(from, hash, savePath))
+    if (!m_storage->updateAvatar(quid2s(from), hash.toStdString(), savePath.toStdString()))
         qWarning("[Main] Не удалось обновить аватар в БД для %s",
                  qPrintable(from.toString(QUuid::WithoutBraces)));
     qDebug("[Main] Аватар сохранён: %s", qPrintable(savePath));
@@ -1550,20 +1604,20 @@ void MainWindow::onAvatarDataReceived(QUuid from,
 }
 
 void MainWindow::onContactNameUpdated(QUuid uuid, QString name) {
-    // Игнорируем неизвестных пиров
-    Contact c = m_storage->getContact(uuid);
-    if (c.uuid.isNull()) return;
+    const std::string sid = quid2s(uuid);
+    Contact c = m_storage->getContact(sid);
+    if (c.uuid.empty()) return;
 
-    if (c.name == name) return;  // Имя не изменилось
+    const std::string sname = name.toStdString();
+    if (c.name == sname) return;
 
-    // Обновляем базу данных
-    if (!m_storage->updateContactName(uuid, name)) {
+    if (!m_storage->updateContactName(sid, sname)) {
         qWarning("[Main] Не удалось обновить имя контакта %s",
                  qPrintable(uuid.toString(QUuid::WithoutBraces)));
     }
 
     qDebug("[Main] Имя контакта обновлено: \"%s\" → \"%s\"",
-           qPrintable(c.name), qPrintable(name));
+           c.name.c_str(), sname.c_str());
 
     // Обновляем список контактов
     m_contacts->updateContactName(uuid, name);
@@ -1574,55 +1628,57 @@ void MainWindow::onContactNameUpdated(QUuid uuid, QString name) {
 }
 
 void MainWindow::onBlockContact(QUuid uuid) {
-    const Contact c = m_storage->getContact(uuid);
-    if (c.uuid.isNull()) return;
+    const std::string sid = quid2s(uuid);
+    const Contact c = m_storage->getContact(sid);
+    if (c.uuid.empty()) return;
 
-    const bool newState = !c.isBlocked; // переключаем флаг
-    if (!m_storage->blockContact(uuid, newState)) {
+    const bool newState = !c.isBlocked;
+    if (!m_storage->blockContact(sid, newState)) {
         qWarning("[Main] Не удалось изменить блокировку для %s",
                  qPrintable(uuid.toString(QUuid::WithoutBraces)));
         return;
     }
 
-    // Перезагружаем список — цвет имени изменится в rebuildList
     m_contacts->setContacts(m_storage->allContacts());
 
+    const QString qname = QString::fromStdString(c.name);
     const QString action = newState ? tr("заблокирован") : tr("разблокирован");
-    statusBar()->showMessage(tr("%1 %2").arg(c.name, action), 4000);
-    qDebug("[Main] Контакт %s %s", qPrintable(c.name), qPrintable(action));
+    statusBar()->showMessage(tr("%1 %2").arg(qname, action), 4000);
+    qDebug("[Main] Контакт %s %s", c.name.c_str(), qPrintable(action));
 }
 
 void MainWindow::onDeleteChat(QUuid uuid) {
-    const Contact c = m_storage->getContact(uuid);
-    if (c.uuid.isNull()) return;
+    const std::string sid = quid2s(uuid);
+    const Contact c = m_storage->getContact(sid);
+    if (c.uuid.empty()) return;
 
+    const QString qname = QString::fromStdString(c.name);
     const auto btn = QMessageBox::question(
         this,
         tr("Удалить чат"),
-        tr("Удалить всю переписку с %1?\nСам контакт останется в списке.").arg(c.name),
+        tr("Удалить всю переписку с %1?\nСам контакт останется в списке.").arg(qname),
         QMessageBox::Yes | QMessageBox::No);
     if (btn != QMessageBox::Yes) return;
 
-    if (!m_storage->clearMessages(uuid))
+    if (!m_storage->clearMessages(sid))
         qWarning("[Main] Не удалось очистить переписку с %s",
                  qPrintable(uuid.toString(QUuid::WithoutBraces)));
 
-    // Очищаем окно чата если это активный пир
     if (m_activePeer == uuid)
         m_chat->loadHistory({});
 
-    // Убираем превью последнего сообщения
     m_contacts->updateLastMessage(uuid, {});
 
-    statusBar()->showMessage(tr("Чат с %1 удалён").arg(c.name), 4000);
-    qDebug("[Main] Переписка с %s удалена", qPrintable(c.name));
+    statusBar()->showMessage(tr("Чат с %1 удалён").arg(qname), 4000);
+    qDebug("[Main] Переписка с %s удалена", c.name.c_str());
 }
 
 void MainWindow::onDeleteContact(QUuid uuid) {
-    const Contact c = m_storage->getContact(uuid);
-    if (c.uuid.isNull()) return;
+    const std::string sid = quid2s(uuid);
+    const Contact c = m_storage->getContact(sid);
+    if (c.uuid.empty()) return;
 
-    // Подсказка о блокировке в тексте диалога — пользователь видит что произойдёт с блокировкой
+    const QString qname = QString::fromStdString(c.name);
     const QString blockedHint = c.isBlocked
         ? tr("\nКонтакт будет добавлен в список блокировки — новые сообщения от него будут отклонены.")
         : QString();
@@ -1631,28 +1687,25 @@ void MainWindow::onDeleteContact(QUuid uuid) {
         this,
         tr("Удалить контакт"),
         tr("Удалить контакт %1 и всю переписку?%2\n\nЭто действие необратимо.")
-            .arg(c.name, blockedHint),
+            .arg(qname, blockedHint),
         QMessageBox::Yes | QMessageBox::No);
     if (btn != QMessageBox::Yes) return;
 
-    // deleteContact удаляет переписку, сам контакт и (если был заблокирован) пишет в blocked_list
-    if (!m_storage->deleteContact(uuid)) {
+    if (!m_storage->deleteContact(sid)) {
         qWarning("[Main] Не удалось удалить контакт %s",
                  qPrintable(uuid.toString(QUuid::WithoutBraces)));
         return;
     }
 
-    // Если это был активный пир — сбрасываем чат
     if (m_activePeer == uuid) {
         m_activePeer = QUuid();
         m_chat->showPlaceholder();
     }
 
-    // Обновляем список контактов
     m_contacts->setContacts(m_storage->allContacts());
 
-    statusBar()->showMessage(tr("Контакт %1 удалён").arg(c.name), 4000);
-    qDebug("[Main] Контакт %s удалён", qPrintable(c.name));
+    statusBar()->showMessage(tr("Контакт %1 удалён").arg(qname), 4000);
+    qDebug("[Main] Контакт %s удалён", c.name.c_str());
 }
 
 void MainWindow::onOpenProfile(QUuid uuid) {
@@ -1674,7 +1727,7 @@ void MainWindow::onOpenProfile(QUuid uuid) {
         m_e2e->getSafetyNumber(bridge::fromQUuid(uuid))));
 
     // Обновляем виджет когда пришла новая информация о пире
-    connect(m_network, &NetworkManager::peerInfoUpdated,
+    connect(this, &MainWindow::peerInfoUpdated,
             dlg, [dlg, uuid](const QUuid& u) {
                 if (u == uuid) dlg->refreshData();
             });
@@ -1700,7 +1753,7 @@ void MainWindow::onShellRequestedFromProfile(QUuid peerUuid) {
                "Подождите несколько секунд и повторите."));
         return;
     }
-    if (!m_network->isOnline(peerUuid)) {
+    if (!m_network->isOnline(quid2s(peerUuid))) {
         QMessageBox::warning(this, tr("Шелл недоступен"),
             tr("Контакт не в сети."));
         return;

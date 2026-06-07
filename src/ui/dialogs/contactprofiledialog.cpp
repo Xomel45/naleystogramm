@@ -19,6 +19,7 @@
 #include <QDateTime>
 #include <QFont>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QMouseEvent>
 #include <QApplication>
 #include <QClipboard>
@@ -639,11 +640,12 @@ void ContactProfileDialog::applyTheme() {
 // ── Заполнение данными ────────────────────────────────────────────────────
 
 void ContactProfileDialog::populateData() {
-    const Contact c = m_storage->getContact(m_uuid);
-    const PeerPublicInfo info = m_network->getPeerInfo(m_uuid);
+    const std::string muuidS = m_uuid.toString(QUuid::WithoutBraces).toStdString();
+    const Contact c = m_storage->getContact(muuidS);
+    const PeerPublicInfo info = m_network->getPeerInfo(muuidS);
 
     // ── Имя ──────────────────────────────────────────────────────────────
-    const QString name = c.name.isEmpty() ? tr("Неизвестный") : c.name;
+    const QString name = c.name.empty() ? tr("Неизвестный") : QString::fromStdString(c.name);
     m_nameLabel->setText(name);
 
     // ── ID ───────────────────────────────────────────────────────────────
@@ -651,7 +653,9 @@ void ContactProfileDialog::populateData() {
     m_idRow->setProperty("fullUuid", m_uuid.toString(QUuid::WithoutBraces));
 
     // ── День рождения ─────────────────────────────────────────────────────
-    const QString bday = !info.birthday.isEmpty() ? info.birthday : c.birthday;
+    const QString bday = !info.birthday.empty()
+        ? QString::fromStdString(info.birthday)
+        : QString::fromStdString(c.birthday);
     if (!bday.isEmpty()) {
         const QDate d = QDate::fromString(bday, Qt::ISODate);
         m_birthdayRow->setText(d.isValid()
@@ -663,8 +667,9 @@ void ContactProfileDialog::populateData() {
 
     // ── Аватар ───────────────────────────────────────────────────────────
     const int sz = 80;
-    if (!c.avatarPath.isEmpty() && QFile::exists(c.avatarPath)) {
-        QPixmap src(c.avatarPath);
+    const QString avatarPath = QString::fromStdString(c.avatarPath);
+    if (!c.avatarPath.empty() && QFile::exists(avatarPath)) {
+        QPixmap src(avatarPath);
         if (!src.isNull()) {
             QPixmap rounded(sz, sz);
             rounded.fill(Qt::transparent);
@@ -684,19 +689,19 @@ void ContactProfileDialog::populateData() {
 
     // ── Совместимость версий ──────────────────────────────────────────────
     const QString currentVer = QLatin1String(UpdateChecker::kCurrentVersion);
-    const bool versionMismatch = VersionUtils::isNewerThan(c.versionCreated, currentVer);
+    const bool versionMismatch = VersionUtils::isNewerThan(c.versionCreated, currentVer.toStdString());
     if (versionMismatch) {
         m_compatWarning->setText(
             tr("⚠ Контакт использует более новую версию (v%1). "
                "Обновите приложение для полной совместимости.")
-            .arg(c.versionCreated));
+            .arg(QString::fromStdString(c.versionCreated)));
         m_compatWarning->show();
     }
 
     // ── Системная информация ──────────────────────────────────────────────
-    const QJsonObject si = !info.systemInfo.isEmpty()
-        ? info.systemInfo
-        : QJsonDocument::fromJson(c.systemInfoJson.toUtf8()).object();
+    const QJsonObject si = !info.systemInfoJson.empty()
+        ? QJsonDocument::fromJson(QByteArray::fromStdString(info.systemInfoJson)).object()
+        : QJsonDocument::fromJson(QByteArray::fromStdString(c.systemInfoJson)).object();
 
     if (versionMismatch) {
         m_deviceType->setText("—");
@@ -711,7 +716,9 @@ void ContactProfileDialog::populateData() {
     }
 
     // ── Соединение ────────────────────────────────────────────────────────
-    m_ipRow->setText(info.ip.isEmpty() ? (c.ip.isEmpty() ? "—" : c.ip) : info.ip);
+    m_ipRow->setText(info.ip.empty()
+        ? (c.ip.empty() ? QLatin1String("—") : QString::fromStdString(c.ip))
+        : QString::fromStdString(info.ip));
     m_portRow->setText(info.serverPort > 0
         ? QString::number(info.serverPort)
         : (c.port > 0 ? QString::number(c.port) : "—"));
@@ -757,7 +764,8 @@ bool ContactProfileDialog::eventFilter(QObject* obj, QEvent* ev) {
 // ── Горячее обновление ────────────────────────────────────────────────────
 
 void ContactProfileDialog::refreshData() {
-    const PeerPublicInfo info = m_network->getPeerInfo(m_uuid);
+    const std::string muuidS = m_uuid.toString(QUuid::WithoutBraces).toStdString();
+    const PeerPublicInfo info = m_network->getPeerInfo(muuidS);
     const bool online = info.state == ConnectionState::Connected;
 
     m_statusLabel->setText(online ? tr("● В сети") : tr("○ Не в сети"));
@@ -769,8 +777,8 @@ void ContactProfileDialog::refreshData() {
     m_pingRow->setText(info.latencyMs >= 0
         ? QString("%1 мс").arg(info.latencyMs) : "—");
 
-    m_uptimeRow->setText(info.connectedSince.isValid() && online
-        ? formatUptime(info.connectedSince) : "—");
+    m_uptimeRow->setText(info.connectedSince > 0 && online
+        ? formatUptime(QDateTime::fromMSecsSinceEpoch(info.connectedSince)) : "—");
 }
 
 // ── Safety Number ─────────────────────────────────────────────────────────

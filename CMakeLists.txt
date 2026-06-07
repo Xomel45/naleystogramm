@@ -309,7 +309,7 @@ target_include_directories(naleystogramm-core PUBLIC
 # APP_VERSION используется в updatechecker.h и sessionmanager.cpp
 target_compile_definitions(naleystogramm-core PUBLIC
     APP_VERSION="${PROJECT_VERSION}"
-    APP_CODENAME="Хномык"
+    APP_CODENAME="Шалунишко"
 )
 
 # Asio: PUBLIC — network.h включает asio.hpp, поэтому все зависимые таргеты
@@ -365,7 +365,7 @@ add_dependencies(naleystogramm translations)
 target_compile_definitions(naleystogramm PRIVATE
     TRANSLATIONS_DIR="${TRANSLATIONS_OUTPUT_DIR}"
     APP_VERSION="${PROJECT_VERSION}"
-    APP_CODENAME="Хномык"
+    APP_CODENAME="Шалунишко"
 )
 
 target_include_directories(naleystogramm PRIVATE

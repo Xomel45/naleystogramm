@@ -178,7 +178,7 @@ SettingsProfilePage::SettingsProfilePage(QWidget* parent) : SettingsPageBase(par
     }
     connect(connRow, &QPushButton::clicked, this, [this]() {
         QApplication::clipboard()->setText(
-            Identity::instance().connectionString(m_externalIp, m_externalPort));
+            QString::fromStdString(Identity::instance().connectionString(m_externalIp.toStdString(), m_externalPort)));
     });
     m_lay->addWidget(connRow);
     m_lay->addWidget(mkSep());
@@ -218,7 +218,7 @@ bool SettingsProfilePage::save() {
     auto& sm = SessionManager::instance();
     const QString name = m_nameEdit->text().trimmed();
     if (!name.isEmpty() && name.toStdString() != sm.displayName()) {
-        Identity::instance().setDisplayName(name);
+        Identity::instance().setDisplayName(name.toStdString());
         emit nameChanged(name);
     }
     const QString bio = m_bioEdit->toPlainText().trimmed();

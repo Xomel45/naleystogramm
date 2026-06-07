@@ -14,6 +14,7 @@
 namespace Ui { class MainWindow; }
 
 class App;
+class UpdateChecker;
 class NetworkManager;
 class StorageManager;
 class E2EManager;
@@ -167,4 +168,10 @@ private:
     QString          m_activeGroup;  // groupId текущей открытой группы
 
     DemoMode::Token  m_demoToken{0};
+    uint32_t         m_netListenerToken{0};
+    UpdateChecker*   m_updateChecker{nullptr};
+
+signals:
+    // Emitted on Qt thread when network reports peer info changed
+    void peerInfoUpdated(QUuid uuid);
 };

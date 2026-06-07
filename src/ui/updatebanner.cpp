@@ -64,7 +64,7 @@ void UpdateBanner::showUpdate(const UpdateInfo& info) {
     m_info  = info;
     m_state = State::Available;
     m_iconLabel->setText("🔄");
-    m_textLabel->setText(QString("Доступно обновление %1 — нажмите для загрузки").arg(info.version));
+    m_textLabel->setText(QString("Доступно обновление %1 — нажмите для загрузки").arg(QString::fromStdString(info.version)));
     m_progressLabel->hide();
     m_closeBtn->show();
     setCursor(Qt::PointingHandCursor);
@@ -87,14 +87,14 @@ void UpdateBanner::mousePressEvent(QMouseEvent* ev) {
 // ── Загрузка ──────────────────────────────────────────────────────────────
 
 void UpdateBanner::startDownload() {
-    if (m_info.downloadUrl.isEmpty()) {
-        QDesktopServices::openUrl(QUrl(m_info.url));
+    if (m_info.downloadUrl.empty()) {
+        QDesktopServices::openUrl(QUrl(QString::fromStdString(m_info.url)));
         return;
     }
 
     m_state = State::Downloading;
     m_iconLabel->setText("⬇");
-    m_textLabel->setText(QString("Загрузка %1...").arg(m_info.version));
+    m_textLabel->setText(QString("Загрузка %1...").arg(QString::fromStdString(m_info.version)));
     m_progressLabel->setTextFormat(Qt::PlainText);
     m_progressLabel->setText("0.00%");
     m_progressLabel->show();
@@ -102,14 +102,14 @@ void UpdateBanner::startDownload() {
     setCursor(Qt::ArrowCursor);
 
     const QString tmp = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    m_downloadPath = tmp + "/" + m_info.assetName;
+    m_downloadPath = tmp + "/" + QString::fromStdString(m_info.assetName);
 
     if (!m_nam) {
         m_nam = new QNetworkAccessManager(this);
         m_nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
     }
 
-    QNetworkRequest req{QUrl{m_info.downloadUrl}};
+    QNetworkRequest req{QUrl{QString::fromStdString(m_info.downloadUrl)}};
     req.setRawHeader("User-Agent", QByteArray("naleystogramm/") + APP_VERSION);
 
     m_reply = m_nam->get(req);
@@ -133,7 +133,7 @@ void UpdateBanner::onDownloadFinished() {
         m_state = State::Error;
         m_iconLabel->setText("⚠");
         m_textLabel->setText("Ошибка загрузки");
-        const QString link = QString("<a href=\"%1\">открыть страницу</a>").arg(m_info.url);
+        const QString link = QString("<a href=\"%1\">открыть страницу</a>").arg(QString::fromStdString(m_info.url));
         m_progressLabel->setTextFormat(Qt::RichText);
         m_progressLabel->setText(link);
         m_progressLabel->show();
@@ -157,7 +157,7 @@ void UpdateBanner::onDownloadFinished() {
 void UpdateBanner::installPackage(const QString& filePath) {
     m_state = State::Installing;
     m_iconLabel->setText("⚙");
-    m_textLabel->setText(QString("Устанавливаю %1...").arg(m_info.version));
+    m_textLabel->setText(QString("Устанавливаю %1...").arg(QString::fromStdString(m_info.version)));
     m_progressLabel->hide();
     m_closeBtn->hide();
     setCursor(Qt::WaitCursor);
@@ -192,7 +192,7 @@ void UpdateBanner::installPackage(const QString& filePath) {
             args = {"rpm", "-i", filePath};
     } else {
         // Неизвестный формат — открываем страницу
-        QDesktopServices::openUrl(QUrl(m_info.url));
+        QDesktopServices::openUrl(QUrl(QString::fromStdString(m_info.url)));
         QWidget::hide();
         return;
     }
@@ -209,7 +209,7 @@ void UpdateBanner::installPackage(const QString& filePath) {
                     m_textLabel->setText("Ошибка установки");
                     m_progressLabel->setTextFormat(Qt::RichText);
                     m_progressLabel->setText(
-                        QString("<a href=\"%1\">открыть страницу</a>").arg(m_info.url));
+                        QString("<a href=\"%1\">открыть страницу</a>").arg(QString::fromStdString(m_info.url)));
                     m_progressLabel->show();
                     m_closeBtn->show();
                     setCursor(Qt::PointingHandCursor);

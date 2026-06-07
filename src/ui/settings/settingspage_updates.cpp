@@ -6,8 +6,10 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QMetaObject>
 
 SettingsUpdatesPage::SettingsUpdatesPage(QWidget* parent) : SettingsPageBase(parent) {
     auto* versionRow = new QHBoxLayout();
@@ -31,40 +33,52 @@ SettingsUpdatesPage::SettingsUpdatesPage(QWidget* parent) : SettingsPageBase(par
     auto* checkBtn = new QPushButton(tr("Check for updates"));
     checkBtn->setObjectName("dlgCancelBtn");
 
-    auto* checker = new UpdateChecker(this);
+    m_checker = new UpdateChecker();
 
-    connect(checkBtn, &QPushButton::clicked, this, [this, checkBtn, checker]() {
+    m_checker->subscribeUpdateAvailable([this, checkBtn](const UpdateInfo& info) {
+        const QString ver  = QString::fromStdString(info.version);
+        const QString url  = QString::fromStdString(info.url);
+        const QString last = QString::fromStdString(m_checker->lastChecked());
+        QMetaObject::invokeMethod(this, [this, checkBtn, ver, url, last]() {
+            checkBtn->setEnabled(true);
+            checkBtn->setText(tr("Check for updates"));
+            m_lastCheckedLabel->setText(tr("Checked: ") + last);
+            m_updateStatusLabel->setText(tr("New version available: <b>%1</b>").arg(ver));
+
+            auto* openBtn = new QPushButton(tr("Open release page"));
+            openBtn->setObjectName("dlgOkBtn");
+            connect(openBtn, &QPushButton::clicked, this, [url]() {
+                QDesktopServices::openUrl(QUrl(url));
+            });
+            qobject_cast<QVBoxLayout*>(m_updateStatusLabel->parentWidget()->layout())->addWidget(openBtn);
+        }, Qt::QueuedConnection);
+    });
+
+    m_checker->subscribeNoUpdate([this, checkBtn](const std::string& ver) {
+        const QString qver = QString::fromStdString(ver);
+        const QString last = QString::fromStdString(m_checker->lastChecked());
+        QMetaObject::invokeMethod(this, [this, checkBtn, qver, last]() {
+            checkBtn->setEnabled(true);
+            checkBtn->setText(tr("Check for updates"));
+            m_lastCheckedLabel->setText(tr("Checked: ") + last);
+            m_updateStatusLabel->setText(tr("Version %1 is up to date").arg(qver));
+        }, Qt::QueuedConnection);
+    });
+
+    m_checker->subscribeCheckFailed([this, checkBtn](const std::string& err) {
+        const QString qerr = QString::fromStdString(err);
+        QMetaObject::invokeMethod(this, [this, checkBtn, qerr]() {
+            checkBtn->setEnabled(true);
+            checkBtn->setText(tr("Check for updates"));
+            m_updateStatusLabel->setText(tr("Error: ") + qerr);
+        }, Qt::QueuedConnection);
+    });
+
+    connect(checkBtn, &QPushButton::clicked, this, [this, checkBtn]() {
         checkBtn->setEnabled(false);
         checkBtn->setText(tr("Checking..."));
         m_updateStatusLabel->setText("");
-        checker->checkNow();
-    });
-
-    connect(checker, &UpdateChecker::updateAvailable, this, [this, checkBtn](const UpdateInfo& info) {
-        checkBtn->setEnabled(true);
-        checkBtn->setText(tr("Check for updates"));
-        m_lastCheckedLabel->setText(tr("Checked: ") + UpdateChecker().lastChecked());
-        m_updateStatusLabel->setText(tr("New version available: <b>%1</b>").arg(info.version));
-
-        auto* openBtn = new QPushButton(tr("Open release page"));
-        openBtn->setObjectName("dlgOkBtn");
-        connect(openBtn, &QPushButton::clicked, this, [info]() {
-            QDesktopServices::openUrl(QUrl(info.url));
-        });
-        qobject_cast<QVBoxLayout*>(m_updateStatusLabel->parentWidget()->layout())->addWidget(openBtn);
-    });
-
-    connect(checker, &UpdateChecker::noUpdateAvailable, this, [this, checkBtn](const QString& ver) {
-        checkBtn->setEnabled(true);
-        checkBtn->setText(tr("Check for updates"));
-        m_lastCheckedLabel->setText(tr("Checked: ") + UpdateChecker().lastChecked());
-        m_updateStatusLabel->setText(tr("Version %1 is up to date").arg(ver));
-    });
-
-    connect(checker, &UpdateChecker::checkFailed, this, [this, checkBtn](const QString& err) {
-        checkBtn->setEnabled(true);
-        checkBtn->setText(tr("Check for updates"));
-        m_updateStatusLabel->setText(tr("Error: ") + err);
+        m_checker->checkNow();
     });
 
     m_lay->addWidget(m_lastCheckedLabel);
@@ -86,6 +100,10 @@ SettingsUpdatesPage::SettingsUpdatesPage(QWidget* parent) : SettingsPageBase(par
     m_lay->addLayout(autoRow);
     m_lay->addWidget(spHint(tr("Проверять обновления при запуске (раз в 6 часов)")));
     m_lay->addStretch();
+}
+
+SettingsUpdatesPage::~SettingsUpdatesPage() {
+    delete m_checker;
 }
 
 void SettingsUpdatesPage::reload() {
