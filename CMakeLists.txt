@@ -47,13 +47,14 @@ if(WIN32)
 endif()
 find_package(OpenSSL REQUIRED)
 
-# ── SQLCipher / Opus / QREncode ───────────────────────────────────────────────
+# ── SQLCipher / Opus / QREncode / ALSA ────────────────────────────────────────
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     if(NOT WIN32)
         pkg_check_modules(SQLCIPHER QUIET sqlcipher)
         pkg_check_modules(OPUS QUIET opus)
         pkg_check_modules(QRENCODE QUIET libqrencode)
+        pkg_check_modules(ALSA QUIET alsa)
     endif()
 endif()
 
@@ -371,13 +372,25 @@ else()
     target_link_libraries(naleystogramm-core PRIVATE nlohmann_json::nlohmann_json)
 endif()
 
-# Qt6Multimedia опционален — AudioRecorder (core)
+# Qt6Multimedia опционален — воспроизведение голосовых и звонки
+# (chatwidget/callwindow/mediaengine; запись голосовых — см. ALSA ниже)
 if(Qt6Multimedia_FOUND)
     target_link_libraries(naleystogramm-core PUBLIC Qt6::Multimedia)
     target_compile_definitions(naleystogramm-core PUBLIC HAVE_QT_MULTIMEDIA)
     message(STATUS "Qt6Multimedia:   найден — голосовые сообщения включены")
 else()
     message(STATUS "Qt6Multimedia:   не найден — голосовые сообщения отключены")
+endif()
+
+# ALSA: захват микрофона для AudioRecorder (core, Linux)
+if(ALSA_FOUND)
+    target_compile_definitions(naleystogramm-core PUBLIC HAVE_ALSA)
+    target_include_directories(naleystogramm-core PUBLIC ${ALSA_INCLUDE_DIRS})
+    target_link_libraries(naleystogramm-core PUBLIC ${ALSA_LIBRARIES})
+    message(STATUS "ALSA:            найден (${ALSA_VERSION}) — запись голосовых включена")
+else()
+    message(STATUS "ALSA:            не найден — запись голосовых отключена (Linux)")
+    message(STATUS "                 Установить: sudo pacman -S alsa-lib  или  sudo apt install libasound2-dev")
 endif()
 
 # Qt6WebSockets опционален — GroupManager (core + UI)

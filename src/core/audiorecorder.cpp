@@ -1,212 +1,295 @@
 #include "audiorecorder.h"
 
-// Весь файл компилируется только при наличии Qt6Multimedia
-#ifdef HAVE_QT_MULTIMEDIA
-
-#include <QAudioSource>
-#include <QMediaDevices>
-#include <QAudioDevice>
-#include <QFile>
-#include <QTimer>
-#include <QStandardPaths>
-#include <QDir>
-#include <QUuid>
-#include <QDebug>
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 
-// WAV-заголовок — 44 байта стандартного PCM RIFF
-// Записывается дважды: сначала с нулевым размером,
-// потом перезаписывается с реальным после остановки записи.
+#if defined(HAVE_ALSA)
+#include <alsa/asoundlib.h>
+#include <cerrno>
+#elif defined(_WIN32)
+#include <windows.h>
+#include <mmsystem.h>
+#endif
 
-static constexpr int kWavHeaderSize = 44;
+namespace {
 
-// Записывает заголовок WAV в файл.
-// dataSize — размер блока данных PCM в байтах (0 при первом вызове).
-static void writeWavHeaderRaw(QFile* f, const QAudioFormat& fmt, quint32 dataSize) {
-    const quint16 numChannels = static_cast<quint16>(fmt.channelCount());
-    const quint32 sampleRate  = static_cast<quint32>(fmt.sampleRate());
-    // Для PCM 16-bit: blockAlign = channels * 2, byteRate = sampleRate * blockAlign
-    const quint16 bitsPerSample = 16;
-    const quint16 blockAlign    = numChannels * (bitsPerSample / 8);
-    const quint32 byteRate      = sampleRate * blockAlign;
-    const quint32 riffSize      = 36 + dataSize;  // 4 + (8 + 16) + (8 + dataSize) - 8
+constexpr unsigned int kSampleRate      = 16000;
+constexpr unsigned int kChannels        = 1;
+constexpr unsigned int kBitsPerSample   = 16;
+constexpr int          kWavHeaderSize   = 44;
+constexpr int          kPeriodMs        = 50;
+constexpr unsigned int kFramesPerPeriod = kSampleRate * kPeriodMs / 1000;
 
-    quint8 hdr[kWavHeaderSize];
+// WAV-заголовок — 44 байта стандартного PCM RIFF.
+// Записывается дважды: сначала с нулевым размером (placeholder),
+// потом перезаписывается с реальным размером после остановки записи.
+void writeWavHeader(std::ofstream& f, uint32_t dataSize) {
+    const uint16_t blockAlign = static_cast<uint16_t>(kChannels * (kBitsPerSample / 8));
+    const uint32_t byteRate   = kSampleRate * blockAlign;
+    const uint32_t riffSize   = 36 + dataSize;
+
+    uint8_t hdr[kWavHeaderSize];
     std::memset(hdr, 0, sizeof(hdr));
 
-    // RIFF chunk
-    hdr[0]='R'; hdr[1]='I'; hdr[2]='F'; hdr[3]='F';
-    hdr[4] = static_cast<quint8>(riffSize);
-    hdr[5] = static_cast<quint8>(riffSize >> 8);
-    hdr[6] = static_cast<quint8>(riffSize >> 16);
-    hdr[7] = static_cast<quint8>(riffSize >> 24);
-    hdr[8]='W'; hdr[9]='A'; hdr[10]='V'; hdr[11]='E';
+    hdr[0] = 'R'; hdr[1] = 'I'; hdr[2] = 'F'; hdr[3] = 'F';
+    hdr[4]  = static_cast<uint8_t>(riffSize);
+    hdr[5]  = static_cast<uint8_t>(riffSize >> 8);
+    hdr[6]  = static_cast<uint8_t>(riffSize >> 16);
+    hdr[7]  = static_cast<uint8_t>(riffSize >> 24);
+    hdr[8] = 'W'; hdr[9] = 'A'; hdr[10] = 'V'; hdr[11] = 'E';
 
-    // fmt sub-chunk
-    hdr[12]='f'; hdr[13]='m'; hdr[14]='t'; hdr[15]=' ';
-    // chunk size = 16 (PCM)
-    hdr[16]=16; hdr[17]=0; hdr[18]=0; hdr[19]=0;
-    // AudioFormat = 1 (PCM)
-    hdr[20]=1;  hdr[21]=0;
-    // NumChannels
-    hdr[22]=static_cast<quint8>(numChannels);
-    hdr[23]=static_cast<quint8>(numChannels>>8);
-    // SampleRate
-    hdr[24]=static_cast<quint8>(sampleRate);
-    hdr[25]=static_cast<quint8>(sampleRate>>8);
-    hdr[26]=static_cast<quint8>(sampleRate>>16);
-    hdr[27]=static_cast<quint8>(sampleRate>>24);
-    // ByteRate
-    hdr[28]=static_cast<quint8>(byteRate);
-    hdr[29]=static_cast<quint8>(byteRate>>8);
-    hdr[30]=static_cast<quint8>(byteRate>>16);
-    hdr[31]=static_cast<quint8>(byteRate>>24);
-    // BlockAlign
-    hdr[32]=static_cast<quint8>(blockAlign);
-    hdr[33]=static_cast<quint8>(blockAlign>>8);
-    // BitsPerSample
-    hdr[34]=static_cast<quint8>(bitsPerSample);
-    hdr[35]=static_cast<quint8>(bitsPerSample>>8);
+    hdr[12] = 'f'; hdr[13] = 'm'; hdr[14] = 't'; hdr[15] = ' ';
+    hdr[16] = 16; hdr[17] = 0; hdr[18] = 0; hdr[19] = 0;  // chunk size = 16 (PCM)
+    hdr[20] = 1;  hdr[21] = 0;                            // AudioFormat = 1 (PCM)
+    hdr[22] = static_cast<uint8_t>(kChannels);
+    hdr[23] = static_cast<uint8_t>(kChannels >> 8);
+    hdr[24] = static_cast<uint8_t>(kSampleRate);
+    hdr[25] = static_cast<uint8_t>(kSampleRate >> 8);
+    hdr[26] = static_cast<uint8_t>(kSampleRate >> 16);
+    hdr[27] = static_cast<uint8_t>(kSampleRate >> 24);
+    hdr[28] = static_cast<uint8_t>(byteRate);
+    hdr[29] = static_cast<uint8_t>(byteRate >> 8);
+    hdr[30] = static_cast<uint8_t>(byteRate >> 16);
+    hdr[31] = static_cast<uint8_t>(byteRate >> 24);
+    hdr[32] = static_cast<uint8_t>(blockAlign);
+    hdr[33] = static_cast<uint8_t>(blockAlign >> 8);
+    hdr[34] = static_cast<uint8_t>(kBitsPerSample);
+    hdr[35] = static_cast<uint8_t>(kBitsPerSample >> 8);
 
-    // data sub-chunk
-    hdr[36]='d'; hdr[37]='a'; hdr[38]='t'; hdr[39]='a';
-    hdr[40]=static_cast<quint8>(dataSize);
-    hdr[41]=static_cast<quint8>(dataSize>>8);
-    hdr[42]=static_cast<quint8>(dataSize>>16);
-    hdr[43]=static_cast<quint8>(dataSize>>24);
+    hdr[36] = 'd'; hdr[37] = 'a'; hdr[38] = 't'; hdr[39] = 'a';
+    hdr[40] = static_cast<uint8_t>(dataSize);
+    hdr[41] = static_cast<uint8_t>(dataSize >> 8);
+    hdr[42] = static_cast<uint8_t>(dataSize >> 16);
+    hdr[43] = static_cast<uint8_t>(dataSize >> 24);
 
-    f->write(reinterpret_cast<const char*>(hdr), kWavHeaderSize);
+    f.write(reinterpret_cast<const char*>(hdr), kWavHeaderSize);
 }
 
-// ── AudioRecorder ──────────────────────────────────────────────────────────
-
-AudioRecorder::AudioRecorder(QObject* parent) : QObject(parent) {
-    // Настройка формата: PCM 16-bit, 16000 Гц, моно
-    m_format.setSampleRate(16000);
-    m_format.setChannelCount(1);
-    m_format.setSampleFormat(QAudioFormat::Int16);
+std::filesystem::path tempWavPath() {
+    std::ostringstream oss;
+    oss << "naleys_voice_" << std::hex
+        << static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count())
+        << ".wav";
+    return std::filesystem::temp_directory_path() / oss.str();
 }
+
+// Уровень 0.0-1.0 по PCM16-сэмплам: средний |sample|/32768, с усилением x3 (как в оригинале).
+float levelFromSamples(const int16_t* samples, int count) {
+    if (count <= 0) return 0.0f;
+    int64_t sum = 0;
+    for (int i = 0; i < count; ++i) sum += std::abs(static_cast<int>(samples[i]));
+    const float level = static_cast<float>(sum) / count / 32768.0f;
+    return std::min(level * 3.0f, 1.0f);
+}
+
+#if defined(HAVE_ALSA)
+
+bool captureLoop(std::ofstream& f, std::atomic<bool>& stop,
+                 const std::function<void(float)>& onLevel, uint64_t& dataSize) {
+    snd_pcm_t* handle = nullptr;
+    int err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_CAPTURE, 0);
+    if (err < 0) {
+        fprintf(stderr, "[AudioRecorder] snd_pcm_open: %s\n", snd_strerror(err));
+        return false;
+    }
+
+    unsigned int rate = kSampleRate;
+    err = snd_pcm_set_params(handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED,
+                              kChannels, rate, 1, kPeriodMs * 1000);
+    if (err < 0) {
+        fprintf(stderr, "[AudioRecorder] snd_pcm_set_params: %s\n", snd_strerror(err));
+        snd_pcm_close(handle);
+        return false;
+    }
+
+    std::vector<int16_t> buf(kFramesPerPeriod * kChannels);
+
+    while (!stop.load()) {
+        snd_pcm_sframes_t n = snd_pcm_readi(handle, buf.data(), kFramesPerPeriod);
+        if (n == -EPIPE) {
+            snd_pcm_prepare(handle);
+            continue;
+        }
+        if (n < 0) {
+            n = snd_pcm_recover(handle, static_cast<int>(n), 1);
+            if (n < 0) break;
+            continue;
+        }
+        if (n == 0) continue;
+
+        const auto bytes = static_cast<size_t>(n) * kChannels * sizeof(int16_t);
+        f.write(reinterpret_cast<const char*>(buf.data()), static_cast<std::streamsize>(bytes));
+        dataSize += bytes;
+
+        onLevel(levelFromSamples(buf.data(), static_cast<int>(n) * static_cast<int>(kChannels)));
+    }
+
+    snd_pcm_close(handle);
+    return true;
+}
+
+#elif defined(_WIN32)
+
+bool captureLoop(std::ofstream& f, std::atomic<bool>& stop,
+                 const std::function<void(float)>& onLevel, uint64_t& dataSize) {
+    WAVEFORMATEX wfx{};
+    wfx.wFormatTag      = WAVE_FORMAT_PCM;
+    wfx.nChannels       = static_cast<WORD>(kChannels);
+    wfx.nSamplesPerSec  = kSampleRate;
+    wfx.wBitsPerSample  = static_cast<WORD>(kBitsPerSample);
+    wfx.nBlockAlign     = static_cast<WORD>(wfx.nChannels * wfx.wBitsPerSample / 8);
+    wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
+
+    HANDLE hEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!hEvent) {
+        fprintf(stderr, "[AudioRecorder] CreateEventW failed\n");
+        return false;
+    }
+
+    HWAVEIN hwi = nullptr;
+    if (waveInOpen(&hwi, WAVE_MAPPER, &wfx, reinterpret_cast<DWORD_PTR>(hEvent), 0,
+                   CALLBACK_EVENT) != MMSYSERR_NOERROR) {
+        fprintf(stderr, "[AudioRecorder] waveInOpen failed\n");
+        CloseHandle(hEvent);
+        return false;
+    }
+
+    constexpr int kNumBufs = 4;
+    const DWORD bufBytes = kFramesPerPeriod * wfx.nBlockAlign;
+    std::vector<std::vector<char>> bufs(kNumBufs, std::vector<char>(bufBytes));
+    std::vector<WAVEHDR> hdrs(kNumBufs);
+
+    for (int i = 0; i < kNumBufs; ++i) {
+        WAVEHDR& h = hdrs[i];
+        std::memset(&h, 0, sizeof(h));
+        h.lpData = bufs[i].data();
+        h.dwBufferLength = bufBytes;
+        waveInPrepareHeader(hwi, &h, sizeof(h));
+        waveInAddBuffer(hwi, &h, sizeof(h));
+    }
+
+    waveInStart(hwi);
+
+    while (!stop.load()) {
+        WaitForSingleObject(hEvent, 100);
+        for (int i = 0; i < kNumBufs; ++i) {
+            WAVEHDR& h = hdrs[i];
+            if (h.dwFlags & WHDR_DONE) {
+                const auto bytes = static_cast<size_t>(h.dwBytesRecorded);
+                if (bytes > 0) {
+                    f.write(h.lpData, static_cast<std::streamsize>(bytes));
+                    dataSize += bytes;
+
+                    const auto* samples = reinterpret_cast<const int16_t*>(h.lpData);
+                    onLevel(levelFromSamples(samples, static_cast<int>(bytes / sizeof(int16_t))));
+                }
+                h.dwFlags &= ~WHDR_DONE;
+                if (!stop.load()) waveInAddBuffer(hwi, &h, sizeof(h));
+            }
+        }
+    }
+
+    waveInStop(hwi);
+    waveInReset(hwi);
+    for (int i = 0; i < kNumBufs; ++i) waveInUnprepareHeader(hwi, &hdrs[i], sizeof(WAVEHDR));
+    waveInClose(hwi);
+    CloseHandle(hEvent);
+    return true;
+}
+
+#else
+
+bool captureLoop(std::ofstream&, std::atomic<bool>&,
+                 const std::function<void(float)>&, uint64_t&) {
+    fprintf(stderr, "[AudioRecorder] Бэкенд захвата звука недоступен\n");
+    return false;
+}
+
+#endif
+
+} // namespace
 
 AudioRecorder::~AudioRecorder() {
     if (m_recording) stopRecording();
+    if (m_captureThread.joinable()) m_captureThread.join();
 }
 
 void AudioRecorder::startRecording() {
     if (m_recording) return;
+    if (m_captureThread.joinable()) m_captureThread.join();
 
-    // Проверяем доступность микрофона
-    const QAudioDevice inputDevice = QMediaDevices::defaultAudioInput();
-    if (inputDevice.isNull()) {
-        qWarning("[AudioRecorder] Микрофон не найден!");
-        return;
-    }
+    const std::filesystem::path path = tempWavPath();
+    m_stopRequested = false;
+    m_recording = true;
 
-    // Создаём временный WAV-файл в директории tmp
-    const QString tmpDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
-    QDir().mkpath(tmpDir);
-    const QString tmpPath = tmpDir + "/naleys_voice_"
-        + QUuid::createUuid().toString(QUuid::Id128).left(8) + ".wav";
+    m_captureThread = std::thread([this, path]() {
+        std::ofstream f(path, std::ios::binary | std::ios::trunc);
+        if (!f) {
+            fprintf(stderr, "[AudioRecorder] Не удалось создать временный файл: %s\n",
+                    path.string().c_str());
+            m_recording = false;
+            fire([](AudioRecorderEvent& ev) { if (ev.onRecorded) ev.onRecorded("", 0); });
+            return;
+        }
 
-    m_tmpFile = new QFile(tmpPath, this);
-    if (!m_tmpFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        qWarning("[AudioRecorder] Temp File Creation Failed");
-        delete m_tmpFile;
-        m_tmpFile = nullptr;
-        return;
-    }
+        writeWavHeader(f, 0);
 
-    // Записываем placeholder WAV-заголовок (dataSize=0, будет исправлен при остановке)
-    writeWavHeaderRaw(m_tmpFile, m_format, 0);
+        const auto t0 = std::chrono::steady_clock::now();
+        uint64_t dataSize = 0;
+        const bool ok = captureLoop(f, m_stopRequested,
+            [this](float level) {
+                fire([level](AudioRecorderEvent& ev) {
+                    if (ev.onLevelChanged) ev.onLevelChanged(level);
+                });
+            }, dataSize);
 
-    // Запускаем захват звука
-    m_source = new QAudioSource(inputDevice, m_format, this);
-    m_device = m_source->start();  // возвращает QIODevice для чтения PCM-данных
+        const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - t0).count();
 
-    if (m_source->error() != QAudio::NoError) {
-        qWarning("[AudioRecorder] Audio Capture Start Failed");
-        m_tmpFile->remove();
-        delete m_tmpFile;  m_tmpFile = nullptr;
-        delete m_source;   m_source = nullptr;
-        m_device = nullptr;
-        return;
-    }
+        f.seekp(0);
+        writeWavHeader(f, static_cast<uint32_t>(dataSize));
+        f.close();
 
-    // Читаем PCM из QAudioSource и пишем в файл каждые 50 мс
-    m_levelTimer = new QTimer(this);
-    m_levelTimer->setInterval(50);
-    connect(m_levelTimer, &QTimer::timeout, this, [this]() {
-        if (!m_device || !m_tmpFile) return;
+        m_recording = false;
+        fire([](AudioRecorderEvent& ev) { if (ev.onLevelChanged) ev.onLevelChanged(0.0f); });
 
-        // Читаем доступные данные и пишем в файл
-        const QByteArray data = m_device->readAll();
-        if (!data.isEmpty()) {
-            m_tmpFile->write(data);
-
-            // Вычисляем пиковый уровень (avg RMS по 16-bit сэмплам)
-            const auto* samples = reinterpret_cast<const qint16*>(data.constData());
-            const int count = data.size() / 2;
-            if (count > 0) {
-                qint64 sum = 0;
-                for (int i = 0; i < count; ++i)
-                    sum += qAbs(static_cast<qint32>(samples[i]));
-                const float level = static_cast<float>(sum) / count / 32768.0f;
-                emit levelChanged(qMin(level * 3.0f, 1.0f));  // небольшое усиление
-            }
+        if (!ok || dataSize == 0) {
+            std::error_code ec;
+            std::filesystem::remove(path, ec);
+            fire([](AudioRecorderEvent& ev) { if (ev.onRecorded) ev.onRecorded("", 0); });
+        } else {
+            const std::string filePath = path.string();
+            const int duration = static_cast<int>(durationMs);
+            fire([&filePath, duration](AudioRecorderEvent& ev) {
+                if (ev.onRecorded) ev.onRecorded(filePath, duration);
+            });
         }
     });
-    m_levelTimer->start();
-
-    m_elapsed.start();
-    m_recording = true;
-    qDebug("[AudioRecorder] Recording Started");
 }
 
 void AudioRecorder::stopRecording() {
     if (!m_recording) return;
-    m_recording = false;
-
-    const int durationMs = static_cast<int>(m_elapsed.elapsed());
-
-    // Останавливаем таймер чтения
-    if (m_levelTimer) {
-        m_levelTimer->stop();
-        // Читаем оставшиеся данные
-        if (m_device && m_tmpFile) {
-            const QByteArray tail = m_device->readAll();
-            if (!tail.isEmpty()) m_tmpFile->write(tail);
-        }
-        m_levelTimer->deleteLater();
-        m_levelTimer = nullptr;
-    }
-
-    // Останавливаем захват
-    if (m_source) {
-        m_source->stop();
-        m_source->deleteLater();
-        m_source = nullptr;
-        m_device = nullptr;
-    }
-
-    // Перезаписываем WAV-заголовок с реальным размером данных
-    if (m_tmpFile) {
-        const qint64 totalSize  = m_tmpFile->size();
-        const quint32 dataSize  = static_cast<quint32>(
-            qMax(qint64(0), totalSize - kWavHeaderSize));
-
-        m_tmpFile->seek(0);
-        writeWavHeaderRaw(m_tmpFile, m_format, dataSize);
-        m_tmpFile->flush();
-
-        const QString filePath = m_tmpFile->fileName();
-        m_tmpFile->close();
-        m_tmpFile->deleteLater();
-        m_tmpFile = nullptr;
-
-        qDebug("[AudioRecorder] Recording Completed");
-
-        emit levelChanged(0.0f);
-        emit recorded(filePath, durationMs);
-    }
+    m_stopRequested = true;
+    if (m_captureThread.joinable()) m_captureThread.join();
 }
 
-#endif // HAVE_QT_MULTIMEDIA
+AudioRecorder::Token AudioRecorder::addListener(AudioRecorderEvent ev) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    const Token t = m_nextToken++;
+    m_listeners.emplace_back(t, std::move(ev));
+    return t;
+}
+
+void AudioRecorder::removeListener(Token t) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    m_listeners.erase(
+        std::remove_if(m_listeners.begin(), m_listeners.end(),
+                       [t](const auto& p) { return p.first == t; }),
+        m_listeners.end());
+}

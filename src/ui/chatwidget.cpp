@@ -83,11 +83,21 @@ ChatWidget::ChatWidget(QWidget* parent) : QWidget(parent) {
     showPlaceholder();
 
     // Инициализация записи голосовых
-    m_recorder = new AudioRecorder(this);
-    connect(m_recorder, &AudioRecorder::recorded,
-            this, &ChatWidget::onRecordingDone);
-    connect(m_recorder, &AudioRecorder::levelChanged,
-            this, &ChatWidget::onLevelChanged);
+    m_recorder = std::make_unique<AudioRecorder>();
+    {
+        AudioRecorder::AudioRecorderEvent ev;
+        ev.onRecorded = [this](const std::string& path, int durationMs) {
+            QMetaObject::invokeMethod(this, [this, path, durationMs]() {
+                onRecordingDone(QString::fromStdString(path), durationMs);
+            }, Qt::QueuedConnection);
+        };
+        ev.onLevelChanged = [this](float level) {
+            QMetaObject::invokeMethod(this, [this, level]() {
+                onLevelChanged(level);
+            }, Qt::QueuedConnection);
+        };
+        m_recorder->addListener(std::move(ev));
+    }
 
     // Таймер счётчика секунд записи
     m_recSecTimer = new QTimer(this);
@@ -165,6 +175,8 @@ ChatWidget::ChatWidget(QWidget* parent) : QWidget(parent) {
                 update();
             });
 }
+
+ChatWidget::~ChatWidget() = default;
 
 void ChatWidget::setupUi() {
     auto* layout = new QVBoxLayout(this);

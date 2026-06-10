@@ -5,6 +5,7 @@
 #include <QPixmap>
 #include <QMap>
 #include <QList>
+#include <memory>
 #include "../core/types.h"
 
 class QTextEdit;
@@ -25,6 +26,7 @@ class ChatWidget : public QWidget {
     Q_OBJECT
 public:
     explicit ChatWidget(QWidget* parent = nullptr);
+    ~ChatWidget() override;
 
     void openConversation(const QString& peerName, bool isOnline);
     void loadHistory(const QList<Message>& messages);
@@ -123,7 +125,7 @@ private:
     QPixmap      m_peerAvatarPix;
 
     // Recording
-    AudioRecorder* m_recorder{nullptr};
+    std::unique_ptr<AudioRecorder> m_recorder;
     QTimer*        m_recSecTimer{nullptr};
     int            m_recSeconds{0};
 

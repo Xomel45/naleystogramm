@@ -1,71 +1,62 @@
 #pragma once
-#include <QObject>
-
-#ifdef HAVE_QT_MULTIMEDIA
-
-#include <QElapsedTimer>
-#include <QAudioFormat>
-
-class QAudioSource;
-class QIODevice;
-class QFile;
-class QTimer;
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <utility>
+#include <vector>
 
 // ── AudioRecorder ──────────────────────────────────────────────────────────
 // Запись голосовых сообщений через микрофон в WAV-файл.
 // Формат: PCM 16-bit, 16000 Гц, моно.
-// Использование:
-//   auto* rec = new AudioRecorder(this);
-//   rec->startRecording();       // начать запись
-//   rec->stopRecording();        // остановить → emit recorded(path, durationMs)
+// Бэкенд захвата: ALSA (HAVE_ALSA, Linux) / WinMM (_WIN32).
+// Без бэкенда — no-op (onRecorded("", 0) сразу после startRecording).
 //
-// Сигнал recorded(filePath, durationMs):
-//   filePath    — временный WAV-файл (нужно скопировать/отправить, потом удалить)
-//   durationMs  — длительность записи в миллисекундах
+// Использование:
+//   AudioRecorder rec;
+//   rec.addListener({...});
+//   rec.startRecording();       // начать запись
+//   rec.stopRecording();        // остановить → onRecorded(path, durationMs)
 
-class AudioRecorder : public QObject {
-    Q_OBJECT
+class AudioRecorder {
 public:
-    explicit AudioRecorder(QObject* parent = nullptr);
-    ~AudioRecorder() override;
+    struct AudioRecorderEvent {
+        // Запись завершена: filePath — временный WAV-файл (нужно скопировать/
+        // отправить, потом удалить); пуст при ошибке или отсутствии бэкенда.
+        std::function<void(const std::string& filePath, int durationMs)> onRecorded;
+        // Уровень звука (0.0–1.0) — обновляется ~каждые 50 мс для визуализации.
+        std::function<void(float level)> onLevelChanged;
+    };
+
+    AudioRecorder() = default;
+    ~AudioRecorder();
+
+    AudioRecorder(const AudioRecorder&) = delete;
+    AudioRecorder& operator=(const AudioRecorder&) = delete;
 
     void startRecording();
     void stopRecording();
     [[nodiscard]] bool isRecording() const { return m_recording; }
 
-signals:
-    // Запись завершена: WAV-файл готов к отправке
-    void recorded(const QString& filePath, int durationMs);
-    // Уровень звука (0.0–1.0) — обновляется каждые 50 мс для визуализации
-    void levelChanged(float level);
+    using Token = uint32_t;
+    Token addListener(AudioRecorderEvent ev);
+    void  removeListener(Token t);
 
 private:
-    void writeWavHeader(QFile* f);
-    void finalizeWavHeader(QFile* f);
+    template<typename Fn>
+    void fire(Fn&& invoke) const {
+        std::vector<std::pair<Token, AudioRecorderEvent>> snap;
+        { std::lock_guard<std::mutex> lk(m_listenerMutex); snap = m_listeners; }
+        for (auto& [tok, ev] : snap) invoke(ev);
+    }
 
-    QAudioSource* m_source     {nullptr};
-    QIODevice*    m_device     {nullptr};
-    QFile*        m_tmpFile    {nullptr};
-    QTimer*       m_levelTimer {nullptr};
-    QAudioFormat  m_format;
-    QElapsedTimer m_elapsed;
-    bool          m_recording  {false};
+    std::atomic<bool> m_recording{false};
+    std::atomic<bool> m_stopRequested{false};
+    std::thread m_captureThread;
+
+    mutable std::mutex m_listenerMutex;
+    std::vector<std::pair<Token, AudioRecorderEvent>> m_listeners;
+    Token m_nextToken{0};
 };
-
-#else
-
-// Заглушка AudioRecorder: Qt6Multimedia недоступен (cross-compile без мультимедиа).
-// Все методы — no-op; сигналы объявлены для совместимости кода-потребителя.
-class AudioRecorder : public QObject {
-    Q_OBJECT
-public:
-    explicit AudioRecorder(QObject* parent = nullptr) : QObject(parent) {}
-    void startRecording() {}
-    void stopRecording() {}
-    [[nodiscard]] bool isRecording() const { return false; }
-signals:
-    void recorded(const QString& filePath, int durationMs);
-    void levelChanged(float level);
-};
-
-#endif // HAVE_QT_MULTIMEDIA
