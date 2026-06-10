@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.8.1 LANGUAGES CXX)
+project(naleystogramm VERSION 0.8.1.1 LANGUAGES CXX)
 
 if(WIN32 OR MINGW OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
     enable_language(RC)

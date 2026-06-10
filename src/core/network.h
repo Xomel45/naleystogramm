@@ -255,6 +255,6 @@ private:
     static constexpr int     kMaxQueueSize         = 100;
     static constexpr int     kMaxBufferSize        = 16 * 1024 * 1024;
     static constexpr uint32_t kMaxFramesPerSecond  = 200;
-    static constexpr const char* kMinPeerVersion   = "0.7.4";
+    static constexpr const char* kMinPeerVersion   = "0.8.1.1";
     static constexpr int     kUpnpRefreshIntervalMs = 30 * 60 * 1000;
 };
