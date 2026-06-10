@@ -176,6 +176,7 @@ private:
     DemoMode::Token  m_demoToken{0};
     uint32_t         m_netListenerToken{0};
     uint32_t         m_callListenerToken{0};
+    uint32_t         m_fileTransferListenerToken{0};
     UpdateChecker*   m_updateChecker{nullptr};
 
 signals:

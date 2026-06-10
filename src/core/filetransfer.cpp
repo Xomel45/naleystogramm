@@ -1,91 +1,119 @@
 #include "filetransfer.h"
 #include "logger.h"
+#include "network.h"
 #include "../crypto/e2e.h"
 #include "../crypto/keyprotector.h"
-#include "../crypto/qt_bridge.h"
 
-// Migration helpers — Phase 6 will migrate these call sites fully
-static inline std::string quid2s(const QUuid& u) {
-    return u.toString(QUuid::WithoutBraces).toStdString();
-}
-static inline void netSend(NetworkManager* net, const QUuid& u, const QJsonObject& o) {
-    net->sendFrame(quid2s(u), bridge::fromQJsonObj(o));
-}
-
-#include <QFile>
-#include <QFileInfo>
-#include <QStandardPaths>
-#include <QDir>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QTimer>
-#include <QFutureWatcher>
-#include <QRegularExpression>
-#include <QtConcurrent/QtConcurrentRun>
-
-#include <openssl/evp.h>
+#include <algorithm>
+#include <asio.hpp>
+#include <cstdio>
+#include <cstdlib>
 #include <openssl/rand.h>
+#include <random>
+#include <sstream>
+#include <thread>
+
+// ── UUID v4 (как в callmanager.cpp/network.cpp — независимая копия) ──────────
+static std::string generateUuid() {
+    static std::random_device rd;
+    static std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dist;
+    uint64_t hi = dist(gen);
+    uint64_t lo = dist(gen);
+    hi = (hi & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;  // version 4
+    lo = (lo & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;  // variant 10xx
+    char buf[37];
+    std::snprintf(buf, sizeof(buf),
+        "%08x-%04x-%04x-%04x-%012llx",
+        static_cast<uint32_t>(hi >> 32),
+        static_cast<uint16_t>(hi >> 16),
+        static_cast<uint16_t>(hi),
+        static_cast<uint16_t>(lo >> 48),
+        static_cast<unsigned long long>(lo & 0x0000FFFFFFFFFFFFULL));
+    return std::string(buf);
+}
+
+// ── Каталог загрузок (заменяет QStandardPaths::DownloadLocation) ─────────────
+static std::filesystem::path downloadsDir() {
+#ifdef _WIN32
+    const char* userProfile = std::getenv("USERPROFILE");
+    return std::filesystem::path(userProfile ? userProfile : "C:\\") / "Downloads";
+#else
+    const char* home = std::getenv("HOME");
+    const std::string homeStr = home ? home : "";
+
+    // Парсим ~/.config/user-dirs.dirs: XDG_DOWNLOAD_DIR="$HOME/Загрузки"
+    const std::filesystem::path configFile =
+        std::filesystem::path(homeStr) / ".config" / "user-dirs.dirs";
+    std::ifstream f(configFile);
+    if (f.is_open()) {
+        std::string line;
+        while (std::getline(f, line)) {
+            const auto pos = line.find("XDG_DOWNLOAD_DIR=");
+            if (pos == std::string::npos) continue;
+
+            const auto start = line.find('"', pos);
+            const auto end = (start == std::string::npos) ? std::string::npos
+                                                            : line.find('"', start + 1);
+            if (start == std::string::npos || end == std::string::npos) continue;
+
+            std::string value = line.substr(start + 1, end - start - 1);
+            constexpr std::string_view kHomePlaceholder = "$HOME";
+            const auto hp = value.find(kHomePlaceholder);
+            if (hp != std::string::npos)
+                value.replace(hp, kHomePlaceholder.size(), homeStr);
+
+            if (!value.empty()) return std::filesystem::path(value);
+        }
+    }
+    return std::filesystem::path(homeStr) / "Downloads";
+#endif
+}
 
 // ── Конструктор/деструктор ───────────────────────────────────────────────────
 
-FileTransfer::FileTransfer(NetworkManager* network, E2EManager* e2e,
-                           QObject* parent)
-    : QObject(parent)
-    , m_net(network)
+FileTransfer::FileTransfer(NetworkManager* network, E2EManager* e2e, std::filesystem::path dataDir)
+    : m_net(network)
     , m_e2e(e2e)
+    , m_dataDir(std::move(dataDir))
+    , m_destroyed(std::make_shared<std::atomic<bool>>(false))
 {
     LOG_INFO(FileTransfer, "FileTransfer initialized");
 }
 
 FileTransfer::~FileTransfer() {
-    // L-2: отменяем все активные вычисления хеша перед уничтожением объекта.
-    // Без этого lambda-колбэк watcher::finished может обратиться к уже удалённому this.
-    // QFutureWatcher<T> не имеет Q_OBJECT → используем базовый QFutureWatcherBase.
-    for (auto* w : findChildren<QFutureWatcherBase*>()) {
-        w->cancel();
-        w->waitForFinished();
-    }
+    *m_destroyed = true;
 
-    // Закрываем все открытые файлы
-    for (auto& t : m_outgoing) {
-        if (t.file) {
-            t.file->close();
-            delete t.file;
-        }
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+    for (auto& [id, t] : m_outgoing) {
+        if (t.file) t.file->close();
     }
-    for (auto& t : m_incoming) {
-        if (t.file) {
-            t.file->close();
-            delete t.file;
-        }
-        delete t.hasher;
+    for (auto& [id, t] : m_incoming) {
+        if (t.file) t.file->close();
     }
 }
 
 // ── Отправка файла ───────────────────────────────────────────────────────────
 
-void FileTransfer::sendFile(const QUuid& peerUuid, const QString& filePath, int durationMs) {
-    QFileInfo fi(filePath);
-    if (!fi.exists()) {
+void FileTransfer::sendFile(const std::string& peerUuid, const std::string& filePath, int durationMs) {
+    std::error_code ec;
+    if (!std::filesystem::exists(filePath, ec)) {
         LOG_ERROR(FileTransfer, "File Not Found");
         return;
     }
 
-    // Генерируем уникальный ID передачи
-    const QString offerId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const std::string offerId = generateUuid();
 
     LOG_INFO(FileTransfer, "Preparing File Offer");
 
-    // Создаём структуру передачи (fileHash пока пустой — заполним асинхронно)
     OutgoingTransfer t;
     t.id         = offerId;
     t.peerUuid   = peerUuid;
     t.filePath   = filePath;
-    t.fileName   = fi.fileName();
-    t.fileSize   = fi.size();
+    t.fileName   = std::filesystem::path(filePath).filename().string();
+    t.fileSize   = static_cast<int64_t>(std::filesystem::file_size(filePath, ec));
     t.bytesSent  = 0;
     t.chunksSent = 0;
-    t.file       = nullptr;
     t.state      = TransferState::Pending;
     t.lastSpeedCalcBytes = 0;
     t.lastSpeedCalcTime  = 0;
@@ -95,71 +123,86 @@ void FileTransfer::sendFile(const QUuid& peerUuid, const QString& filePath, int 
     // Генерируем ключ AES-256 (32 байта) и nonce (12 байт для GCM)
     t.key.resize(kAesKeySize);
     t.nonce.resize(kGcmNonceSize);
-    RAND_bytes(reinterpret_cast<unsigned char*>(t.key.data()), kAesKeySize);
-    RAND_bytes(reinterpret_cast<unsigned char*>(t.nonce.data()), kGcmNonceSize);
+    RAND_bytes(t.key.data(), kAesKeySize);
+    RAND_bytes(t.nonce.data(), kGcmNonceSize);
 
-    m_outgoing[offerId] = t;
+    {
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
+        m_outgoing[offerId] = std::move(t);
+    }
 
-    // Вычисляем SHA-256 в фоновом потоке — не блокируем UI на 150–600ms
-    auto* watcher = new QFutureWatcher<QByteArray>(this);
-    connect(watcher, &QFutureWatcher<QByteArray>::finished, this,
-            [this, watcher, offerId]() {
-        const QByteArray hash = watcher->result();
-        watcher->deleteLater();
+    // Вычисляем SHA-256 в фоновом потоке — не блокируем вызывающий поток на 150–600мс
+    auto destroyed = m_destroyed;
+    std::thread([this, filePath, offerId, destroyed]() {
+        Bytes hash = computeFileHashStatic(filePath);
+        asio::post(m_net->ioContext(), [this, offerId, hash = std::move(hash), destroyed]() {
+            if (*destroyed) return;
+            std::lock_guard<std::recursive_mutex> lk(m_mutex);
 
-        if (!m_outgoing.contains(offerId)) return;  // передача отменена пока считался хеш
+            auto it = m_outgoing.find(offerId);
+            if (it == m_outgoing.end()) return;  // передача отменена пока считался хеш
 
-        if (hash.isEmpty()) {
-            LOG_ERROR(FileTransfer, "File Hash Error");
-            emit transferFailed(offerId, tr("Ошибка вычисления хеша файла"));
-            m_outgoing.remove(offerId);
-            return;
-        }
+            if (hash.empty()) {
+                LOG_ERROR(FileTransfer, "File Hash Error");
+                const std::string err = "Ошибка вычисления хеша файла";
+                fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(offerId, err); });
+                m_outgoing.erase(it);
+                return;
+            }
 
-        m_outgoing[offerId].fileHash = hash;
-        sendFileOffer(offerId);
-    });
-
-    watcher->setFuture(QtConcurrent::run(
-        [filePath]() { return FileTransfer::computeFileHashStatic(filePath); }));
+            it->second.fileHash = hash;
+            sendFileOffer(offerId);
+        });
+    }).detach();
 }
 
-// ── Вычисление хеша файла (статический, запускается в пуле потоков) ──────────
+// ── Вычисление хеша файла (запускается в отдельном потоке) ───────────────────
 
-QByteArray FileTransfer::computeFileHashStatic(const QString& filePath) {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        qWarning("[FileTransfer] Cannot Open File For Hashing");
+Bytes FileTransfer::computeFileHashStatic(const std::string& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        LOG_ERROR(FileTransfer, "Cannot Open File For Hashing");
         return {};
     }
 
-    QCryptographicHash hasher(QCryptographicHash::Sha256);
-
-    // Читаем файл чанками для экономии памяти
-    constexpr qint64 hashChunkSize = 1024 * 1024;  // 1 MB
-    while (!file.atEnd()) {
-        const QByteArray chunk = file.read(hashChunkSize);
-        hasher.addData(chunk);
+    EvpMdCtxPtr ctx(EVP_MD_CTX_new());
+    if (!ctx || EVP_DigestInit_ex(ctx.get(), EVP_sha256(), nullptr) != 1) {
+        LOG_ERROR(FileTransfer, "Cannot Init Hash Context");
+        return {};
     }
 
-    file.close();
-    return hasher.result();
+    // Читаем файл чанками для экономии памяти
+    constexpr std::streamsize hashChunkSize = 1024 * 1024;  // 1 MB
+    std::vector<char> buf(static_cast<size_t>(hashChunkSize));
+    while (file) {
+        file.read(buf.data(), hashChunkSize);
+        const std::streamsize n = file.gcount();
+        if (n > 0)
+            EVP_DigestUpdate(ctx.get(), buf.data(), static_cast<size_t>(n));
+    }
+
+    Bytes result(EVP_MAX_MD_SIZE);
+    unsigned int outLen = 0;
+    EVP_DigestFinal_ex(ctx.get(), result.data(), &outLen);
+    result.resize(outLen);
+    return result;
 }
 
 // ── Формирование и отправка FILE_OFFER ───────────────────────────────────────
-// Вызывается из watcher::finished после асинхронного вычисления хеша.
+// Вызывается из колбэка асинхронного вычисления хеша. m_mutex уже захвачен.
 
-void FileTransfer::sendFileOffer(const QString& offerId) {
-    if (!m_outgoing.contains(offerId)) return;
-    const auto& t = m_outgoing[offerId];
+void FileTransfer::sendFileOffer(const std::string& offerId) {
+    auto it = m_outgoing.find(offerId);
+    if (it == m_outgoing.end()) return;
+    auto& t = it->second;
 
     // Формируем FILE_OFFER сообщение
-    QJsonObject offer;
+    nlohmann::json offer;
     offer["type"] = "FILE_OFFER";
     offer["id"]   = offerId;
     offer["name"] = t.fileName;
     offer["size"] = t.fileSize;
-    offer["hash"] = QString::fromLatin1(t.fileHash.toHex());
+    offer["hash"] = bytesToHex(t.fileHash);
     // Поле duration_ms > 0 сигнализирует получателю что это голосовое сообщение
     if (t.durationMs > 0)
         offer["duration_ms"] = t.durationMs;
@@ -167,337 +210,290 @@ void FileTransfer::sendFileOffer(const QString& offerId) {
     // Шифруем ключ + nonce через E2E сессию.
     // Без активной сессии отправка НЕВОЗМОЖНА: ключ файла не должен идти по сети в открытом виде.
     // Передача завершается с ошибкой — пользователь должен дождаться установки E2E-сессии.
-    if (!m_e2e || !m_e2e->hasSession(bridge::fromQUuid(t.peerUuid))) {
+    if (!m_e2e || !m_e2e->hasSession(t.peerUuid)) {
         LOG_ERROR(FileTransfer, "Offer Failed (No Active Session)");
-        emit transferFailed(offerId,
-                            tr("Нет E2E-сессии — ключ файла нельзя передать безопасно"));
-        m_outgoing.remove(offerId);
+        const std::string err = "Нет E2E-сессии — ключ файла нельзя передать безопасно";
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(offerId, err); });
+        m_outgoing.erase(it);
         return;
     }
 
-    const QByteArray keyMaterial = t.key + t.nonce;  // 32 + 12 = 44 байта
-    const QJsonObject encKeyEnv = bridge::toQJsonObj(
-        m_e2e->encrypt(bridge::fromQUuid(t.peerUuid), bridge::fromQBA(keyMaterial)));
-    offer["enc_key_env"] = encKeyEnv;
+    const Bytes keyMaterial = t.key + t.nonce;  // 32 + 12 = 44 байта
+    offer["enc_key_env"] = m_e2e->encrypt(t.peerUuid, keyMaterial);
     LOG_DEBUG(FileTransfer, "Ключ файла зашифрован через E2E-сессию");
 
-    netSend(m_net, t.peerUuid, offer);
+    m_net->sendFrame(t.peerUuid, offer);
     LOG_INFO(FileTransfer, "File Offer Sent");
 }
 
 // ── Стриминг отправки ────────────────────────────────────────────────────────
+// Вызывается из handleMessage (FILE_ACCEPT). m_mutex уже захвачен.
 
-void FileTransfer::startStreaming(const QString& offerId) {
-    if (!m_outgoing.contains(offerId)) {
+void FileTransfer::startStreaming(const std::string& offerId) {
+    auto it = m_outgoing.find(offerId);
+    if (it == m_outgoing.end()) {
         LOG_WARNING(FileTransfer, "Unknown Offer");
         return;
     }
-
-    auto& t = m_outgoing[offerId];
+    auto& t = it->second;
 
     // Открываем файл для стриминга
-    t.file = new QFile(t.filePath);
-    if (!t.file->open(QIODevice::ReadOnly)) {
+    t.file = std::make_unique<std::ifstream>(t.filePath, std::ios::binary);
+    if (!t.file->is_open()) {
         LOG_ERROR(FileTransfer, "File Open Failed");
-        t.state = TransferState::Failed;
-        emit transferFailed(offerId, tr("Cannot open file"));
-        delete t.file;          // предотвращаем утечку QFile
-        t.file = nullptr;
-        m_outgoing.remove(offerId);
+        const std::string err = "Cannot open file";
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(offerId, err); });
+        m_outgoing.erase(it);
         return;
     }
 
     t.state = TransferState::Active;
-    t.timer.start();
-    t.lastSpeedCalcTime = 0;
+    t.startTime = std::chrono::steady_clock::now();
+    t.lastSpeedCalcTime  = 0;
     t.lastSpeedCalcBytes = 0;
 
     LOG_INFO(FileTransfer, "Streaming Started");
 
     // Эмитим начало передачи
     TransferProgress progress;
-    progress.id               = offerId.toStdString();
-    progress.fileName         = t.fileName.toStdString();
+    progress.id               = offerId;
+    progress.fileName         = t.fileName;
     progress.bytesTransferred = 0;
     progress.totalBytes       = t.fileSize;
     progress.speedBytesPerSec = 0;
     progress.etaSeconds       = 0;
     progress.percent          = 0;
     progress.outgoing         = true;
-    emit transferStarted(progress);
+    fire([&](FileTransferEvent& ev) { if (ev.onTransferStarted) ev.onTransferStarted(progress); });
 
     // Отправляем первый чанк
     sendNextChunk(offerId);
 }
 
-void FileTransfer::sendNextChunk(const QString& offerId) {
-    if (!m_outgoing.contains(offerId)) return;
-
-    auto& t = m_outgoing[offerId];
+void FileTransfer::sendNextChunk(const std::string& offerId) {
+    auto it = m_outgoing.find(offerId);
+    if (it == m_outgoing.end()) return;
+    auto& t = it->second;
 
     // Проверяем состояние (пауза/отмена)
     if (t.state == TransferState::Paused || t.state == TransferState::Cancelled) {
         return;
     }
 
-    if (!t.file || t.file->atEnd()) {
+    if (!t.file || t.bytesSent >= t.fileSize) {
         // Все данные отправлены — отправляем FILE_COMPLETE
         LOG_INFO(FileTransfer, "Streaming Completed");
 
-        QJsonObject complete;
+        nlohmann::json complete;
         complete["type"]    = "FILE_COMPLETE";
         complete["id"]      = offerId;
-        complete["hash"]    = QString::fromLatin1(t.fileHash.toHex());
+        complete["hash"]    = bytesToHex(t.fileHash);
         complete["success"] = true;
-        netSend(m_net, t.peerUuid, complete);
+        m_net->sendFrame(t.peerUuid, complete);
 
         t.state = TransferState::Completed;
-        emit transferCompleted(offerId, t.filePath, true);
+        const std::string filePath = t.filePath;
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferCompleted) ev.onTransferCompleted(offerId, filePath, true); });
 
         // Очищаем ресурсы
-        t.file->close();
-        delete t.file;
+        if (t.file) t.file->close();
         removeTransferState(offerId);
-        m_outgoing.remove(offerId);
+        m_outgoing.erase(it);
         return;
     }
 
     // Читаем следующий чанк
-    const QByteArray plainChunk = t.file->read(kChunkSize);
-    if (plainChunk.isEmpty()) {
+    std::vector<char> buf(static_cast<size_t>(kChunkSize));
+    t.file->read(buf.data(), kChunkSize);
+    const std::streamsize n = t.file->gcount();
+    if (n <= 0) {
         LOG_WARNING(FileTransfer, "Empty Chunk");
         return;
     }
+    const Bytes plainChunk(buf.begin(), buf.begin() + n);
 
     // Шифруем чанк с AES-256-GCM
-    QByteArray authTag;
-    const QByteArray encryptedChunk = encryptChunk(
-        plainChunk, t.key, t.nonce, t.chunksSent, authTag);
+    Bytes authTag;
+    const Bytes encryptedChunk = encryptChunk(plainChunk, t.key, t.nonce, t.chunksSent, authTag);
 
-    if (encryptedChunk.isEmpty()) {
+    if (encryptedChunk.empty()) {
         LOG_ERROR(FileTransfer, "Chunk Encryption Failed");
-        t.state = TransferState::Failed;
-        emit transferFailed(offerId, tr("Encryption failed"));
+        const std::string err = "Encryption failed";
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(offerId, err); });
         // Закрываем и освобождаем файл, иначе дескриптор зависнет до конца сессии
-        t.file->close();
-        delete t.file;
-        t.file = nullptr;
-        m_outgoing.remove(offerId);
+        if (t.file) { t.file->close(); t.file.reset(); }
+        m_outgoing.erase(it);
         return;
     }
 
-    // Формируем сообщение FILE_CHUNK
-    const bool isLast = t.file->atEnd();
-    QJsonObject chunk;
-    chunk["type"]  = "FILE_CHUNK";
-    chunk["id"]    = offerId;
-    chunk["seq"]   = t.chunksSent;
-    chunk["data"]  = QString::fromLatin1(encryptedChunk.toBase64());
-    chunk["tag"]   = QString::fromLatin1(authTag.toBase64());
-    chunk["last"]  = isLast;
-
-    netSend(m_net, t.peerUuid, chunk);
-
     // Обновляем статистику
-    t.bytesSent += plainChunk.size();
+    t.bytesSent += static_cast<int64_t>(plainChunk.size());
+    const bool isLast = t.bytesSent >= t.fileSize;
+
+    // Формируем сообщение FILE_CHUNK
+    nlohmann::json chunk;
+    chunk["type"] = "FILE_CHUNK";
+    chunk["id"]   = offerId;
+    chunk["seq"]  = t.chunksSent;
+    chunk["data"] = bytesToBase64(encryptedChunk);
+    chunk["tag"]  = bytesToBase64(authTag);
+    chunk["last"] = isLast;
+
+    m_net->sendFrame(t.peerUuid, chunk);
+
     t.chunksSent++;
 
     // Эмитим прогресс
     emitProgress(t);
 
-    // Планируем отправку следующего чанка асинхронно (не блокируем UI)
-    QTimer::singleShot(0, this, [this, offerId]() {
+    // Планируем отправку следующего чанка асинхронно (не блокируем вызывающий поток)
+    auto destroyed = m_destroyed;
+    asio::post(m_net->ioContext(), [this, offerId, destroyed]() {
+        if (*destroyed) return;
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
         sendNextChunk(offerId);
     });
 }
 
 // ── AES-256-GCM шифрование ───────────────────────────────────────────────────
 
-QByteArray FileTransfer::encryptChunk(const QByteArray& plaintext,
-                                       const QByteArray& key,
-                                       const QByteArray& baseNonce,
-                                       qint64 chunkSeq,
-                                       QByteArray& authTagOut) {
+Bytes FileTransfer::encryptChunk(const Bytes& plaintext, const Bytes& key, const Bytes& baseNonce,
+                                  int64_t chunkSeq, Bytes& authTagOut) {
     // Формируем уникальный nonce для этого чанка: baseNonce XOR chunkSeq
-    QByteArray nonce = baseNonce;
-    for (int i = 0; i < 8 && i < nonce.size(); ++i) {
-        nonce[nonce.size() - 1 - i] ^= static_cast<char>((chunkSeq >> (i * 8)) & 0xFF);
+    Bytes nonce = baseNonce;
+    for (int i = 0; i < 8 && i < static_cast<int>(nonce.size()); ++i) {
+        nonce[nonce.size() - 1 - i] ^= static_cast<uint8_t>((chunkSeq >> (i * 8)) & 0xFF);
     }
 
-    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new());
     if (!ctx) {
         LOG_ERROR(FileTransfer, "Failed to create EVP_CIPHER_CTX");
         return {};
     }
 
     // Инициализируем AES-256-GCM
-    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1)
         return {};
-    }
 
     // Устанавливаем длину nonce (12 байт для GCM)
-    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, kGcmNonceSize, nullptr) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, kGcmNonceSize, nullptr) != 1)
         return {};
-    }
 
     // Устанавливаем ключ и nonce
-    if (EVP_EncryptInit_ex(ctx, nullptr, nullptr,
-            reinterpret_cast<const unsigned char*>(key.constData()),
-            reinterpret_cast<const unsigned char*>(nonce.constData())) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_EncryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce.data()) != 1)
         return {};
-    }
 
     // Шифруем данные
-    QByteArray ciphertext(plaintext.size() + EVP_MAX_BLOCK_LENGTH, '\0');
+    Bytes ciphertext(plaintext.size() + EVP_MAX_BLOCK_LENGTH);
     int outLen = 0;
     int totalLen = 0;
 
-    if (EVP_EncryptUpdate(ctx,
-            reinterpret_cast<unsigned char*>(ciphertext.data()),
-            &outLen,
-            reinterpret_cast<const unsigned char*>(plaintext.constData()),
-            plaintext.size()) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_EncryptUpdate(ctx.get(), ciphertext.data(), &outLen,
+                           plaintext.data(), static_cast<int>(plaintext.size())) != 1)
         return {};
-    }
     totalLen = outLen;
 
     // Финализируем
-    if (EVP_EncryptFinal_ex(ctx,
-            reinterpret_cast<unsigned char*>(ciphertext.data()) + totalLen,
-            &outLen) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_EncryptFinal_ex(ctx.get(), ciphertext.data() + totalLen, &outLen) != 1)
         return {};
-    }
     totalLen += outLen;
-    ciphertext.resize(totalLen);
+    ciphertext.resize(static_cast<size_t>(totalLen));
 
     // Получаем auth tag (16 байт)
     authTagOut.resize(kGcmTagSize);
-    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, kGcmTagSize,
-            authTagOut.data()) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, kGcmTagSize, authTagOut.data()) != 1)
         return {};
-    }
 
-    EVP_CIPHER_CTX_free(ctx);
     return ciphertext;
 }
 
 // ── AES-256-GCM расшифровка ──────────────────────────────────────────────────
 
-QByteArray FileTransfer::decryptChunk(const QByteArray& ciphertext,
-                                       const QByteArray& authTag,
-                                       const QByteArray& key,
-                                       const QByteArray& baseNonce,
-                                       qint64 chunkSeq) {
+Bytes FileTransfer::decryptChunk(const Bytes& ciphertext, const Bytes& authTag, const Bytes& key,
+                                  const Bytes& baseNonce, int64_t chunkSeq) {
     // Формируем тот же nonce что при шифровании
-    QByteArray nonce = baseNonce;
-    for (int i = 0; i < 8 && i < nonce.size(); ++i) {
-        nonce[nonce.size() - 1 - i] ^= static_cast<char>((chunkSeq >> (i * 8)) & 0xFF);
+    Bytes nonce = baseNonce;
+    for (int i = 0; i < 8 && i < static_cast<int>(nonce.size()); ++i) {
+        nonce[nonce.size() - 1 - i] ^= static_cast<uint8_t>((chunkSeq >> (i * 8)) & 0xFF);
     }
 
-    EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+    EvpCipherCtxPtr ctx(EVP_CIPHER_CTX_new());
     if (!ctx) {
         LOG_ERROR(FileTransfer, "Failed to create EVP_CIPHER_CTX for decryption");
         return {};
     }
 
     // Инициализируем AES-256-GCM
-    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, nullptr, nullptr) != 1)
         return {};
-    }
 
     // Устанавливаем длину nonce
-    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, kGcmNonceSize, nullptr) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_IVLEN, kGcmNonceSize, nullptr) != 1)
         return {};
-    }
 
     // Устанавливаем ключ и nonce
-    if (EVP_DecryptInit_ex(ctx, nullptr, nullptr,
-            reinterpret_cast<const unsigned char*>(key.constData()),
-            reinterpret_cast<const unsigned char*>(nonce.constData())) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_DecryptInit_ex(ctx.get(), nullptr, nullptr, key.data(), nonce.data()) != 1)
         return {};
-    }
 
     // Расшифровываем данные
-    QByteArray plaintext(ciphertext.size() + EVP_MAX_BLOCK_LENGTH, '\0');
+    Bytes plaintext(ciphertext.size() + EVP_MAX_BLOCK_LENGTH);
     int outLen = 0;
     int totalLen = 0;
 
-    if (EVP_DecryptUpdate(ctx,
-            reinterpret_cast<unsigned char*>(plaintext.data()),
-            &outLen,
-            reinterpret_cast<const unsigned char*>(ciphertext.constData()),
-            ciphertext.size()) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_DecryptUpdate(ctx.get(), plaintext.data(), &outLen,
+                           ciphertext.data(), static_cast<int>(ciphertext.size())) != 1)
         return {};
-    }
     totalLen = outLen;
 
     // Устанавливаем auth tag для проверки
-    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, kGcmTagSize,
-            const_cast<char*>(authTag.constData())) != 1) {
-        EVP_CIPHER_CTX_free(ctx);
+    if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, kGcmTagSize,
+                             const_cast<uint8_t*>(authTag.data())) != 1)
         return {};
-    }
 
     // Финализируем и проверяем auth tag
-    if (EVP_DecryptFinal_ex(ctx,
-            reinterpret_cast<unsigned char*>(plaintext.data()) + totalLen,
-            &outLen) != 1) {
+    if (EVP_DecryptFinal_ex(ctx.get(), plaintext.data() + totalLen, &outLen) != 1) {
         LOG_ERROR(FileTransfer, "GCM auth tag verification failed — data tampered!");
-        EVP_CIPHER_CTX_free(ctx);
         return {};  // Auth tag не совпал — данные повреждены/подменены
     }
     totalLen += outLen;
-    plaintext.resize(totalLen);
+    plaintext.resize(static_cast<size_t>(totalLen));
 
-    EVP_CIPHER_CTX_free(ctx);
     return plaintext;
 }
 
 // ── Обработка входящих сообщений ─────────────────────────────────────────────
 
-void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
-    const QString type = msg["type"].toString();
-    const QString id   = msg["id"].toString();
+void FileTransfer::handleMessage(const std::string& from, const nlohmann::json& msg) {
+    const std::string type = msg.value("type", std::string());
+    const std::string id   = msg.value("id", std::string());
+
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
 
     if (type == "FILE_OFFER") {
         // Получили предложение файла
         IncomingTransfer t;
         t.id            = id;
         t.peerUuid      = from;
-        t.fileName      = sanitizeFileName(msg["name"].toString());
-        t.fileSize      = static_cast<qint64>(msg["size"].toDouble());
-        t.expectedHash  = QByteArray::fromHex(msg["hash"].toString().toLatin1());
+        t.fileName      = sanitizeFileName(msg.value("name", std::string()));
+        t.fileSize      = msg.value("size", static_cast<int64_t>(0));
+        t.expectedHash  = bytesFromHex(msg.value("hash", std::string()));
         t.bytesReceived = 0;
         t.chunksReceived = 0;
-        t.file          = nullptr;
-        t.hasher        = nullptr;
         t.state         = TransferState::Pending;
         t.lastSpeedCalcBytes = 0;
         t.lastSpeedCalcTime  = 0;
         t.currentSpeed       = 0.0;
         // Читаем длительность голосового сообщения (0 если не голосовое)
-        t.durationMs         = msg["duration_ms"].toInt(0);
+        t.durationMs         = msg.value("duration_ms", 0);
 
         // Расшифровываем ключ
-        if (msg.contains("enc_key_env") && m_e2e && m_e2e->hasSession(bridge::fromQUuid(from))) {
-            const auto keyMaterial = m_e2e->decrypt(
-                bridge::fromQUuid(from),
-                bridge::fromQJsonObj(msg["enc_key_env"].toObject()));
+        if (msg.contains("enc_key_env") && m_e2e && m_e2e->hasSession(from)) {
+            const auto keyMaterial = m_e2e->decrypt(from, msg["enc_key_env"]);
             if (keyMaterial.has_value() &&
                 keyMaterial->size() >= static_cast<size_t>(kAesKeySize + kGcmNonceSize)) {
-                t.key   = bridge::toQBA(bytesLeft(*keyMaterial, static_cast<size_t>(kAesKeySize)));
-                t.nonce = bridge::toQBA(bytesMid(*keyMaterial, static_cast<size_t>(kAesKeySize),
-                                                 static_cast<size_t>(kGcmNonceSize)));
+                t.key   = bytesLeft(*keyMaterial, static_cast<size_t>(kAesKeySize));
+                t.nonce = bytesMid(*keyMaterial, static_cast<size_t>(kAesKeySize),
+                                    static_cast<size_t>(kGcmNonceSize));
                 LOG_DEBUG(FileTransfer, "File key decrypted via E2E session");
             } else {
                 LOG_ERROR(FileTransfer, "Failed to decrypt file key via E2E");
@@ -505,8 +501,8 @@ void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
             }
         } else {
             // Fallback: открытый ключ
-            t.key   = QByteArray::fromHex(msg["enc_key"].toString().toLatin1());
-            t.nonce = QByteArray::fromHex(msg["enc_nonce"].toString().toLatin1());
+            t.key   = bytesFromHex(msg.value("enc_key", std::string()));
+            t.nonce = bytesFromHex(msg.value("enc_nonce", std::string()));
             LOG_WARNING(FileTransfer, "Received file key unencrypted");
         }
 
@@ -514,11 +510,17 @@ void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
         t.tempFilePath  = tempFilePath(id);
         t.finalFilePath = safeDownloadPath(t.fileName);
 
-        m_incoming[id] = t;
+        const std::string fileName = t.fileName;
+        const int64_t     fileSize = t.fileSize;
+        const int         durMs    = t.durationMs;
+
+        m_incoming[id] = std::move(t);
 
         LOG_INFO(FileTransfer, "File Offer Received");
 
-        emit fileOffer(from, t.fileName, t.fileSize, id, t.durationMs);
+        fire([&](FileTransferEvent& ev) {
+            if (ev.onFileOffer) ev.onFileOffer(from, fileName, fileSize, id, durMs);
+        });
 
     } else if (type == "FILE_ACCEPT") {
         // Получатель принял — начинаем стриминг
@@ -528,13 +530,10 @@ void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
     } else if (type == "FILE_REJECT") {
         // Получатель отклонил
         LOG_INFO(FileTransfer, "File Reject Received");
-        if (m_outgoing.contains(id)) {
-            auto& t = m_outgoing[id];
-            if (t.file) {
-                t.file->close();
-                delete t.file;
-            }
-            m_outgoing.remove(id);
+        auto it = m_outgoing.find(id);
+        if (it != m_outgoing.end()) {
+            if (it->second.file) it->second.file->close();
+            m_outgoing.erase(it);
         }
 
     } else if (type == "FILE_CHUNK") {
@@ -547,35 +546,29 @@ void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
     } else if (type == "FILE_CANCEL") {
         // Отмена передачи
         LOG_INFO(FileTransfer, "File Cancel Received");
-        if (m_outgoing.contains(id)) {
-            auto& t = m_outgoing[id];
-            t.state = TransferState::Cancelled;
-            if (t.file) {
-                t.file->close();
-                delete t.file;
-            }
-            emit transferCancelled(id);
-            m_outgoing.remove(id);
+        if (auto it = m_outgoing.find(id); it != m_outgoing.end()) {
+            it->second.state = TransferState::Cancelled;
+            if (it->second.file) it->second.file->close();
+            fire([&](FileTransferEvent& ev) { if (ev.onTransferCancelled) ev.onTransferCancelled(id); });
+            m_outgoing.erase(it);
         }
-        if (m_incoming.contains(id)) {
-            auto& t = m_incoming[id];
-            t.state = TransferState::Cancelled;
-            if (t.file) {
-                t.file->close();
-                delete t.file;
-                QFile::remove(t.tempFilePath);
+        if (auto it = m_incoming.find(id); it != m_incoming.end()) {
+            it->second.state = TransferState::Cancelled;
+            if (it->second.file) {
+                it->second.file->close();
+                std::error_code ec;
+                std::filesystem::remove(it->second.tempFilePath, ec);
             }
-            delete t.hasher;
-            emit transferCancelled(id);
-            m_incoming.remove(id);
+            fire([&](FileTransferEvent& ev) { if (ev.onTransferCancelled) ev.onTransferCancelled(id); });
+            m_incoming.erase(it);
         }
         removeTransferState(id);
 
     } else if (type == "FILE_PAUSE") {
         // Приостановка передачи
         LOG_INFO(FileTransfer, "File Pause Received");
-        if (m_outgoing.contains(id)) {
-            m_outgoing[id].state = TransferState::Paused;
+        if (auto it = m_outgoing.find(id); it != m_outgoing.end()) {
+            it->second.state = TransferState::Paused;
         }
 
     } else if (type == "FILE_RESUME_REQUEST") {
@@ -583,27 +576,28 @@ void FileTransfer::handleMessage(const QUuid& from, const QJsonObject& msg) {
 
     } else if (type == "FILE_RESUME_ACK") {
         // Отправитель подтвердил возобновление
-        const qint64 resumeFrom = static_cast<qint64>(msg["resume_from"].toDouble());
+        const int64_t resumeFrom = msg.value("resume_from", static_cast<int64_t>(0));
         LOG_INFO(FileTransfer, "File Resume ACK Received");
-        if (m_incoming.contains(id)) {
-            m_incoming[id].state = TransferState::Active;
-            m_incoming[id].chunksReceived = resumeFrom;
+        if (auto it = m_incoming.find(id); it != m_incoming.end()) {
+            it->second.state = TransferState::Active;
+            it->second.chunksReceived = resumeFrom;
         }
     }
 }
 
 // ── Обработка входящего чанка ────────────────────────────────────────────────
+// Вызывается из handleMessage. m_mutex уже захвачен.
 
-void FileTransfer::handleFileChunk(const QUuid& /*from*/, const QJsonObject& msg) {
-    const QString id  = msg["id"].toString();
-    const qint64  seq = static_cast<qint64>(msg["seq"].toDouble());
+void FileTransfer::handleFileChunk(const std::string& /*from*/, const nlohmann::json& msg) {
+    const std::string id  = msg.value("id", std::string());
+    const int64_t     seq = msg.value("seq", static_cast<int64_t>(0));
 
-    if (!m_incoming.contains(id)) {
+    auto it = m_incoming.find(id);
+    if (it == m_incoming.end()) {
         LOG_WARNING(FileTransfer, "Unknown Transfer");
         return;
     }
-
-    auto& t = m_incoming[id];
+    auto& t = it->second;
 
     // Проверяем состояние
     if (t.state == TransferState::Paused || t.state == TransferState::Cancelled) {
@@ -619,98 +613,98 @@ void FileTransfer::handleFileChunk(const QUuid& /*from*/, const QJsonObject& msg
 
     // Открываем файл при первом чанке
     if (!t.file) {
-        t.file = new QFile(t.tempFilePath);
-        if (!t.file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        t.file = std::make_unique<std::ofstream>(t.tempFilePath, std::ios::binary | std::ios::trunc);
+        if (!t.file->is_open()) {
             LOG_ERROR(FileTransfer, "Temp File Creation Failed");
-            t.state = TransferState::Failed;
-            emit transferFailed(id, tr("Cannot create temp file"));
-            delete t.file;          // предотвращаем утечку QFile
-            t.file = nullptr;
-            m_incoming.remove(id);
+            const std::string err = "Cannot create temp file";
+            fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(id, err); });
+            t.file.reset();
+            m_incoming.erase(it);
             return;
         }
 
-        t.hasher = new QCryptographicHash(QCryptographicHash::Sha256);
-        t.timer.start();
+        t.hasher.reset(EVP_MD_CTX_new());
+        EVP_DigestInit_ex(t.hasher.get(), EVP_sha256(), nullptr);
+        t.startTime = std::chrono::steady_clock::now();
         t.state = TransferState::Active;
 
         // Эмитим начало передачи
         TransferProgress progress;
-        progress.id               = id.toStdString();
-        progress.fileName         = t.fileName.toStdString();
+        progress.id               = id;
+        progress.fileName         = t.fileName;
         progress.bytesTransferred = 0;
         progress.totalBytes       = t.fileSize;
         progress.speedBytesPerSec = 0;
         progress.etaSeconds       = 0;
         progress.percent          = 0;
         progress.outgoing         = false;
-        emit transferStarted(progress);
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferStarted) ev.onTransferStarted(progress); });
     }
 
     // Расшифровываем чанк
-    const QByteArray ciphertext = QByteArray::fromBase64(
-        msg["data"].toString().toLatin1());
-    const QByteArray authTag = QByteArray::fromBase64(
-        msg["tag"].toString().toLatin1());
+    const Bytes ciphertext = bytesFromBase64(msg.value("data", std::string()));
+    const Bytes authTag    = bytesFromBase64(msg.value("tag", std::string()));
 
-    const QByteArray plaintext = decryptChunk(ciphertext, authTag, t.key, t.nonce, seq);
+    const Bytes plaintext = decryptChunk(ciphertext, authTag, t.key, t.nonce, seq);
 
-    if (plaintext.isEmpty()) {
+    if (plaintext.empty()) {
         LOG_ERROR(FileTransfer, "Chunk Decryption Failed");
-        t.state = TransferState::Failed;
-        emit transferFailed(id, tr("Decryption failed — data corrupted"));
+        const std::string err = "Decryption failed — data corrupted";
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(id, err); });
 
         // Очищаем ресурсы
         t.file->close();
-        delete t.file;
-        delete t.hasher;
-        QFile::remove(t.tempFilePath);
-        m_incoming.remove(id);
+        std::error_code ec;
+        std::filesystem::remove(t.tempFilePath, ec);
+        m_incoming.erase(it);
         return;
     }
 
     // Записываем в файл
-    t.file->write(plaintext);
+    t.file->write(reinterpret_cast<const char*>(plaintext.data()), static_cast<std::streamsize>(plaintext.size()));
 
     // Обновляем хеш
-    t.hasher->addData(plaintext);
+    EVP_DigestUpdate(t.hasher.get(), plaintext.data(), plaintext.size());
 
     // Обновляем статистику
-    t.bytesReceived += plaintext.size();
+    t.bytesReceived += static_cast<int64_t>(plaintext.size());
     t.chunksReceived++;
 
     // Эмитим прогресс
     emitProgress(t);
 
     // Проверяем завершение
-    if (msg["last"].toBool()) {
+    if (msg.value("last", false)) {
         finishReceiving(id);
     }
 }
 
 // ── Завершение приёма файла ──────────────────────────────────────────────────
+// Вызывается из handleFileChunk. m_mutex уже захвачен.
 
-void FileTransfer::finishReceiving(const QString& offerId) {
-    if (!m_incoming.contains(offerId)) return;
-
-    auto& t = m_incoming[offerId];
+void FileTransfer::finishReceiving(const std::string& offerId) {
+    auto it = m_incoming.find(offerId);
+    if (it == m_incoming.end()) return;
+    auto& t = it->second;
 
     // Закрываем файл
     t.file->close();
 
     // Проверяем хеш
-    const QByteArray computedHash = t.hasher->result();
+    Bytes computedHash(EVP_MAX_MD_SIZE);
+    unsigned int outLen = 0;
+    EVP_DigestFinal_ex(t.hasher.get(), computedHash.data(), &outLen);
+    computedHash.resize(outLen);
 
     if (computedHash != t.expectedHash) {
         LOG_ERROR(FileTransfer, "Hash Mismatch");
 
-        t.state = TransferState::Failed;
-        emit transferFailed(offerId, tr("File hash mismatch — corrupted"));
+        const std::string err = "File hash mismatch — corrupted";
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(offerId, err); });
 
-        QFile::remove(t.tempFilePath);
-        delete t.file;
-        delete t.hasher;
-        m_incoming.remove(offerId);
+        std::error_code ec;
+        std::filesystem::remove(t.tempFilePath, ec);
+        m_incoming.erase(it);
         return;
     }
 
@@ -718,102 +712,121 @@ void FileTransfer::finishReceiving(const QString& offerId) {
 
     // Перемещаем из временного файла в финальный
     // Если файл уже существует — добавляем суффикс
-    QString finalPath = t.finalFilePath;
-    int counter = 1;
-    while (QFile::exists(finalPath)) {
-        QFileInfo fi(t.finalFilePath);
-        finalPath = fi.path() + "/" + fi.completeBaseName() +
-                    QString(" (%1).").arg(counter++) + fi.suffix();
+    std::filesystem::path finalPath = t.finalFilePath;
+    {
+        const std::filesystem::path orig(t.finalFilePath);
+        int counter = 1;
+        std::error_code existsEc;
+        while (std::filesystem::exists(finalPath, existsEc)) {
+            finalPath = orig.parent_path() /
+                (orig.stem().string() + " (" + std::to_string(counter++) + ")" + orig.extension().string());
+        }
     }
 
-    if (!QFile::rename(t.tempFilePath, finalPath)) {
-        LOG_ERROR(FileTransfer, "File Save Failed");
-        t.state = TransferState::Failed;
-        emit transferFailed(offerId, tr("Cannot save file"));
+    bool moved = false;
+    std::error_code renameEc;
+    std::filesystem::rename(t.tempFilePath, finalPath, renameEc);
+    if (!renameEc) {
+        moved = true;
+    } else if (renameEc.value() == static_cast<int>(std::errc::cross_device_link)) {
+        // QFile::rename имел встроенный copy-fallback при разных ФС — повторяем его
+        std::error_code copyEc;
+        std::filesystem::copy_file(t.tempFilePath, finalPath, copyEc);
+        if (!copyEc) {
+            std::error_code removeEc;
+            std::filesystem::remove(t.tempFilePath, removeEc);
+            moved = true;
+        }
+    }
 
-        QFile::remove(t.tempFilePath);
-        delete t.file;
-        delete t.hasher;
-        m_incoming.remove(offerId);
+    if (!moved) {
+        LOG_ERROR(FileTransfer, "File Save Failed");
+
+        const std::string err = "Cannot save file";
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferFailed) ev.onTransferFailed(offerId, err); });
+
+        std::error_code ec;
+        std::filesystem::remove(t.tempFilePath, ec);
+        m_incoming.erase(it);
         return;
     }
 
     LOG_INFO(FileTransfer, "File Received");
 
     t.state = TransferState::Completed;
-    emit transferCompleted(offerId, finalPath, false);
-    emit fileReceived(t.peerUuid, finalPath, t.fileName);
+    const std::string finalPathStr = finalPath.string();
+    const std::string fileName     = t.fileName;
+    const std::string peerUuid     = t.peerUuid;
+    fire([&](FileTransferEvent& ev) { if (ev.onTransferCompleted) ev.onTransferCompleted(offerId, finalPathStr, false); });
+    fire([&](FileTransferEvent& ev) { if (ev.onFileReceived) ev.onFileReceived(peerUuid, finalPathStr, fileName); });
 
     // Очищаем ресурсы
-    delete t.file;
-    delete t.hasher;
     removeTransferState(offerId);
-    m_incoming.remove(offerId);
+    m_incoming.erase(it);
 }
 
 // ── Принятие/отклонение предложения ──────────────────────────────────────────
 
-void FileTransfer::acceptOffer(const QUuid& from, const QString& offerId) {
-    if (!m_incoming.contains(offerId)) {
+void FileTransfer::acceptOffer(const std::string& from, const std::string& offerId) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+    if (m_incoming.find(offerId) == m_incoming.end()) {
         LOG_WARNING(FileTransfer, "Accept: Unknown Offer");
         return;
     }
 
     LOG_INFO(FileTransfer, "Accepting File Offer");
 
-    QJsonObject msg;
+    nlohmann::json msg;
     msg["type"] = "FILE_ACCEPT";
     msg["id"]   = offerId;
-    netSend(m_net, from, msg);
+    m_net->sendFrame(from, msg);
 }
 
-void FileTransfer::rejectOffer(const QUuid& from, const QString& offerId) {
+void FileTransfer::rejectOffer(const std::string& from, const std::string& offerId) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     LOG_INFO(FileTransfer, "Rejecting File Offer");
 
-    QJsonObject msg;
+    nlohmann::json msg;
     msg["type"] = "FILE_REJECT";
     msg["id"]   = offerId;
-    netSend(m_net, from, msg);
+    m_net->sendFrame(from, msg);
 
-    m_incoming.remove(offerId);
+    m_incoming.erase(offerId);
 }
 
 // ── Отмена передачи ──────────────────────────────────────────────────────────
 
-void FileTransfer::cancelTransfer(const QString& transferId) {
+void FileTransfer::cancelTransfer(const std::string& transferId) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     LOG_INFO(FileTransfer, "Cancelling Transfer");
 
-    QJsonObject msg;
+    nlohmann::json msg;
     msg["type"]   = "FILE_CANCEL";
     msg["id"]     = transferId;
     msg["reason"] = "user cancelled";
 
-    if (m_outgoing.contains(transferId)) {
-        auto& t = m_outgoing[transferId];
+    if (auto it = m_outgoing.find(transferId); it != m_outgoing.end()) {
+        auto& t = it->second;
         t.state = TransferState::Cancelled;
-        netSend(m_net, t.peerUuid, msg);
+        m_net->sendFrame(t.peerUuid, msg);
 
-        if (t.file) {
-            t.file->close();
-            delete t.file;
-        }
-        emit transferCancelled(transferId);
-        m_outgoing.remove(transferId);
+        if (t.file) t.file->close();
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferCancelled) ev.onTransferCancelled(transferId); });
+        m_outgoing.erase(it);
     }
 
-    if (m_incoming.contains(transferId)) {
-        auto& t = m_incoming[transferId];
+    if (auto it = m_incoming.find(transferId); it != m_incoming.end()) {
+        auto& t = it->second;
         t.state = TransferState::Cancelled;
-        netSend(m_net, t.peerUuid, msg);
+        m_net->sendFrame(t.peerUuid, msg);
 
         if (t.file) {
             t.file->close();
-            delete t.file;
-            QFile::remove(t.tempFilePath);
+            std::error_code ec;
+            std::filesystem::remove(t.tempFilePath, ec);
         }
-        delete t.hasher;
-        emit transferCancelled(transferId);
-        m_incoming.remove(transferId);
+        fire([&](FileTransferEvent& ev) { if (ev.onTransferCancelled) ev.onTransferCancelled(transferId); });
+        m_incoming.erase(it);
     }
 
     removeTransferState(transferId);
@@ -821,78 +834,79 @@ void FileTransfer::cancelTransfer(const QString& transferId) {
 
 // ── Пауза/возобновление ──────────────────────────────────────────────────────
 
-void FileTransfer::pauseTransfer(const QString& transferId) {
+void FileTransfer::pauseTransfer(const std::string& transferId) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     LOG_INFO(FileTransfer, "Pausing Transfer");
 
-    if (m_outgoing.contains(transferId)) {
-        auto& t = m_outgoing[transferId];
+    if (auto it = m_outgoing.find(transferId); it != m_outgoing.end()) {
+        auto& t = it->second;
         t.state = TransferState::Paused;
 
         // Сохраняем состояние на диск
         TransferResumeInfo info;
-        info.id               = transferId;
-        info.peerUuid         = t.peerUuid;
-        info.fileName         = t.fileName;
-        info.tempFilePath     = t.filePath;
-        info.totalSize        = t.fileSize;
+        info.id                 = transferId;
+        info.peerUuid           = t.peerUuid;
+        info.fileName           = t.fileName;
+        info.tempFilePath       = t.filePath;
+        info.totalSize          = t.fileSize;
         info.lastConfirmedChunk = t.chunksSent;
-        info.key              = t.key;
-        info.nonce            = t.nonce;
-        info.outgoing         = true;
+        info.key                = t.key;
+        info.nonce              = t.nonce;
+        info.outgoing           = true;
         saveTransferState(info);
 
-        QJsonObject msg;
+        nlohmann::json msg;
         msg["type"] = "FILE_PAUSE";
         msg["id"]   = transferId;
-        netSend(m_net, t.peerUuid, msg);
+        m_net->sendFrame(t.peerUuid, msg);
     }
 
-    if (m_incoming.contains(transferId)) {
-        auto& t = m_incoming[transferId];
+    if (auto it = m_incoming.find(transferId); it != m_incoming.end()) {
+        auto& t = it->second;
         t.state = TransferState::Paused;
 
         // Сохраняем состояние на диск
         TransferResumeInfo info;
-        info.id               = transferId;
-        info.peerUuid         = t.peerUuid;
-        info.fileName         = t.fileName;
-        info.tempFilePath     = t.tempFilePath;
-        info.totalSize        = t.fileSize;
+        info.id                 = transferId;
+        info.peerUuid           = t.peerUuid;
+        info.fileName           = t.fileName;
+        info.tempFilePath       = t.tempFilePath;
+        info.totalSize          = t.fileSize;
         info.lastConfirmedChunk = t.chunksReceived;
-        info.key              = t.key;
-        info.nonce            = t.nonce;
-        info.outgoing         = false;
+        info.key                = t.key;
+        info.nonce              = t.nonce;
+        info.outgoing           = false;
         saveTransferState(info);
 
-        QJsonObject msg;
+        nlohmann::json msg;
         msg["type"] = "FILE_PAUSE";
         msg["id"]   = transferId;
-        netSend(m_net, t.peerUuid, msg);
+        m_net->sendFrame(t.peerUuid, msg);
     }
 }
 
-void FileTransfer::resumeTransfer(const QString& transferId) {
+void FileTransfer::resumeTransfer(const std::string& transferId) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     LOG_INFO(FileTransfer, "Resuming Transfer");
 
-    if (m_incoming.contains(transferId)) {
-        auto& t = m_incoming[transferId];
-
+    if (auto it = m_incoming.find(transferId); it != m_incoming.end()) {
         // Отправляем запрос на возобновление отправителю
-        QJsonObject msg;
+        nlohmann::json msg;
         msg["type"]       = "FILE_RESUME_REQUEST";
         msg["id"]         = transferId;
-        msg["last_chunk"] = t.chunksReceived;
-        netSend(m_net, t.peerUuid, msg);
+        msg["last_chunk"] = it->second.chunksReceived;
+        m_net->sendFrame(it->second.peerUuid, msg);
     }
 }
 
-void FileTransfer::handleResumeRequest(const QUuid& from, const QJsonObject& msg) {
-    const QString id        = msg["id"].toString();
-    const qint64  lastChunk = static_cast<qint64>(msg["last_chunk"].toDouble());
+void FileTransfer::handleResumeRequest(const std::string& from, const nlohmann::json& msg) {
+    const std::string id        = msg.value("id", std::string());
+    const int64_t     lastChunk = msg.value("last_chunk", static_cast<int64_t>(0));
 
     LOG_INFO(FileTransfer, "Resume Request Received");
 
-    if (!m_outgoing.contains(id)) {
+    auto it = m_outgoing.find(id);
+    if (it == m_outgoing.end()) {
         // Попробуем загрузить сохранённое состояние
         TransferResumeInfo info;
         if (!loadTransferState(id, info)) {
@@ -911,35 +925,34 @@ void FileTransfer::handleResumeRequest(const QUuid& from, const QJsonObject& msg
         t.nonce      = info.nonce;
         t.bytesSent  = lastChunk * kChunkSize;
         t.chunksSent = lastChunk + 1;  // Начинаем со следующего чанка
-        t.file       = new QFile(t.filePath);
         t.state      = TransferState::Active;
 
-        if (!t.file->open(QIODevice::ReadOnly)) {
+        t.file = std::make_unique<std::ifstream>(t.filePath, std::ios::binary);
+        if (!t.file->is_open()) {
             LOG_ERROR(FileTransfer, "File Reopen Failed");
-            delete t.file;
             return;
         }
 
         // Перематываем к нужной позиции
-        t.file->seek(t.chunksSent * kChunkSize);
-        t.timer.start();
+        t.file->seekg(t.chunksSent * kChunkSize);
+        t.startTime = std::chrono::steady_clock::now();
 
-        m_outgoing[id] = t;
+        m_outgoing[id] = std::move(t);
     } else {
-        auto& t = m_outgoing[id];
+        auto& t = it->second;
         t.state = TransferState::Active;
         t.chunksSent = lastChunk + 1;
         if (t.file) {
-            t.file->seek(t.chunksSent * kChunkSize);
+            t.file->seekg(t.chunksSent * kChunkSize);
         }
     }
 
     // Подтверждаем возобновление
-    QJsonObject ack;
+    nlohmann::json ack;
     ack["type"]        = "FILE_RESUME_ACK";
     ack["id"]          = id;
     ack["resume_from"] = lastChunk + 1;
-    netSend(m_net, from, ack);
+    m_net->sendFrame(from, ack);
 
     // Продолжаем отправку
     sendNextChunk(id);
@@ -947,42 +960,42 @@ void FileTransfer::handleResumeRequest(const QUuid& from, const QJsonObject& msg
 
 // ── Сохранение/загрузка состояния передачи ───────────────────────────────────
 
-QString FileTransfer::transferStateDir() {
-    const QString dir = QStandardPaths::writableLocation(
-        QStandardPaths::CacheLocation) + "/transfers";
-    QDir().mkpath(dir);
+std::filesystem::path FileTransfer::transferStateDir() {
+    const std::filesystem::path dir = m_dataDir / "transfers";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
     return dir;
 }
 
 void FileTransfer::saveTransferState(const TransferResumeInfo& info) {
-    QJsonObject obj;
+    nlohmann::json obj;
     obj["id"]                 = info.id;
-    obj["peerUuid"]           = info.peerUuid.toString(QUuid::WithoutBraces);
+    obj["peerUuid"]           = info.peerUuid;
     obj["fileName"]           = info.fileName;
     obj["tempFilePath"]       = info.tempFilePath;
     obj["totalSize"]          = info.totalSize;
     obj["lastConfirmedChunk"] = info.lastConfirmedChunk;
-    obj["key"]                = QString::fromLatin1(info.key.toHex());
-    obj["nonce"]              = QString::fromLatin1(info.nonce.toHex());
+    obj["key"]                = bytesToHex(info.key);
+    obj["nonce"]              = bytesToHex(info.nonce);
     obj["outgoing"]           = info.outgoing;
 
-    const QByteArray jsonBytes = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    const std::string jsonStr = obj.dump();
 
     // M-3: шифруем состояние передачи перед записью — AES-ключ файла не должен
     // лежать на диске открытым текстом. Формат файла: зашифрованный блоб (KeyProtector)
     // или fallback plaintext, если KeyProtector не инициализирован.
-    const QString path = transferStateDir() + "/" + info.id + ".json";
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    const std::filesystem::path path = transferStateDir() / (info.id + ".json");
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
         LOG_ERROR(FileTransfer, "Transfer State Save Failed");
         return;
     }
 
     if (KeyProtector::instance().isReady()) {
-        const QByteArray encrypted = bridge::toQBA(
-            KeyProtector::instance().encrypt(bridge::fromQBA(jsonBytes)));
-        if (!encrypted.isEmpty()) {
-            file.write(encrypted);
+        const Bytes encrypted = KeyProtector::instance().encrypt(sv2bytes(jsonStr));
+        if (!encrypted.empty()) {
+            file.write(reinterpret_cast<const char*>(encrypted.data()),
+                       static_cast<std::streamsize>(encrypted.size()));
             LOG_DEBUG(FileTransfer, "Transfer State Saved (Encrypted)");
         } else {
             // Шифрование провалилось — не сохраняем ключевой материал открытым текстом
@@ -991,124 +1004,138 @@ void FileTransfer::saveTransferState(const TransferResumeInfo& info) {
     } else {
         // KeyProtector не готов — plaintext (деградация, логируем предупреждение)
         LOG_WARNING(FileTransfer, "Transfer State Saved Unencrypted");
-        file.write(jsonBytes);
+        file.write(jsonStr.data(), static_cast<std::streamsize>(jsonStr.size()));
     }
-    file.close();
 }
 
-bool FileTransfer::loadTransferState(const QString& transferId,
-                                      TransferResumeInfo& info) {
-    const QString path = transferStateDir() + "/" + transferId + ".json";
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
+bool FileTransfer::loadTransferState(const std::string& transferId, TransferResumeInfo& info) {
+    const std::filesystem::path path = transferStateDir() / (transferId + ".json");
+    std::ifstream file(path, std::ios::binary);
+    if (!file.is_open()) {
         return false;
     }
 
-    const QByteArray raw = file.readAll();
+    std::ostringstream ss;
+    ss << file.rdbuf();
+    const std::string raw = ss.str();
     file.close();
 
     // M-3: определяем формат блоба (зашифрованный или legacy plaintext).
     // Plaintext JSON начинается с '{' (0x7B); зашифрованный блоб — случайный nonce.
-    QByteArray jsonBytes;
-    const bool looksLikeJson = !raw.isEmpty() && raw[0] == '{';
+    std::string jsonStr;
+    const bool looksLikeJson = !raw.empty() && raw[0] == '{';
     if (!looksLikeJson && KeyProtector::instance().isReady()) {
-        jsonBytes = bridge::toQBA(KeyProtector::instance().decrypt(bridge::fromQBA(raw)));
-        if (jsonBytes.isEmpty()) {
+        const Bytes decrypted = KeyProtector::instance().decrypt(sv2bytes(raw));
+        if (decrypted.empty()) {
             LOG_ERROR(FileTransfer, "Transfer State Decryption Failed");
             return false;
         }
+        jsonStr.assign(reinterpret_cast<const char*>(decrypted.data()), decrypted.size());
     } else {
-        jsonBytes = raw;  // legacy plaintext или KeyProtector не готов
+        jsonStr = raw;  // legacy plaintext или KeyProtector не готов
     }
 
-    const QJsonObject obj = QJsonDocument::fromJson(jsonBytes).object();
+    nlohmann::json obj;
+    try {
+        obj = nlohmann::json::parse(jsonStr);
+    } catch (const std::exception&) {
+        LOG_ERROR(FileTransfer, "Transfer State Parse Failed");
+        return false;
+    }
 
-    info.id                 = obj["id"].toString();
-    info.peerUuid           = QUuid(obj["peerUuid"].toString());
-    info.fileName           = obj["fileName"].toString();
-    info.tempFilePath       = obj["tempFilePath"].toString();
-    info.totalSize          = static_cast<qint64>(obj["totalSize"].toDouble());
-    info.lastConfirmedChunk = static_cast<qint64>(obj["lastConfirmedChunk"].toDouble());
-    info.key                = QByteArray::fromHex(obj["key"].toString().toLatin1());
-    info.nonce              = QByteArray::fromHex(obj["nonce"].toString().toLatin1());
-    info.outgoing           = obj["outgoing"].toBool();
+    info.id                 = obj.value("id", std::string());
+    info.peerUuid           = obj.value("peerUuid", std::string());
+    info.fileName           = obj.value("fileName", std::string());
+    info.tempFilePath       = obj.value("tempFilePath", std::string());
+    info.totalSize          = obj.value("totalSize", static_cast<int64_t>(0));
+    info.lastConfirmedChunk = obj.value("lastConfirmedChunk", static_cast<int64_t>(0));
+    info.key                = bytesFromHex(obj.value("key", std::string()));
+    info.nonce              = bytesFromHex(obj.value("nonce", std::string()));
+    info.outgoing           = obj.value("outgoing", false);
 
     LOG_DEBUG(FileTransfer, "Transfer State Loaded");
     return true;
 }
 
-void FileTransfer::removeTransferState(const QString& transferId) {
-    const QString path = transferStateDir() + "/" + transferId + ".json";
-    if (QFile::exists(path)) {
-        QFile::remove(path);
+void FileTransfer::removeTransferState(const std::string& transferId) {
+    const std::filesystem::path path = transferStateDir() / (transferId + ".json");
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec)) {
+        std::filesystem::remove(path, ec);
         LOG_DEBUG(FileTransfer, "Transfer State Removed");
     }
 }
 
 // ── Утилиты ──────────────────────────────────────────────────────────────────
 
-QString FileTransfer::sanitizeFileName(const QString& name) {
+std::string FileTransfer::sanitizeFileName(const std::string& name) {
     // Берём только последний компонент пути — убираем любые директории
-    QString safe = QFileInfo(name).fileName();
+    std::string safe = std::filesystem::path(name).filename().string();
 
     // Дополнительно удаляем разделители путей и нулевые байты
-    safe.remove(QRegularExpression("[/\\\\\\x00]"));
+    safe.erase(std::remove_if(safe.begin(), safe.end(), [](char c) {
+        return c == '/' || c == '\\' || c == '\0';
+    }), safe.end());
 
     // Запрещаем имена вида "..": полностью убираем любое вхождение ".."
-    safe.replace("..", "");
+    std::size_t pos;
+    while ((pos = safe.find("..")) != std::string::npos) {
+        safe.erase(pos, 2);
+    }
 
     // Ограничиваем длину
     if (safe.length() > 200)
-        safe = safe.left(200);
+        safe = safe.substr(0, 200);
 
     // Пустое или только точки — дефолтное имя
     {
-        QString stripped = safe;
-        stripped.remove('.');
-        if (safe.isEmpty() || stripped.isEmpty())
+        std::string stripped = safe;
+        stripped.erase(std::remove(stripped.begin(), stripped.end(), '.'), stripped.end());
+        if (safe.empty() || stripped.empty())
             safe = "unnamed_file";
     }
 
     return safe;
 }
 
-QString FileTransfer::safeDownloadPath(const QString& fileName) {
-    const QString baseDir = QStandardPaths::writableLocation(
-        QStandardPaths::DownloadLocation) + "/naleystogramm";
-    QDir().mkpath(baseDir);
+std::string FileTransfer::safeDownloadPath(const std::string& fileName) {
+    const std::filesystem::path baseDir = downloadsDir() / "naleystogramm";
+    std::error_code ec;
+    std::filesystem::create_directories(baseDir, ec);
 
-    const QString safe = sanitizeFileName(fileName);
-    const QString candidate = QDir::cleanPath(baseDir + "/" + safe);
+    const std::string safe = sanitizeFileName(fileName);
+    const std::filesystem::path baseNormal = baseDir.lexically_normal();
+    const std::filesystem::path candidate  = (baseDir / safe).lexically_normal();
 
     // Жёсткая проверка: финальный путь ОБЯЗАН начинаться с baseDir.
     // Это исключает любые path-traversal обходы через symlinks и canonicalization.
-    if (!candidate.startsWith(QDir::cleanPath(baseDir) + "/")) {
-        qWarning("[FileTransfer] Path Traversal Blocked");
-        return baseDir + "/unnamed_file";
+    const std::string candidateStr = candidate.string();
+    const std::string basePrefix   = baseNormal.string() + "/";
+    if (candidateStr.compare(0, basePrefix.size(), basePrefix) != 0) {
+        LOG_WARNING(FileTransfer, "Path Traversal Blocked");
+        return (baseDir / "unnamed_file").string();
     }
-    return candidate;
+    return candidateStr;
 }
 
-QString FileTransfer::tempFilePath(const QString& transferId) {
-    const QString dir = QStandardPaths::writableLocation(
-        QStandardPaths::CacheLocation) + "/transfers";
-    QDir().mkpath(dir);
-    return dir + "/" + transferId + ".tmp";
+std::string FileTransfer::tempFilePath(const std::string& transferId) {
+    return (transferStateDir() / (transferId + ".tmp")).string();
 }
 
 // ── Прогресс и скорость ──────────────────────────────────────────────────────
 
-double FileTransfer::calculateSpeed(qint64 currentBytes, qint64& lastBytes,
-                                     qint64& lastTimeMs, QElapsedTimer& timer) {
-    const qint64 now = timer.elapsed();
-    const qint64 timeDelta = now - lastTimeMs;
+double FileTransfer::calculateSpeed(int64_t currentBytes, int64_t& lastBytes, int64_t& lastTimeMs,
+                                     std::chrono::steady_clock::time_point startTime) {
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+    const int64_t timeDelta = now - lastTimeMs;
 
     if (timeDelta < kSpeedCalcInterval) {
         return -1.0;  // Слишком рано для пересчёта
     }
 
-    const qint64 bytesDelta = currentBytes - lastBytes;
-    const double speed = (bytesDelta * 1000.0) / timeDelta;
+    const int64_t bytesDelta = currentBytes - lastBytes;
+    const double speed = (bytesDelta * 1000.0) / static_cast<double>(timeDelta);
 
     lastBytes = currentBytes;
     lastTimeMs = now;
@@ -1118,95 +1145,116 @@ double FileTransfer::calculateSpeed(qint64 currentBytes, qint64& lastBytes,
 
 void FileTransfer::emitProgress(OutgoingTransfer& t) {
     const double newSpeed = calculateSpeed(
-        t.bytesSent, t.lastSpeedCalcBytes, t.lastSpeedCalcTime, t.timer);
+        t.bytesSent, t.lastSpeedCalcBytes, t.lastSpeedCalcTime, t.startTime);
 
     if (newSpeed >= 0) {
         t.currentSpeed = newSpeed;
     }
 
     TransferProgress progress;
-    progress.id               = t.id.toStdString();
-    progress.fileName         = t.fileName.toStdString();
+    progress.id               = t.id;
+    progress.fileName         = t.fileName;
     progress.bytesTransferred = t.bytesSent;
     progress.totalBytes       = t.fileSize;
     progress.speedBytesPerSec = t.currentSpeed;
     progress.percent          = t.fileSize > 0
         ? static_cast<int>(100 * t.bytesSent / t.fileSize) : 0;
     progress.etaSeconds       = t.currentSpeed > 0
-        ? static_cast<int>((t.fileSize - t.bytesSent) / t.currentSpeed) : 0;
+        ? static_cast<int>(static_cast<double>(t.fileSize - t.bytesSent) / t.currentSpeed) : 0;
     progress.outgoing         = true;
 
-    emit transferProgress(progress);
+    fire([&](FileTransferEvent& ev) { if (ev.onTransferProgress) ev.onTransferProgress(progress); });
 }
 
 void FileTransfer::emitProgress(IncomingTransfer& t) {
     const double newSpeed = calculateSpeed(
-        t.bytesReceived, t.lastSpeedCalcBytes, t.lastSpeedCalcTime, t.timer);
+        t.bytesReceived, t.lastSpeedCalcBytes, t.lastSpeedCalcTime, t.startTime);
 
     if (newSpeed >= 0) {
         t.currentSpeed = newSpeed;
     }
 
     TransferProgress progress;
-    progress.id               = t.id.toStdString();
-    progress.fileName         = t.fileName.toStdString();
+    progress.id               = t.id;
+    progress.fileName         = t.fileName;
     progress.bytesTransferred = t.bytesReceived;
     progress.totalBytes       = t.fileSize;
     progress.speedBytesPerSec = t.currentSpeed;
     progress.percent          = t.fileSize > 0
         ? static_cast<int>(100 * t.bytesReceived / t.fileSize) : 0;
     progress.etaSeconds       = t.currentSpeed > 0
-        ? static_cast<int>((t.fileSize - t.bytesReceived) / t.currentSpeed) : 0;
+        ? static_cast<int>(static_cast<double>(t.fileSize - t.bytesReceived) / t.currentSpeed) : 0;
     progress.outgoing         = false;
 
-    emit transferProgress(progress);
+    fire([&](FileTransferEvent& ev) { if (ev.onTransferProgress) ev.onTransferProgress(progress); });
 }
 
 // ── Получение прогресса ──────────────────────────────────────────────────────
 
-TransferProgress FileTransfer::getProgress(const QString& transferId) const {
+TransferProgress FileTransfer::getProgress(const std::string& transferId) const {
     TransferProgress progress = {};
-    progress.id = transferId.toStdString();
+    progress.id = transferId;
 
-    if (m_outgoing.contains(transferId)) {
-        const auto& t = m_outgoing[transferId];
-        progress.fileName         = t.fileName.toStdString();
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+
+    if (auto it = m_outgoing.find(transferId); it != m_outgoing.end()) {
+        const auto& t = it->second;
+        progress.fileName         = t.fileName;
         progress.bytesTransferred = t.bytesSent;
         progress.totalBytes       = t.fileSize;
         progress.speedBytesPerSec = t.currentSpeed;
         progress.percent          = t.fileSize > 0
             ? static_cast<int>(100 * t.bytesSent / t.fileSize) : 0;
         progress.etaSeconds       = t.currentSpeed > 0
-            ? static_cast<int>((t.fileSize - t.bytesSent) / t.currentSpeed) : 0;
+            ? static_cast<int>(static_cast<double>(t.fileSize - t.bytesSent) / t.currentSpeed) : 0;
         progress.outgoing         = true;
-    } else if (m_incoming.contains(transferId)) {
-        const auto& t = m_incoming[transferId];
-        progress.fileName         = t.fileName.toStdString();
+    } else if (auto it2 = m_incoming.find(transferId); it2 != m_incoming.end()) {
+        const auto& t = it2->second;
+        progress.fileName         = t.fileName;
         progress.bytesTransferred = t.bytesReceived;
         progress.totalBytes       = t.fileSize;
         progress.speedBytesPerSec = t.currentSpeed;
         progress.percent          = t.fileSize > 0
             ? static_cast<int>(100 * t.bytesReceived / t.fileSize) : 0;
         progress.etaSeconds       = t.currentSpeed > 0
-            ? static_cast<int>((t.fileSize - t.bytesReceived) / t.currentSpeed) : 0;
+            ? static_cast<int>(static_cast<double>(t.fileSize - t.bytesReceived) / t.currentSpeed) : 0;
         progress.outgoing         = false;
     }
 
     return progress;
 }
 
-bool FileTransfer::hasPendingTransfers(const QUuid& peerUuid) const {
-    for (const auto& t : m_outgoing) {
+bool FileTransfer::hasPendingTransfers(const std::string& peerUuid) const {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+
+    for (const auto& [id, t] : m_outgoing) {
         if (t.peerUuid == peerUuid &&
             (t.state == TransferState::Active || t.state == TransferState::Pending)) {
             return true;
         }
     }
-    for (const auto& t : m_incoming) {
+    for (const auto& [id, t] : m_incoming) {
         if (t.peerUuid == peerUuid &&
             (t.state == TransferState::Active || t.state == TransferState::Pending)) {
             return true;
         }
     }
     return false;
+}
+
+// ── Listener API ──────────────────────────────────────────────────────────────
+
+FileTransfer::Token FileTransfer::addListener(FileTransferEvent ev) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    Token t = m_nextToken++;
+    m_listeners.emplace_back(t, std::move(ev));
+    return t;
+}
+
+void FileTransfer::removeListener(Token t) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    m_listeners.erase(
+        std::remove_if(m_listeners.begin(), m_listeners.end(),
+                       [t](const auto& p) { return p.first == t; }),
+        m_listeners.end());
 }

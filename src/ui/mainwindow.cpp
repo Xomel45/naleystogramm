@@ -146,6 +146,126 @@ MainWindow::MainWindow(App& app, QWidget* parent)
         m_callListenerToken = m_callManager->addListener(std::move(ev));
     }
 
+    // ── Передача файлов ──────────────────────────────────────────────────────
+    {
+        FileTransferEvent ev;
+
+        // Входящий файл или голосовое — диалог или авто-принятие
+        ev.onFileOffer = [this](const std::string& from, const std::string& name, int64_t size,
+                                 const std::string& offerId, int durationMs) {
+            const QUuid qFrom = s2quid(from);
+            const QString qName = QString::fromStdString(name);
+            const QString qOfferId = QString::fromStdString(offerId);
+            const qint64 qSize = static_cast<qint64>(size);
+            QMetaObject::invokeMethod(this, [this, qFrom, qName, qSize, qOfferId, durationMs]() {
+                const QUuid from = qFrom;
+                const QString name = qName;
+                const qint64 size = qSize;
+                const QString offerId = qOfferId;
+
+                // Проверяем конфиденциальность: голосовые и файлы — разные уровни
+                const auto& sm = SessionManager::instance();
+                if (durationMs > 0) {
+                    if (!checkPrivacy(sm.privacyVoice(), from)) {
+                        qDebug("[Main] Голосовое от %s отклонено (настройки конфиденциальности)",
+                               qPrintable(from.toString(QUuid::WithoutBraces)));
+                        m_fileTransfer->rejectOffer(quid2s(from), offerId.toStdString());
+                        return;
+                    }
+                } else {
+                    if (!checkPrivacy(sm.privacyFiles(), from)) {
+                        qDebug("[Main] Файл от %s отклонен (настройки конфиденциальности)",
+                               qPrintable(from.toString(QUuid::WithoutBraces)));
+                        m_fileTransfer->rejectOffer(quid2s(from), offerId.toStdString());
+                        return;
+                    }
+                }
+
+                m_pendingTransferSenders[offerId] = from;
+                if (durationMs > 0) {
+                    // Голосовое сообщение — принимаем без диалога
+                    m_pendingVoiceDurations[offerId] = durationMs;
+                    m_fileTransfer->acceptOffer(quid2s(from), offerId.toStdString());
+                } else {
+                    // Обычный файл — показываем диалог подтверждения
+                    const Contact c = m_storage->getContact(quid2s(from));
+                    const QString senderName = c.uuid.empty()
+                        ? from.toString(QUuid::WithoutBraces).left(8)
+                        : QString::fromStdString(c.name);
+                    auto* dlg = new FileAcceptDialog(senderName, name, size, offerId, this);
+                    dlg->setAttribute(Qt::WA_DeleteOnClose);
+                    connect(dlg, &FileAcceptDialog::accepted,
+                            this, [this, from](const QString& id) {
+                        m_fileTransfer->acceptOffer(quid2s(from), id.toStdString());
+                    });
+                    connect(dlg, &FileAcceptDialog::rejected,
+                            this, [this, from](const QString& id) {
+                        m_fileTransfer->rejectOffer(quid2s(from), id.toStdString());
+                        m_pendingTransferSenders.remove(id);
+                    });
+                    dlg->show();
+                }
+            }, Qt::QueuedConnection);
+        };
+
+        // Передача завершена — сохранить в БД и показать в чате
+        ev.onTransferCompleted = [this](const std::string& id, const std::string& filePath, bool outgoing) {
+            const QString qId = QString::fromStdString(id);
+            const QString qFilePath = QString::fromStdString(filePath);
+            QMetaObject::invokeMethod(this, [this, qId, qFilePath, outgoing]() {
+                const QString id = qId;
+                const QString filePath = qFilePath;
+
+                const int  durationMs = m_pendingVoiceDurations.take(id);
+                const QUuid peer = outgoing
+                    ? m_activePeer
+                    : m_pendingTransferSenders.take(id);
+
+                if (peer.isNull()) return;
+
+                const QDateTime now = QDateTime::currentDateTime();
+                if (durationMs > 0) {
+                    // Голосовое сообщение
+                    Message voiceMsg;
+                    voiceMsg.peerUuid        = quid2s(peer);
+                    voiceMsg.outgoing        = outgoing;
+                    voiceMsg.isVoice         = true;
+                    voiceMsg.voiceDurationMs = durationMs;
+                    voiceMsg.text            = filePath.toStdString();
+                    voiceMsg.timestamp       = now.toMSecsSinceEpoch();
+                    if (m_storage->saveMessage(voiceMsg) <= 0)
+                        qWarning("[Main] Не удалось сохранить голосовое сообщение");
+
+                    if (!outgoing && m_activePeer == peer)
+                        m_chat->appendVoiceMessage(false, durationMs, now, filePath);
+                } else {
+                    // Обычный файл
+                    const QString fileName = QFileInfo(filePath).fileName();
+                    if (!outgoing) {
+                        Message fileMsg;
+                        fileMsg.peerUuid  = quid2s(peer);
+                        fileMsg.outgoing  = false;
+                        fileMsg.fileName  = fileName.toStdString();
+                        fileMsg.timestamp = now.toMSecsSinceEpoch();
+                        if (m_storage->saveMessage(fileMsg) <= 0)
+                            qWarning("[Main] Не удалось сохранить входящий файл");
+
+                        if (m_activePeer == peer)
+                            m_chat->appendMessage(
+                                QString("⊕ %1").arg(fileName), false, now);
+                    }
+                    statusBar()->showMessage(
+                        outgoing
+                            ? tr("Файл отправлен: %1").arg(fileName)
+                            : tr("Файл получен: %1").arg(fileName),
+                        4000);
+                }
+            }, Qt::QueuedConnection);
+        };
+
+        m_fileTransferListenerToken = m_fileTransfer->addListener(std::move(ev));
+    }
+
     // Голосовые: отправка из ChatWidget
     connect(m_chat, &ChatWidget::sendVoiceRequested,
             this, &MainWindow::onSendVoice);
@@ -169,103 +289,6 @@ MainWindow::MainWindow(App& app, QWidget* parent)
             this, &MainWindow::onShellSessionEnded);
     connect(m_shellManager, &RemoteShellManager::privilegeEscalationDetected,
             this, &MainWindow::onPrivilegeEscalationDetected);
-
-    // Входящий файл или голосовое — диалог или авто-принятие
-    connect(m_fileTransfer, &FileTransfer::fileOffer,
-            this, [this](QUuid from, QString name, qint64 size,
-                         QString offerId, int durationMs) {
-        // Проверяем конфиденциальность: голосовые и файлы — разные уровни
-        const auto& sm = SessionManager::instance();
-        if (durationMs > 0) {
-            if (!checkPrivacy(sm.privacyVoice(), from)) {
-                qDebug("[Main] Голосовое от %s отклонено (настройки конфиденциальности)",
-                       qPrintable(from.toString(QUuid::WithoutBraces)));
-                m_fileTransfer->rejectOffer(from, offerId);
-                return;
-            }
-        } else {
-            if (!checkPrivacy(sm.privacyFiles(), from)) {
-                qDebug("[Main] Файл от %s отклонен (настройки конфиденциальности)",
-                       qPrintable(from.toString(QUuid::WithoutBraces)));
-                m_fileTransfer->rejectOffer(from, offerId);
-                return;
-            }
-        }
-
-        m_pendingTransferSenders[offerId] = from;
-        if (durationMs > 0) {
-            // Голосовое сообщение — принимаем без диалога
-            m_pendingVoiceDurations[offerId] = durationMs;
-            m_fileTransfer->acceptOffer(from, offerId);
-        } else {
-            // Обычный файл — показываем диалог подтверждения
-            const Contact c = m_storage->getContact(quid2s(from));
-            const QString senderName = c.uuid.empty()
-                ? from.toString(QUuid::WithoutBraces).left(8)
-                : QString::fromStdString(c.name);
-            auto* dlg = new FileAcceptDialog(senderName, name, size, offerId, this);
-            dlg->setAttribute(Qt::WA_DeleteOnClose);
-            connect(dlg, &FileAcceptDialog::accepted,
-                    this, [this, from](const QString& id) {
-                m_fileTransfer->acceptOffer(from, id);
-            });
-            connect(dlg, &FileAcceptDialog::rejected,
-                    this, [this, from](const QString& id) {
-                m_fileTransfer->rejectOffer(from, id);
-                m_pendingTransferSenders.remove(id);
-            });
-            dlg->show();
-        }
-    });
-
-    // Передача завершена — сохранить в БД и показать в чате
-    connect(m_fileTransfer, &FileTransfer::transferCompleted,
-            this, [this](QString id, QString filePath, bool outgoing) {
-        const int  durationMs = m_pendingVoiceDurations.take(id);
-        const QUuid peer = outgoing
-            ? m_activePeer
-            : m_pendingTransferSenders.take(id);
-
-        if (peer.isNull()) return;
-
-        const QDateTime now = QDateTime::currentDateTime();
-        if (durationMs > 0) {
-            // Голосовое сообщение
-            Message voiceMsg;
-            voiceMsg.peerUuid        = quid2s(peer);
-            voiceMsg.outgoing        = outgoing;
-            voiceMsg.isVoice         = true;
-            voiceMsg.voiceDurationMs = durationMs;
-            voiceMsg.text            = filePath.toStdString();
-            voiceMsg.timestamp       = now.toMSecsSinceEpoch();
-            if (m_storage->saveMessage(voiceMsg) <= 0)
-                qWarning("[Main] Не удалось сохранить голосовое сообщение");
-
-            if (!outgoing && m_activePeer == peer)
-                m_chat->appendVoiceMessage(false, durationMs, now, filePath);
-        } else {
-            // Обычный файл
-            const QString fileName = QFileInfo(filePath).fileName();
-            if (!outgoing) {
-                Message fileMsg;
-                fileMsg.peerUuid  = quid2s(peer);
-                fileMsg.outgoing  = false;
-                fileMsg.fileName  = fileName.toStdString();
-                fileMsg.timestamp = now.toMSecsSinceEpoch();
-                if (m_storage->saveMessage(fileMsg) <= 0)
-                    qWarning("[Main] Не удалось сохранить входящий файл");
-
-                if (m_activePeer == peer)
-                    m_chat->appendMessage(
-                        QString("⊕ %1").arg(fileName), false, now);
-            }
-            statusBar()->showMessage(
-                outgoing
-                    ? tr("Файл отправлен: %1").arg(fileName)
-                    : tr("Файл получен: %1").arg(fileName),
-                4000);
-        }
-    });
 
     // Подключаем логирование сети к централизованному логгеру
     connect(m_settings, &SettingsPanel::verboseLoggingChanged, this, [this](bool v) {
@@ -480,6 +503,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
 MainWindow::~MainWindow() {
     DemoMode::instance().unsubscribe(m_demoToken);
     m_callManager->removeListener(m_callListenerToken);
+    m_fileTransfer->removeListener(m_fileTransferListenerToken);
     delete ui;
 }
 
@@ -1309,7 +1333,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
         }
         return;
     }
-    m_fileTransfer->handleMessage(from, msg);
+    m_fileTransfer->handleMessage(quid2s(from), bridge::fromQJsonObj(msg));
 }
 
 void MainWindow::onSessionEstablished(QUuid peerUuid) {
@@ -1457,14 +1481,14 @@ void MainWindow::onSendFile() {
     if (path.isEmpty()) return;
 
     qDebug("[Main] Отправка файла: %s", qPrintable(path));
-    m_fileTransfer->sendFile(m_activePeer, path);
+    m_fileTransfer->sendFile(quid2s(m_activePeer), path.toStdString());
 }
 
 void MainWindow::onSendVoice(const QString& filePath, int durationMs) {
     if (m_activePeer.isNull() || filePath.isEmpty()) return;
 
     // Отправляем через FileTransfer с меткой голосового (durationMs > 0)
-    m_fileTransfer->sendFile(m_activePeer, filePath, durationMs);
+    m_fileTransfer->sendFile(quid2s(m_activePeer), filePath.toStdString(), durationMs);
 
     // Показываем исходящий голосовой пузырь немедленно
     const QDateTime now = QDateTime::currentDateTime();

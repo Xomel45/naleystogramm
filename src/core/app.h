@@ -30,7 +30,7 @@ private:
     StorageManager*                m_storage     {nullptr};
     std::unique_ptr<E2EManager>    m_e2e;
     NetworkManager*                m_network     {nullptr};
-    FileTransfer*                  m_fileTransfer{nullptr};
+    std::unique_ptr<FileTransfer>  m_fileTransfer;
     std::unique_ptr<CallManager>   m_callManager;
     RemoteShellManager*            m_shellManager{nullptr};
 };

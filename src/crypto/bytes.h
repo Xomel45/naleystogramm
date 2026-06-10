@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <openssl/evp.h>
 
 using Bytes = std::vector<uint8_t>;
 
@@ -55,4 +56,31 @@ inline Bytes bytesFromHex(std::string_view hex) {
 // Строковый литерал → Bytes (без null-терминатора)
 inline Bytes sv2bytes(std::string_view sv) {
     return Bytes(sv.begin(), sv.end());
+}
+
+// ── Base64 (заменяет QByteArray::toBase64/fromBase64) ─────────────────────────
+
+inline std::string bytesToBase64(const Bytes& b) {
+    if (b.empty()) return {};
+    const std::size_t outLen = 4 * ((b.size() + 2) / 3);
+    std::string out(outLen + 1, '\0');  // +1: EVP_EncodeBlock пишет null-терминатор
+    const int len = EVP_EncodeBlock(reinterpret_cast<unsigned char*>(out.data()),
+                                     b.data(), static_cast<int>(b.size()));
+    out.resize(static_cast<std::size_t>(len));
+    return out;
+}
+
+inline Bytes bytesFromBase64(std::string_view s) {
+    if (s.empty() || s.size() % 4 != 0) return {};
+    Bytes out(s.size() / 4 * 3);
+    const int len = EVP_DecodeBlock(out.data(),
+                                     reinterpret_cast<const unsigned char*>(s.data()),
+                                     static_cast<int>(s.size()));
+    if (len < 0) return {};
+    // EVP_DecodeBlock не учитывает '=' padding — обрезаем вручную
+    std::size_t padding = 0;
+    if (s.size() >= 1 && s[s.size() - 1] == '=') ++padding;
+    if (s.size() >= 2 && s[s.size() - 2] == '=') ++padding;
+    out.resize(static_cast<std::size_t>(len) - padding);
+    return out;
 }
