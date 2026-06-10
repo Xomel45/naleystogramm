@@ -20,6 +20,7 @@
 #include <QJsonObject>
 #include <QJsonDocument>
 #include <QString>
+#include <QHostAddress>
 #include <nlohmann/json.hpp>
 
 namespace bridge {
@@ -51,6 +52,15 @@ inline std::string fromQUuid(const QUuid& uuid) {
 
 inline QUuid toQUuid(const std::string& s) {
     return QUuid::fromString(QString::fromStdString(s));
+}
+
+// ── std::string ↔ QHostAddress ───────────────────────────────────────────────
+inline QHostAddress toQHostAddress(const std::string& s) {
+    return QHostAddress(QString::fromStdString(s));
+}
+
+inline std::string fromQHostAddress(const QHostAddress& a) {
+    return a.toString().toStdString();
 }
 
 // ── nlohmann::json ↔ QJsonObject ─────────────────────────────────────────────

@@ -3,6 +3,8 @@
 #include <QHostAddress>
 #include <QQueue>
 #include <QUuid>
+#include <functional>
+#include <string>
 
 #ifdef HAVE_QT_MULTIMEDIA
 #include <QAudioDevice>
@@ -58,6 +60,10 @@ public:
     void enableUdpRelay(const QString& relayIp, quint16 relayUdpPort,
                         const QUuid& myUuid, const QUuid& peerUuid);
 
+    // Callback-альтернатива сигналу mediaError — для не-QObject подписчиков
+    // (например, Qt-free CallManager).
+    void setErrorCallback(std::function<void(const std::string&)> cb);
+
 signals:
     // Уровень захваченного звука (0.0–1.0), обновляется каждые 20 мс — для индикатора в UI.
     void audioLevelChanged(float level);
@@ -77,6 +83,9 @@ private:
     QByteArray decryptPacket(const QByteArray& raw);
     // Записать PCM-данные в аудиовыход.
     void       playPcm(const QByteArray& pcm);
+
+    // Эмитит mediaError(msg) и вызывает m_errorCb(msg), если задан.
+    void raiseError(const QString& msg);
 
     // Вспомогательные AES-256-GCM (независимы от Double Ratchet — для медиапакетов)
     static QByteArray aesGcmEncrypt(const QByteArray& key,
@@ -112,6 +121,8 @@ private:
     quint32  m_seqNum        {0};
     bool     m_inCall        {false};
     bool     m_muted         {false};
+
+    std::function<void(const std::string&)> m_errorCb;
 
     // Jitter-буфер: декодированные PCM кадры ждут своей очереди
     QQueue<QByteArray> m_playbackQueue;

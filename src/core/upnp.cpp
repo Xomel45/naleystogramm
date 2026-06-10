@@ -1,113 +1,108 @@
 #include "upnp.h"
-#include <QUdpSocket>
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QNetworkInterface>
-#include <QTimer>
-#include <QUrl>
-#include <QDebug>
-#include <QRegularExpression>
+#include <algorithm>
+#include <array>
+#include <cctype>
+#include <regex>
 
-UpnpMapper::UpnpMapper(QObject* parent) : QObject(parent) {
-    // Определяем лучший локальный LAN IP для SSDP-пакетов.
-    // Приоритет: 192.168.x.x (типичная домашняя сеть) > 172.16–31.x.x > 10.x.x.x
-    // Пропускаем loopback, выключенные и VPN/tunnel интерфейсы (tun, tap, wg, ppp, …).
-    static const QStringList kVpnPrefixes {
-        "tun", "tap", "wg", "utun", "ppp", "vpn", "veth", "docker", "virbr", "br-"
-    };
+namespace {
 
-    QString best192, best172, best10, bestOther;
-
-    for (const auto& iface : QNetworkInterface::allInterfaces()) {
-        if (iface.flags() & QNetworkInterface::IsLoopBack)  continue;
-        if (!(iface.flags() & QNetworkInterface::IsUp))     continue;
-        if (!(iface.flags() & QNetworkInterface::IsRunning)) continue;
-
-        // Фильтрация VPN/tunnel по имени интерфейса
-        const QString ifName = iface.name().toLower();
-        bool isVpn = false;
-        for (const auto& pfx : kVpnPrefixes) {
-            if (ifName.startsWith(pfx)) { isVpn = true; break; }
-        }
-        if (isVpn) {
-            qDebug("[UPnP] Пропускаем интерфейс %s (VPN/tunnel)",
-                   qPrintable(iface.name()));
-            continue;
-        }
-
-        for (const auto& entry : iface.addressEntries()) {
-            if (entry.ip().protocol() != QAbstractSocket::IPv4Protocol) continue;
-            const QString ip = entry.ip().toString();
-            qDebug("[UPnP] Интерфейс %s IP: %s",
-                   qPrintable(iface.name()), qPrintable(ip));
-            if      (ip.startsWith("192.168.") && best192.isEmpty())  best192 = ip;
-            else if (ip.startsWith("172.")      && best172.isEmpty())  best172 = ip;
-            else if (ip.startsWith("10.")       && best10.isEmpty())   best10  = ip;
-            else if (bestOther.isEmpty())                              bestOther = ip;
-        }
-    }
-
-    m_localIp = !best192.isEmpty()  ? best192
-              : !best172.isEmpty()  ? best172
-              : !best10.isEmpty()   ? best10
-              :                       bestOther;
-
-    if (m_localIp.isEmpty())
-        qWarning("[UPnP] Не найден подходящий LAN IP — UPnP может не работать");
-    else
-        qDebug("[UPnP] Выбран локальный IP: %s", qPrintable(m_localIp));
+std::string trim(const std::string& s) {
+    auto b = s.find_first_not_of(" \t\r\n");
+    if (b == std::string::npos) return {};
+    auto e = s.find_last_not_of(" \t\r\n");
+    return s.substr(b, e - b + 1);
 }
 
-void UpnpMapper::mapPort(quint16 port) {
+// Тело HTTP-ответа с Transfer-Encoding: chunked → разворачиваем в обычные байты.
+std::string dechunk(const std::string& in) {
+    std::string out;
+    std::size_t pos = 0;
+    while (pos < in.size()) {
+        const auto lineEnd = in.find("\r\n", pos);
+        if (lineEnd == std::string::npos) break;
+        const std::string sizeHex = in.substr(pos, lineEnd - pos);
+        std::size_t chunkSize = 0;
+        try { chunkSize = std::stoul(sizeHex, nullptr, 16); } catch (...) { break; }
+        if (chunkSize == 0) break;
+        const std::size_t dataStart = lineEnd + 2;
+        if (dataStart + chunkSize > in.size()) break;
+        out.append(in, dataStart, chunkSize);
+        pos = dataStart + chunkSize + 2;  // пропускаем завершающий \r\n чанка
+    }
+    return out;
+}
+
+} // namespace
+
+UpnpMapper::UpnpMapper(asio::io_context& io,
+                       std::function<void(const std::string&, bool)> logFn)
+    : m_io(io), m_logFn(std::move(logFn)) {}
+
+void UpnpMapper::log(const std::string& msg, bool important) const {
+    if (m_logFn) m_logFn(msg, important);
+}
+
+void UpnpMapper::finish(int generation, bool ok) {
+    if (generation != m_generation) return;
+    if (m_onResult) m_onResult(ok);
+}
+
+void UpnpMapper::mapPort(uint16_t port, const std::string& localIp,
+                          std::function<void(bool)> onResult) {
+    ++m_generation;
     m_port       = port;
+    m_localIp    = localIp;
     m_retryCount = 0;
-    discover();
+    m_onResult   = std::move(onResult);
+    discover(m_generation);
 }
 
 // ── SSDP discovery ────────────────────────────────────────────────────────
 
-void UpnpMapper::discover() {
-    qDebug("[UPnP] Попытка обнаружения IGD %d/%d (localIp=%s)",
-           m_retryCount + 1, kMaxRetries, qPrintable(m_localIp));
+void UpnpMapper::discover(int generation) {
+    if (generation != m_generation) return;
 
-    auto* udp = new QUdpSocket(this);
+    log("[1/4 SSDP] Попытка обнаружения IGD " + std::to_string(m_retryCount + 1) + "/" +
+        std::to_string(kMaxRetries) + " (localIp=" + (m_localIp.empty() ? "?" : m_localIp) + ")");
 
-    // Привязываемся к конкретному LAN IP, а не QHostAddress::Any —
-    // это гарантирует, что SSDP пакет уйдёт через нужный интерфейс,
-    // а не через VPN или loopback при наличии нескольких интерфейсов.
-    if (!m_localIp.isEmpty()) {
-        if (!udp->bind(QHostAddress(m_localIp), 0, QUdpSocket::ShareAddress)) {
-            qWarning("[UPnP] [1/4 SSDP] Не удалось привязать UDP к %s: %s — "
-                     "пробуем Any",
-                     qPrintable(m_localIp), qPrintable(udp->errorString()));
-            if (!udp->bind(QHostAddress::Any, 0, QUdpSocket::ShareAddress)) {
-                qWarning("[UPnP] [1/4 SSDP] Привязка к Any тоже провалилась: %s — "
-                         "SSDP невозможен",
-                         qPrintable(udp->errorString()));
-                udp->deleteLater();
-                emit mapped(false);
-                return;
+    auto sock = std::make_shared<asio::ip::udp::socket>(m_io);
+    std::error_code ec;
+    sock->open(asio::ip::udp::v4(), ec);
+    if (!ec) sock->set_option(asio::ip::udp::socket::reuse_address(true), ec);
+
+    bool bound = false;
+    if (!ec && !m_localIp.empty()) {
+        std::error_code addrEc;
+        const auto addr = asio::ip::make_address(m_localIp, addrEc);
+        if (!addrEc) {
+            sock->bind(asio::ip::udp::endpoint(addr, 0), ec);
+            if (!ec) {
+                bound = true;
+            } else {
+                log("[1/4 SSDP] Не удалось привязать UDP к " + m_localIp + ": " + ec.message() +
+                    " — пробуем Any", true);
             }
-            qDebug("[UPnP] [1/4 SSDP] Привязан к Any:%d (fallback)",
-                   udp->localPort());
-        } else {
-            qDebug("[UPnP] [1/4 SSDP] Привязан к %s:%d",
-                   qPrintable(m_localIp), udp->localPort());
         }
-    } else {
-        if (!udp->bind(QHostAddress::Any, 0, QUdpSocket::ShareAddress)) {
-            qWarning("[UPnP] [1/4 SSDP] Привязка к Any провалилась: %s",
-                     qPrintable(udp->errorString()));
-            udp->deleteLater();
-            emit mapped(false);
-            return;
-        }
-        qDebug("[UPnP] [1/4 SSDP] Привязан к Any:%d (localIp не определён)",
-               udp->localPort());
+    }
+    if (!bound) {
+        ec.clear();
+        sock->bind(asio::ip::udp::endpoint(asio::ip::udp::v4(), 0), ec);
+    }
+    if (ec) {
+        log("[1/4 SSDP] Привязка UDP провалилась: " + ec.message() + " — SSDP невозможен", true);
+        finish(generation, false);
+        return;
     }
 
-    const QByteArray ssdp =
+    {
+        std::error_code epEc;
+        const auto ep = sock->local_endpoint(epEc);
+        if (!epEc)
+            log("[1/4 SSDP] Привязан к " + ep.address().to_string() + ":" + std::to_string(ep.port()) +
+                (bound ? "" : " (Any, fallback)"));
+    }
+
+    static const std::string kSsdp =
         "M-SEARCH * HTTP/1.1\r\n"
         "HOST: 239.255.255.250:1900\r\n"
         "MAN: \"ssdp:discover\"\r\n"
@@ -115,244 +110,363 @@ void UpnpMapper::discover() {
         "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n"
         "\r\n";
 
-    const qint64 sent = udp->writeDatagram(ssdp,
-                                           QHostAddress("239.255.255.250"), 1900);
-    if (sent != ssdp.size()) {
-        qWarning("[UPnP] [1/4 SSDP] Пакет отправлен частично (%lld из %lld байт): %s",
-                 sent, static_cast<qint64>(ssdp.size()), qPrintable(udp->errorString()));
+    std::error_code sendEc;
+    const asio::ip::udp::endpoint dest(asio::ip::make_address("239.255.255.250"), 1900);
+    const std::size_t sent = sock->send_to(asio::buffer(kSsdp), dest, 0, sendEc);
+    if (sendEc || sent != kSsdp.size()) {
+        log("[1/4 SSDP] Ошибка отправки M-SEARCH: " + sendEc.message(), true);
     } else {
-        qDebug("[UPnP] [1/4 SSDP] M-SEARCH отправлен на 239.255.255.250:1900 "
-               "(%lld байт), ожидаем ответ %d мс...",
-               static_cast<qint64>(ssdp.size()), kUpnpTimeoutMs);
+        log("[1/4 SSDP] M-SEARCH отправлен на 239.255.255.250:1900 (" + std::to_string(sent) +
+            " байт), ожидаем ответ " + std::to_string(kUpnpTimeoutMs) + " мс...");
     }
 
-    auto* timer = new QTimer(this);
-    timer->setSingleShot(true);
+    auto buf    = std::make_shared<std::array<char, 4096>>();
+    auto sender = std::make_shared<asio::ip::udp::endpoint>();
+    auto timer  = std::make_shared<asio::steady_timer>(m_io);
+    auto done   = std::make_shared<bool>(false);
 
-    connect(udp, &QUdpSocket::readyRead, this, [this, udp, timer]() {
-        timer->stop();
-        timer->deleteLater();
+    sock->async_receive_from(asio::buffer(*buf), *sender,
+        [this, sock, buf, sender, timer, done, generation](std::error_code recvEc, std::size_t n) {
+            if (*done) return;
+            *done = true;
+            timer->cancel();
 
-        QHostAddress senderAddr;
-        quint16 senderPort = 0;
-        QByteArray data;
-        data.resize(static_cast<int>(udp->pendingDatagramSize()));
-        udp->readDatagram(data.data(), data.size(), &senderAddr, &senderPort);
-        udp->deleteLater();
+            if (generation != m_generation) return;
 
-        qDebug("[UPnP] [1/4 SSDP] Ответ получен от %s:%d (%lld байт)",
-               qPrintable(senderAddr.toString()), senderPort,
-               static_cast<qint64>(data.size()));
+            if (recvEc) {
+                log("[1/4 SSDP] Ошибка приёма UDP: " + recvEc.message(), true);
+                finish(generation, false);
+                return;
+            }
 
-        // Извлекаем LOCATION: заголовок из SSDP ответа
-        static const QRegularExpression re(
-            "LOCATION:\\s*(http://[^\\r\\n]+)",
-            QRegularExpression::CaseInsensitiveOption);
-        auto match = re.match(QString::fromLatin1(data));
-        if (!match.hasMatch()) {
-            qWarning("[UPnP] [1/4 SSDP] LOCATION заголовок не найден.\n"
-                     "  Ответ роутера:\n%s\n"
-                     "  Вероятная причина: роутер ответил, но не является IGD "
-                     "(нет WANIPConnection/WANPPPConnection).",
-                     data.constData());
-            emit mapped(false);
-            return;
-        }
+            const std::string data(buf->data(), n);
+            log("[1/4 SSDP] Ответ получен от " + sender->address().to_string() + ":" +
+                std::to_string(sender->port()) + " (" + std::to_string(n) + " байт)");
 
-        const QString location = match.captured(1).trimmed();
-        qDebug("[UPnP] [1/4 SSDP] IGD обнаружен: %s", qPrintable(location));
-        fetchControlUrl(location);
-    });
+            static const std::regex re(R"(LOCATION:\s*(http://[^\r\n]+))", std::regex::icase);
+            std::smatch m;
+            if (!std::regex_search(data, m, re)) {
+                log("[1/4 SSDP] LOCATION заголовок не найден.\n"
+                    "  Ответ роутера:\n" + data + "\n"
+                    "  Вероятная причина: роутер ответил, но не является IGD "
+                    "(нет WANIPConnection/WANPPPConnection).", true);
+                finish(generation, false);
+                return;
+            }
 
-    connect(timer, &QTimer::timeout, this, [this, udp]() {
-        udp->deleteLater();
+            const std::string location = trim(m[1].str());
+            log("[1/4 SSDP] IGD обнаружен: " + location);
+            fetchControlUrl(generation, location);
+        });
+
+    timer->expires_after(std::chrono::milliseconds(kUpnpTimeoutMs));
+    timer->async_wait([this, sock, done, generation](std::error_code tec) {
+        if (tec || *done) return;
+        *done = true;
+        std::error_code cec;
+        sock->cancel(cec);
+
+        if (generation != m_generation) return;
 
         if (m_retryCount + 1 < kMaxRetries) {
             ++m_retryCount;
-            qWarning("[UPnP] [1/4 SSDP] Таймаут (%d мс) — роутер не ответил на "
-                     "M-SEARCH. Повтор через %d мс (попытка %d/%d).\n"
-                     "  Возможные причины: UPnP отключён на роутере, мультикаст "
-                     "239.255.255.250 блокируется, интерфейс %s не видит роутер.",
-                     kUpnpTimeoutMs, kRetryDelayMs,
-                     m_retryCount + 1, kMaxRetries,
-                     qPrintable(m_localIp));
-            QTimer::singleShot(kRetryDelayMs, this, &UpnpMapper::discover);
+            log("[1/4 SSDP] Таймаут (" + std::to_string(kUpnpTimeoutMs) + " мс) — роутер не ответил на "
+                "M-SEARCH. Повтор через " + std::to_string(kRetryDelayMs) + " мс (попытка " +
+                std::to_string(m_retryCount + 1) + "/" + std::to_string(kMaxRetries) + ").\n"
+                "  Возможные причины: UPnP отключён на роутере, мультикаст "
+                "239.255.255.250 блокируется, интерфейс " + (m_localIp.empty() ? "?" : m_localIp) +
+                " не видит роутер.", true);
+
+            auto retryTimer = std::make_shared<asio::steady_timer>(m_io);
+            retryTimer->expires_after(std::chrono::milliseconds(kRetryDelayMs));
+            retryTimer->async_wait([this, retryTimer, generation](std::error_code) {
+                discover(generation);
+            });
         } else {
-            qWarning("[UPnP] [1/4 SSDP] IGD не найден после %d попыток.\n"
-                     "  Что делать:\n"
-                     "  1. Зайти в панель роутера → включить UPnP/IGD\n"
-                     "  2. Или переключить режим на «Разблокированный порт» "
-                     "и пробросить порт вручную\n"
-                     "  3. Или использовать режим «Ретранслятор»",
-                     kMaxRetries);
-            emit mapped(false);
+            log("[1/4 SSDP] IGD не найден после " + std::to_string(kMaxRetries) + " попыток.\n"
+                "  Что делать:\n"
+                "  1. Зайти в панель роутера → включить UPnP/IGD\n"
+                "  2. Или переключить режим на «Разблокированный порт» "
+                "и пробросить порт вручную\n"
+                "  3. Или использовать режим «Ретранслятор»", true);
+            finish(generation, false);
         }
     });
-
-    timer->start(kUpnpTimeoutMs);
 }
 
 // Загружаем XML-описание IGD для поиска controlURL WANIPConnection/WANPPPConnection
-void UpnpMapper::fetchControlUrl(const QString& location) {
-    qDebug("[UPnP] [2/4 Describe] Загружаем описание IGD: %s", qPrintable(location));
+void UpnpMapper::fetchControlUrl(int generation, const std::string& location) {
+    if (generation != m_generation) return;
 
-    auto* nam = new QNetworkAccessManager(this);
-    auto* reply = nam->get(QNetworkRequest(QUrl(location)));
+    log("[2/4 Describe] Загружаем описание IGD: " + location);
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam, location]() {
-        reply->deleteLater();
-        nam->deleteLater();
+    const ParsedUrl url = parseUrl(location);
+    httpRequest(url, "GET", "", {}, [this, generation, url, location](HttpResponse resp) {
+        if (generation != m_generation) return;
 
-        if (reply->error() != QNetworkReply::NoError) {
-            qWarning("[UPnP] [2/4 Describe] Ошибка загрузки XML-описания IGD:\n"
-                     "  URL: %s\n"
-                     "  Ошибка: %s (HTTP %d)",
-                     qPrintable(location),
-                     qPrintable(reply->errorString()),
-                     reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt());
-            emit mapped(false);
+        if (!resp.ok) {
+            log("[2/4 Describe] Ошибка загрузки XML-описания IGD:\n"
+                "  URL: " + location + "\n"
+                "  Ошибка: " + resp.error + " (HTTP " + std::to_string(resp.status) + ")", true);
+            finish(generation, false);
             return;
         }
 
-        const QString xml = QString::fromUtf8(reply->readAll());
-        qDebug("[UPnP] [2/4 Describe] XML получен (%lld байт)",
-               static_cast<qint64>(xml.size()));
+        const std::string& xml = resp.body;
+        log("[2/4 Describe] XML получен (" + std::to_string(xml.size()) + " байт)");
 
         // Ищем controlURL для WANIPConnection или WANPPPConnection;
         // захватываем "IP" / "PPP" чтобы передать правильный SOAPAction.
-        static const QRegularExpression re(
-            "<serviceType>urn:schemas-upnp-org:service:WAN(IP|PPP)Connection:1</serviceType>"
-            ".*?<controlURL>([^<]+)</controlURL>",
-            QRegularExpression::DotMatchesEverythingOption);
-        auto match = re.match(xml);
-        if (!match.hasMatch()) {
+        static const std::regex re(
+            R"(<serviceType>urn:schemas-upnp-org:service:WAN(IP|PPP)Connection:1</serviceType>[\s\S]*?<controlURL>([^<]+)</controlURL>)");
+        std::smatch m;
+        if (!std::regex_search(xml, m, re)) {
             // Показываем доступные serviceType чтобы понять что поддерживает роутер
-            static const QRegularExpression reServices(
-                "<serviceType>([^<]+)</serviceType>",
-                QRegularExpression::DotMatchesEverythingOption);
-            QStringList services;
-            auto it = reServices.globalMatch(xml);
-            while (it.hasNext())
-                services << it.next().captured(1).trimmed();
-            qWarning("[UPnP] [2/4 Describe] controlURL не найден.\n"
-                     "  Нужен: WANIPConnection:1 или WANPPPConnection:1\n"
-                     "  Найдено в XML (%lld сервисов): %s\n"
-                     "  Вероятно, роутер не поддерживает UPnP IGD v1.",
-                     static_cast<qint64>(services.size()),
-                     qPrintable(services.join(", ")));
-            emit mapped(false);
+            static const std::regex reServices(R"(<serviceType>([^<]+)</serviceType>)");
+            std::vector<std::string> services;
+            for (auto it = std::sregex_iterator(xml.begin(), xml.end(), reServices);
+                 it != std::sregex_iterator(); ++it) {
+                services.push_back(trim((*it)[1].str()));
+            }
+            std::string joined;
+            for (std::size_t i = 0; i < services.size(); ++i) {
+                if (i) joined += ", ";
+                joined += services[i];
+            }
+            log("[2/4 Describe] controlURL не найден.\n"
+                "  Нужен: WANIPConnection:1 или WANPPPConnection:1\n"
+                "  Найдено в XML (" + std::to_string(services.size()) + " сервисов): " + joined + "\n"
+                "  Вероятно, роутер не поддерживает UPnP IGD v1.", true);
+            finish(generation, false);
             return;
         }
 
         // group 1 = "IP" или "PPP", group 2 = controlURL
-        const QString serviceType = "WAN" + match.captured(1) + "Connection";
+        const std::string serviceType = "WAN" + m[1].str() + "Connection";
+        const std::string ctrl = trim(m[2].str());
 
-        // Строим полный URL управления (если relative path — дополняем схемой/хостом/портом)
-        QUrl base(location);
-        QString ctrl = match.captured(2).trimmed();
-        if (!ctrl.startsWith("http"))
-            ctrl = QString("%1://%2:%3%4")
-                .arg(base.scheme(), base.host())
-                .arg(base.port(80))
-                .arg(ctrl);
+        // Строим control URL (если relative path — дополняем хостом/портом из base location)
+        ParsedUrl ctrlUrl;
+        if (ctrl.rfind("http", 0) == 0) {
+            ctrlUrl = parseUrl(ctrl);
+        } else {
+            ctrlUrl      = url;
+            ctrlUrl.path = ctrl.empty() || ctrl.front() == '/' ? ctrl : "/" + ctrl;
+        }
 
-        qDebug("[UPnP] [2/4 Describe] Service: %s, Control URL: %s",
-               qPrintable(serviceType), qPrintable(ctrl));
-        addPortMapping(ctrl, m_port, serviceType);
+        log("[2/4 Describe] Service: " + serviceType + ", Control URL: http://" + ctrlUrl.host + ":" +
+            std::to_string(ctrlUrl.port) + ctrlUrl.path);
+        addPortMapping(generation, ctrlUrl, serviceType);
     });
 }
 
 // ── SOAP: AddPortMapping ──────────────────────────────────────────────────
 
-void UpnpMapper::addPortMapping(const QString& controlUrl, quint16 port,
-                                const QString& serviceType) {
-    const QString body = QString(
+void UpnpMapper::addPortMapping(int generation, const ParsedUrl& controlUrl,
+                                  const std::string& serviceType) {
+    if (generation != m_generation) return;
+
+    const std::string body =
         "<NewRemoteHost></NewRemoteHost>"
-        "<NewExternalPort>%1</NewExternalPort>"
+        "<NewExternalPort>" + std::to_string(m_port) + "</NewExternalPort>"
         "<NewProtocol>TCP</NewProtocol>"
-        "<NewInternalPort>%1</NewInternalPort>"
-        "<NewInternalClient>%2</NewInternalClient>"
+        "<NewInternalPort>" + std::to_string(m_port) + "</NewInternalPort>"
+        "<NewInternalClient>" + m_localIp + "</NewInternalClient>"
         "<NewEnabled>1</NewEnabled>"
         "<NewPortMappingDescription>naleystogramm</NewPortMappingDescription>"
-        "<NewLeaseDuration>0</NewLeaseDuration>")
-        .arg(port).arg(m_localIp);
+        "<NewLeaseDuration>0</NewLeaseDuration>";
 
-    const QByteArray soap = soapRequest("AddPortMapping", body, serviceType).toUtf8();
+    const std::string soap = soapRequest("AddPortMapping", body, serviceType);
 
-    qDebug("[UPnP] [3/4 SOAP] AddPortMapping: порт %d → %s\n"
-           "  Control URL: %s",
-           port, qPrintable(m_localIp), qPrintable(controlUrl));
+    log("[3/4 SOAP] AddPortMapping: порт " + std::to_string(m_port) + " → " + m_localIp + "\n"
+        "  Control URL: http://" + controlUrl.host + ":" + std::to_string(controlUrl.port) + controlUrl.path);
 
-    // C++20: используем brace-init чтобы избежать most vexing parse
-    // QNetworkRequest req(QUrl(controlUrl)) компилятор трактует как объявление функции
-    QNetworkRequest req{QUrl{controlUrl}};
-    req.setHeader(QNetworkRequest::ContentTypeHeader,
-                  "text/xml; charset=\"utf-8\"");
-    req.setRawHeader("SOAPAction",
-        QString("\"urn:schemas-upnp-org:service:%1:1#AddPortMapping\"")
-        .arg(serviceType).toUtf8());
+    const std::vector<std::pair<std::string, std::string>> headers {
+        {"Content-Type", "text/xml; charset=\"utf-8\""},
+        {"SOAPAction", "\"urn:schemas-upnp-org:service:" + serviceType + ":1#AddPortMapping\""},
+    };
 
-    auto* nam = new QNetworkAccessManager(this);
-    auto* reply = nam->post(req, soap);
+    httpRequest(controlUrl, "POST", soap, headers,
+        [this, generation, port = m_port](HttpResponse resp) {
+            if (generation != m_generation) return;
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nam, port]() {
-        const int httpStatus =
-            reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray body = reply->readAll();
+            if (resp.ok) {
+                log("[3/4 SOAP] AddPortMapping OK (HTTP " + std::to_string(resp.status) + ") — "
+                    "порт " + std::to_string(port) + " проброшен успешно", true);
+            } else {
+                static const std::regex reCode(R"(<errorCode>(\d+)</errorCode>)");
+                static const std::regex reDesc(R"(<errorDescription>([^<]+)</errorDescription>)");
+                std::smatch mCode, mDesc;
+                const std::string upnpCode = std::regex_search(resp.body, mCode, reCode) ? mCode[1].str() : "?";
+                const std::string upnpDesc = std::regex_search(resp.body, mDesc, reDesc) ? trim(mDesc[1].str()) : "нет";
 
-        if (reply->error() == QNetworkReply::NoError) {
-            qDebug("[UPnP] [3/4 SOAP] AddPortMapping OK (HTTP %d) — "
-                   "порт %d проброшен успешно", httpStatus, port);
-        } else {
-            // Парсим UPnP SOAP Fault: <errorCode> и <errorDescription>
-            const QString xml = QString::fromUtf8(body);
-            static const QRegularExpression reCode("<errorCode>(\\d+)</errorCode>");
-            static const QRegularExpression reDesc(
-                "<errorDescription>([^<]+)</errorDescription>");
-            const auto mCode = reCode.match(xml);
-            const auto mDesc = reDesc.match(xml);
-            const QString upnpCode = mCode.hasMatch() ? mCode.captured(1) : "?";
-            const QString upnpDesc = mDesc.hasMatch() ? mDesc.captured(1) : "нет";
+                // Расшифровка кодов ошибок IGD (UPnP Forum WANIPConnection:1 spec)
+                std::string hint;
+                if (upnpCode == "718")
+                    hint = "порт уже занят другим приложением (ConflictInMappingEntry)";
+                else if (upnpCode == "725")
+                    hint = "роутер принимает только постоянные маппинги (OnlyPermanentLeasesSupported) — "
+                           "уже используем LeaseDuration=0, возможна несовместимость прошивки";
+                else if (upnpCode == "501")
+                    hint = "действие не поддерживается роутером (ActionFailed)";
+                else if (upnpCode == "606")
+                    hint = "доступ запрещён роутером (Unauthorized)";
 
-            // Расшифровка кодов ошибок IGD (UPnP Forum WANIPConnection:1 spec)
-            QString hint;
-            if (upnpCode == "718")
-                hint = "порт уже занят другим приложением (ConflictInMappingEntry)";
-            else if (upnpCode == "725")
-                hint = "роутер принимает только постоянные маппинги (OnlyPermanentLeasesSupported) — "
-                       "уже используем LeaseDuration=0, возможна несовместимость прошивки";
-            else if (upnpCode == "501")
-                hint = "действие не поддерживается роутером (ActionFailed)";
-            else if (upnpCode == "606")
-                hint = "доступ запрещён роутером (Unauthorized)";
+                log("[3/4 SOAP] AddPortMapping провалился:\n"
+                    "  HTTP статус: " + std::to_string(resp.status) + "\n"
+                    "  SOAP ошибка: " + upnpCode + " (" + upnpDesc + ")" +
+                    (hint.empty() ? "" : "\n  Подсказка: " + hint) + "\n"
+                    "  Тело ответа: " + resp.body, true);
+            }
 
-            qWarning("[UPnP] [3/4 SOAP] AddPortMapping провалился:\n"
-                     "  HTTP статус: %d\n"
-                     "  SOAP ошибка: %s (%s)%s\n"
-                     "  Тело ответа: %s",
-                     httpStatus,
-                     qPrintable(upnpCode), qPrintable(upnpDesc),
-                     hint.isEmpty() ? "" : qPrintable("\n  Подсказка: " + hint),
-                     body.constData());
-        }
-
-        reply->deleteLater();
-        nam->deleteLater();
-        emit mapped(reply->error() == QNetworkReply::NoError);
-    });
+            finish(generation, resp.ok);
+        });
 }
 
-QString UpnpMapper::soapRequest(const QString& action, const QString& body,
-                                 const QString& serviceType) {
-    return QString(
+std::string UpnpMapper::soapRequest(const std::string& action, const std::string& body,
+                                     const std::string& serviceType) {
+    return
         "<?xml version=\"1.0\"?>"
         "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
         "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
         "<s:Body>"
-        "<u:%1 xmlns:u=\"urn:schemas-upnp-org:service:%3:1\">"
-        "%2"
-        "</u:%1>"
+        "<u:" + action + " xmlns:u=\"urn:schemas-upnp-org:service:" + serviceType + ":1\">"
+        + body +
+        "</u:" + action + ">"
         "</s:Body>"
-        "</s:Envelope>")
-        .arg(action, body, serviceType);
+        "</s:Envelope>";
+}
+
+// ── URL parsing ────────────────────────────────────────────────────────────
+
+UpnpMapper::ParsedUrl UpnpMapper::parseUrl(const std::string& url) {
+    ParsedUrl r;
+    std::string rest = url;
+
+    const auto schemePos = rest.find("://");
+    if (schemePos != std::string::npos) rest = rest.substr(schemePos + 3);
+
+    const auto slashPos = rest.find('/');
+    const std::string hostPort = (slashPos == std::string::npos) ? rest : rest.substr(0, slashPos);
+    r.path = (slashPos == std::string::npos) ? "/" : rest.substr(slashPos);
+
+    const auto colonPos = hostPort.find(':');
+    if (colonPos != std::string::npos) {
+        r.host = hostPort.substr(0, colonPos);
+        try { r.port = static_cast<uint16_t>(std::stoi(hostPort.substr(colonPos + 1))); }
+        catch (...) { r.port = 80; }
+    } else {
+        r.host = hostPort;
+        r.port = 80;
+    }
+    return r;
+}
+
+// ── HTTP/1.1 minimal client (GET/POST, Connection: close) ─────────────────
+
+void UpnpMapper::httpRequest(const ParsedUrl& url, const std::string& method,
+                              const std::string& body,
+                              const std::vector<std::pair<std::string, std::string>>& headers,
+                              std::function<void(HttpResponse)> cb) {
+    auto resolver = std::make_shared<asio::ip::tcp::resolver>(m_io);
+    auto sock     = std::make_shared<asio::ip::tcp::socket>(m_io);
+    auto timer    = std::make_shared<asio::steady_timer>(m_io);
+    auto done     = std::make_shared<bool>(false);
+    auto cbPtr    = std::make_shared<std::function<void(HttpResponse)>>(std::move(cb));
+
+    auto finishReq = std::make_shared<std::function<void(HttpResponse)>>();
+    *finishReq = [done, timer, sock, cbPtr](HttpResponse r) {
+        if (*done) return;
+        *done = true;
+        timer->cancel();
+        std::error_code ec; sock->close(ec);
+        (*cbPtr)(std::move(r));
+    };
+
+    timer->expires_after(std::chrono::milliseconds(kUpnpTimeoutMs));
+    timer->async_wait([done, sock](std::error_code tec) {
+        if (tec || *done) return;
+        std::error_code cec; sock->cancel(cec);
+    });
+
+    std::string requestStr = method + " " + url.path + " HTTP/1.1\r\n" +
+        "Host: " + url.host + ":" + std::to_string(url.port) + "\r\n" +
+        "Connection: close\r\n";
+    if (!body.empty())
+        requestStr += "Content-Length: " + std::to_string(body.size()) + "\r\n";
+    for (const auto& [k, v] : headers)
+        requestStr += k + ": " + v + "\r\n";
+    requestStr += "\r\n" + body;
+
+    auto reqBuf = std::make_shared<std::string>(std::move(requestStr));
+
+    resolver->async_resolve(url.host, std::to_string(url.port),
+        [this, resolver, sock, timer, done, finishReq, reqBuf]
+        (std::error_code ec, const asio::ip::tcp::resolver::results_type& results) {
+            if (*done) return;
+            if (ec) { (*finishReq)({false, 0, "", "resolve: " + ec.message()}); return; }
+
+            asio::async_connect(*sock, results,
+                [this, sock, timer, done, finishReq, reqBuf]
+                (std::error_code cec, const asio::ip::tcp::endpoint&) {
+                    if (*done) return;
+                    if (cec) { (*finishReq)({false, 0, "", "connect: " + cec.message()}); return; }
+
+                    asio::async_write(*sock, asio::buffer(*reqBuf),
+                        [this, sock, timer, done, finishReq]
+                        (std::error_code wec, std::size_t) {
+                            if (*done) return;
+                            if (wec) { (*finishReq)({false, 0, "", "write: " + wec.message()}); return; }
+
+                            auto respBuf = std::make_shared<asio::streambuf>();
+                            asio::async_read(*sock, *respBuf, asio::transfer_all(),
+                                [this, sock, timer, done, finishReq, respBuf]
+                                (std::error_code rec, std::size_t) {
+                                    if (*done) return;
+                                    // EOF (сервер закрыл соединение после ответа) — нормальное завершение.
+                                    if (rec && rec != asio::error::eof) {
+                                        (*finishReq)({false, 0, "", "read: " + rec.message()});
+                                        return;
+                                    }
+
+                                    const std::string raw(
+                                        asio::buffers_begin(respBuf->data()),
+                                        asio::buffers_end(respBuf->data()));
+
+                                    const auto headerEnd = raw.find("\r\n\r\n");
+                                    if (headerEnd == std::string::npos) {
+                                        (*finishReq)({false, 0, "", "пустой или некорректный HTTP-ответ"});
+                                        return;
+                                    }
+
+                                    const std::string headerPart = raw.substr(0, headerEnd);
+                                    std::string bodyPart = raw.substr(headerEnd + 4);
+
+                                    HttpResponse resp;
+                                    const auto firstLineEnd = headerPart.find("\r\n");
+                                    const std::string statusLine = headerPart.substr(0, firstLineEnd);
+                                    const auto sp1 = statusLine.find(' ');
+                                    if (sp1 != std::string::npos) {
+                                        const auto sp2 = statusLine.find(' ', sp1 + 1);
+                                        const std::string codeStr = statusLine.substr(
+                                            sp1 + 1, sp2 == std::string::npos ? std::string::npos : sp2 - sp1 - 1);
+                                        try { resp.status = std::stoi(codeStr); } catch (...) { resp.status = 0; }
+                                    }
+
+                                    std::string headersLower = headerPart;
+                                    std::transform(headersLower.begin(), headersLower.end(),
+                                                    headersLower.begin(),
+                                                    [](unsigned char c) { return std::tolower(c); });
+                                    if (headersLower.find("transfer-encoding: chunked") != std::string::npos)
+                                        bodyPart = dechunk(bodyPart);
+
+                                    resp.body = std::move(bodyPart);
+                                    if (resp.status >= 200 && resp.status < 300) resp.ok = true;
+                                    else resp.error = "HTTP " + std::to_string(resp.status);
+
+                                    (*finishReq)(std::move(resp));
+                                });
+                        });
+                });
+        });
 }

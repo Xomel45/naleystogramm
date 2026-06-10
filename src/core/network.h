@@ -1,6 +1,7 @@
 #pragma once
 #include "types.h"
 #include "identity.h"
+#include "upnp.h"
 #include <nlohmann/json.hpp>
 #include <asio.hpp>
 #include <memory>
@@ -109,8 +110,6 @@ struct NetworkEvent {
                        ConnectionState state)>                               onStateChanged;
     std::function<void(const std::string& msg)>                             onLog;
     std::function<void(const std::string& msg)>                             onError;
-    // Bridge must implement: create UpnpMapper, map port, call notifyUpnpResult()
-    std::function<void(uint16_t port)>                                      onNeedUpnpMapping;
 };
 
 // ── NetworkManager ────────────────────────────────────────────────────────────
@@ -128,6 +127,10 @@ public:
         return m_advertisedPort ? m_advertisedPort : m_localPort;
     }
     [[nodiscard]] bool        upnpMapped()     const noexcept { return m_upnpMapped; }
+
+    // Доступ к io_context для подсистем, которым нужны asio::steady_timer
+    // (например, CallManager).
+    [[nodiscard]] asio::io_context& ioContext() { return m_io; }
 
     static constexpr uint16_t kDefaultPort = 47821;
 
@@ -155,10 +158,10 @@ public:
     Token addListener   (NetworkEvent ev);
     void  removeListener(Token t);
 
-    // Called by bridge after UpnpMapper completes (thread-safe via asio::post)
+private:
+    // Called once UpnpMapper completes (thread-safe via asio::post)
     void notifyUpnpResult(bool ok);
 
-private:
     // ── Asio ─────────────────────────────────────────────────────────────────
     asio::io_context    m_io;
     std::unique_ptr<asio::executor_work_guard<asio::io_context::executor_type>> m_work;
@@ -201,6 +204,7 @@ private:
     std::unordered_set<std::string>              m_relayPeers;
     std::shared_ptr<asio::steady_timer>          m_relayReconnectTimer;
     std::shared_ptr<asio::steady_timer>          m_upnpRefreshTimer;
+    std::unique_ptr<UpnpMapper>                  m_upnpMapper;
 
     // ── Internal methods ──────────────────────────────────────────────────────
     void startServer();

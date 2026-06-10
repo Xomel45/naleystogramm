@@ -31,6 +31,6 @@ private:
     std::unique_ptr<E2EManager>    m_e2e;
     NetworkManager*                m_network     {nullptr};
     FileTransfer*                  m_fileTransfer{nullptr};
-    CallManager*                   m_callManager {nullptr};
+    std::unique_ptr<CallManager>   m_callManager;
     RemoteShellManager*            m_shellManager{nullptr};
 };

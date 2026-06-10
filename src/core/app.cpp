@@ -50,7 +50,7 @@ App::App(QObject* parent) : QObject(parent) {
 
     m_network      = new NetworkManager();
     m_fileTransfer = new FileTransfer(m_network, m_e2e.get(), this);
-    m_callManager  = new CallManager(m_network, m_e2e.get(), this);
+    m_callManager  = std::make_unique<CallManager>(m_network, m_e2e.get());
     m_shellManager = new RemoteShellManager(m_network, m_e2e.get(), this);
 }
 

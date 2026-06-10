@@ -1,336 +1,471 @@
 #include "callmanager.h"
 #include "network.h"
-#include "../crypto/e2e.h"
-#include "../crypto/qt_bridge.h"
 #include "sessionmanager.h"
 #include "identity.h"
-#include <QTimer>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QUdpSocket>
-#include <QDebug>
+#include "../crypto/e2e.h"
+#include "../crypto/qt_bridge.h"
+#include "../media/mediaengine.h"
 #include <openssl/rand.h>
+#include <cstdio>
+#include <random>
 
-// Migration helpers — Phase 6 will migrate these call sites fully
-static inline std::string quid2s(const QUuid& u) {
-    return u.toString(QUuid::WithoutBraces).toStdString();
-}
-static inline void netSend(NetworkManager* net, const QUuid& u, const QJsonObject& o) {
-    net->sendFrame(quid2s(u), bridge::fromQJsonObj(o));
+// ── UUID v4 (как в network.cpp — независимая копия, чтобы не тянуть
+//    приватные хелперы NetworkManager) ─────────────────────────────────────────
+static std::string generateUuid() {
+    static std::random_device rd;
+    static std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dist;
+    uint64_t hi = dist(gen);
+    uint64_t lo = dist(gen);
+    hi = (hi & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;  // version 4
+    lo = (lo & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;  // variant 10xx
+    char buf[37];
+    std::snprintf(buf, sizeof(buf),
+        "%08x-%04x-%04x-%04x-%012llx",
+        static_cast<uint32_t>(hi >> 32),
+        static_cast<uint16_t>(hi >> 16),
+        static_cast<uint16_t>(hi),
+        static_cast<uint16_t>(lo >> 48),
+        static_cast<unsigned long long>(lo & 0x0000FFFFFFFFFFFFULL));
+    return std::string(buf);
 }
 
-// Таймаут ожидания CALL_ACCEPT от вызываемого пира (мс)
-static constexpr int kCallTimeoutMs = 30000;
+// Таймаут ожидания CALL_ACCEPT от вызываемого пира — см. CallManager::kCallTimeoutMs
 
 // ── Конструктор / деструктор ─────────────────────────────────────────────────
 
-CallManager::CallManager(NetworkManager* net, E2EManager* e2e, QObject* parent)
-    : QObject(parent), m_net(net), m_e2e(e2e)
+CallManager::CallManager(NetworkManager* net, E2EManager* e2e)
+    : m_net(net), m_e2e(e2e)
 {
-    m_media = new MediaEngine(this);
-    connect(m_media, &MediaEngine::mediaError, this, &CallManager::callError);
+    m_media = new MediaEngine(nullptr);
+    m_media->setErrorCallback([this](const std::string& msg) {
+        fire([&msg](const CallEvent& ev) { if (ev.onCallError) ev.onCallError(msg); });
+    });
 }
 
 CallManager::~CallManager() {
     endCall();
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        cancelTimers();
+    }
+    delete m_media;
 }
 
-// ── setState ─────────────────────────────────────────────────────────────────
+// ── setState / state ─────────────────────────────────────────────────────────
 
 void CallManager::setState(CallState s) {
-    if (m_state == s) return;
-    m_state = s;
-    emit stateChanged(s);
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (m_state == s) return;
+        m_state = s;
+    }
+    fire([s](const CallEvent& ev) { if (ev.onStateChanged) ev.onStateChanged(s); });
+}
+
+CallManager::CallState CallManager::state() const {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    return m_state;
+}
+
+bool CallManager::isCallActive() const {
+    return state() == CallState::InCall;
+}
+
+std::string CallManager::activePeer() const {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    return m_peerUuid;
+}
+
+// ── cancelTimers (вызывается с захваченным m_mutex) ──────────────────────────
+
+void CallManager::cancelTimers() {
+    ++m_generation;
+    if (m_callTimeout) { m_callTimeout->cancel(); m_callTimeout.reset(); }
+    if (m_endedTimer)  { m_endedTimer->cancel();  m_endedTimer.reset(); }
 }
 
 // ── resetState ───────────────────────────────────────────────────────────────
 
 void CallManager::resetState() {
-    if (m_callTimeout) {
-        m_callTimeout->stop();
-        m_callTimeout->deleteLater();
-        m_callTimeout = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        cancelTimers();
+        m_callId.clear();
+        m_peerUuid.clear();
+        m_peerIp.clear();
+        m_pendingCallerUdpPort = 0;
+        m_pendingMediaSalt.clear();
+        m_state = CallState::Idle;
     }
-    m_callId.clear();
-    m_peerUuid = QUuid{};
-    m_peerIp   = QHostAddress{};
-    m_pendingCallerUdpPort = 0;
-    m_pendingMediaSalt.clear();
-    setState(CallState::Idle);
+    fire([](const CallEvent& ev) { if (ev.onStateChanged) ev.onStateChanged(CallState::Idle); });
 }
 
 // ── initiateCall ─────────────────────────────────────────────────────────────
 
-void CallManager::initiateCall(const QUuid& peerUuid, const QHostAddress& peerIp) {
-    if (m_state != CallState::Idle) {
-        emit callError("Уже идёт звонок");
+void CallManager::initiateCall(const std::string& peerUuid, const std::string& peerIp) {
+    if (state() != CallState::Idle) {
+        fire([](const CallEvent& ev) { if (ev.onCallError) ev.onCallError("Уже идёт звонок"); });
         return;
     }
-    if (!m_e2e->hasSession(bridge::fromQUuid(peerUuid))) {
-        emit callError("Нет E2E сессии с пиром — невозможно выполнить звонок");
+    if (!m_e2e->hasSession(peerUuid)) {
+        fire([](const CallEvent& ev) {
+            if (ev.onCallError) ev.onCallError("Нет E2E сессии с пиром — невозможно выполнить звонок");
+        });
         return;
     }
-
-    // Привязываем UDP сокет заранее, чтобы получить локальный порт
-    // MediaEngine откроет сокет при startCall — нам нужен порт ДО этого.
-    // Обходной путь: создаём временный QUdpSocket для резервации порта.
-    // Проще: startCall открывает сокет с bind(0), порт станет известен сразу.
-    // Поэтому создадим MediaEngine, запустим сокет в режиме «только bind»
-    // и потом дошлём CALL_INVITE с реальным портом.
-    //
-    // Альтернатива (выбрана): MediaEngine::startCall() принимает peerUdpPort=0
-    // при исходящем звонке — сокет открывается, порт виден через localUdpPort().
-    // Реальный peerUdpPort приходит в CALL_ACCEPT.
 
     // Генерируем 8-байтовый salt для деривации медиа-ключа
-    QByteArray salt(8, '\0');
-    RAND_bytes(reinterpret_cast<unsigned char*>(salt.data()), 8);
+    Bytes salt(8);
+    RAND_bytes(salt.data(), static_cast<int>(salt.size()));
 
-    m_peerUuid = peerUuid;
-    m_peerIp   = peerIp;
-    m_callId   = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    m_pendingMediaSalt = salt;
+    const std::string callId = generateUuid();
 
-    // Открываем UDP сокет (peerUdpPort=0 — настоящий порт придёт в CALL_ACCEPT)
-    // Для этого вызываем специальный метод (только bind, без захвата/воспроизведения)
-    // УПРОЩЕНИЕ: bindOnly — создаём QUdpSocket вручную здесь
-    if (!m_media->startCall(QHostAddress::LocalHost, 0, QByteArray(32, '\0'))) {
-        // startCall провалился (нет Opus/Multimedia) — callError уже был emitted
-        resetState();
-        return;
+    // Bind-only "пробный" запуск MediaEngine — нужен только чтобы убедиться,
+    // что Opus/Multimedia доступны (ошибка прилетит через onCallError).
+    if (!m_media->startCall(bridge::toQHostAddress("127.0.0.1"), 0, bridge::toQBA(Bytes(32, 0)))) {
+        return; // ошибка уже сообщена через MediaEngine::setErrorCallback
     }
-    // Немедленно останавливаем медиапайплайн — будем ждать CALL_ACCEPT
-    // НО сохраняем UDP сокет → нет смысла, пересоздадим при CALL_ACCEPT.
     m_media->endCall();
 
-    // Отдельный подход: MediaEngine предоставит порт через создание временного сокета.
-    // Для Phase 1 используем простую схему: порт = 0 в CALL_INVITE, потом при
-    // CALL_ACCEPT мы стартуем настоящий звонок и сообщаем свой порт в CALL_ACCEPT_ACK.
-    //
-    // РЕАЛЬНАЯ РЕАЛИЗАЦИЯ PHASE 1:
-    // Caller привязывает UDP сокет → берёт порт → отправляет в CALL_INVITE.
-    // При CALL_ACCEPT: настраивает peerUdpPort → начинает отправку.
-    //
-    // Для этого добавляем вспомогательный метод bindUdp() в MediaEngine.
-    // УПРОЩЕНИЕ для Phase 1: используем фиксированный порт = localTcpPort + 1
-    // (не ideal, но работает в большинстве случаев).
-    //
-    // ФИНАЛЬНОЕ РЕШЕНИЕ (простое и надёжное):
-    // Создаём MediaEngine с peerIp=local и peerPort=0, только для bind.
-    // Это инициализирует m_udpSocket и мы берём localUdpPort().
-    // Потом при CALL_ACCEPT вызываем startCall уже с реальным peerPort.
-
-    // Создаём QUdpSocket вручную чтобы узнать доступный порт
-    QUdpSocket* tmpSock = new QUdpSocket(this);
-    if (!tmpSock->bind(QHostAddress::Any, 0)) {
-        emit callError("Не удалось открыть UDP порт для звонка");
-        delete tmpSock;
-        resetState();
+    // Узнаём свободный UDP-порт через временный bind-only сокет
+    // (отдельный io_context — чтобы не трогать поток NetworkManager).
+    asio::io_context tmpIo;
+    asio::ip::udp::socket tmpSock(tmpIo);
+    std::error_code ec;
+    tmpSock.open(asio::ip::udp::v4(), ec);
+    if (!ec) tmpSock.bind(asio::ip::udp::endpoint(asio::ip::udp::v4(), 0), ec);
+    uint16_t localUdpPort = 0;
+    if (!ec) localUdpPort = tmpSock.local_endpoint().port();
+    tmpSock.close();
+    if (ec) {
+        fire([](const CallEvent& ev) { if (ev.onCallError) ev.onCallError("Не удалось открыть UDP порт для звонка"); });
         return;
     }
-    const quint16 localUdpPort = tmpSock->localPort();
-    tmpSock->close();
-    delete tmpSock;
 
-    setState(CallState::Calling);
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_peerUuid         = peerUuid;
+        m_peerIp           = peerIp;
+        m_callId           = callId;
+        m_pendingMediaSalt = salt;
+        m_state            = CallState::Calling;
+    }
+    fire([](const CallEvent& ev) { if (ev.onStateChanged) ev.onStateChanged(CallState::Calling); });
 
     // Таймаут: если через 30 с не получим CALL_ACCEPT — отменяем
-    m_callTimeout = new QTimer(this);
-    m_callTimeout->setSingleShot(true);
-    m_callTimeout->setInterval(kCallTimeoutMs);
-    connect(m_callTimeout, &QTimer::timeout, this, [this]() {
-        qDebug("[CallManager] Таймаут ожидания CALL_ACCEPT");
-        emit callRejected(m_peerUuid, "timeout");
-        resetState();
-    });
-    m_callTimeout->start();
+    {
+        auto timer = std::make_shared<asio::steady_timer>(m_net->ioContext());
+        timer->expires_after(std::chrono::milliseconds(kCallTimeoutMs));
+        int gen;
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            m_callTimeout = timer;
+            gen = m_generation;
+        }
+        timer->async_wait([this, gen, timer](const std::error_code& tec) {
+            if (tec) return; // отменён
+            std::string peer;
+            {
+                std::lock_guard<std::mutex> lk(m_mutex);
+                if (gen != m_generation) return;
+                peer = m_peerUuid;
+            }
+            std::fprintf(stderr, "[CallManager] Таймаут ожидания CALL_ACCEPT\n");
+            resetState();
+            fire([&peer](const CallEvent& ev) { if (ev.onCallRejected) ev.onCallRejected(peer, "timeout"); });
+        });
+    }
 
     // Отправляем CALL_INVITE через TCP
-    QJsonObject invite;
+    nlohmann::json invite;
     invite["type"]         = "CALL_INVITE";
-    invite["callId"]       = m_callId;
+    invite["callId"]       = callId;
     invite["udpPort"]      = static_cast<int>(localUdpPort);
-    invite["codecs"]       = QJsonArray{"opus"};
-    invite["mediaKeySalt"] = QString::fromLatin1(salt.toHex());
-    netSend(m_net, peerUuid, invite);
+    invite["codecs"]       = nlohmann::json::array({"opus"});
+    invite["mediaKeySalt"] = bytesToHex(salt);
+    m_net->sendFrame(peerUuid, invite);
 
-    qDebug("[CallManager] CALL_INVITE отправлен, callId=%s, udpPort=%d",
-           qPrintable(m_callId), localUdpPort);
+    std::fprintf(stderr, "[CallManager] CALL_INVITE отправлен, callId=%s, udpPort=%d\n",
+                  callId.c_str(), static_cast<int>(localUdpPort));
 }
 
 // ── acceptCall ────────────────────────────────────────────────────────────────
 
-void CallManager::acceptCall(const QString& callId) {
-    if (m_state != CallState::Ringing || m_callId != callId) {
-        emit callError("Нет входящего звонка с callId: " + callId);
+void CallManager::acceptCall(const std::string& callId) {
+    std::string peerUuid, peerIp;
+    uint16_t    callerUdpPort = 0;
+    Bytes       salt;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (m_state == CallState::Ringing && m_callId == callId) {
+            peerUuid      = m_peerUuid;
+            peerIp        = m_peerIp;
+            callerUdpPort = m_pendingCallerUdpPort;
+            salt          = m_pendingMediaSalt;
+        }
+    }
+    if (peerUuid.empty()) {
+        const std::string msg = "Нет входящего звонка с callId: " + callId;
+        fire([&msg](const CallEvent& ev) { if (ev.onCallError) ev.onCallError(msg); });
         return;
     }
 
-    startMedia(m_peerIp, m_pendingCallerUdpPort, m_callId, m_pendingMediaSalt);
-    if (!m_media->isInCall()) return; // startMedia уже emitted callError
+    startMedia(peerIp, callerUdpPort, callId, salt);
+    if (!m_media->isInCall()) return; // startMedia уже сообщил об ошибке
 
     // Сообщаем наш UDP порт вызывающей стороне
-    QJsonObject accept;
+    nlohmann::json accept;
     accept["type"]    = "CALL_ACCEPT";
-    accept["callId"]  = m_callId;
+    accept["callId"]  = callId;
     accept["udpPort"] = static_cast<int>(m_media->localUdpPort());
-    netSend(m_net, m_peerUuid, accept);
+    m_net->sendFrame(peerUuid, accept);
 
     setState(CallState::InCall);
-    emit callAccepted(m_peerUuid);
+    fire([&peerUuid](const CallEvent& ev) { if (ev.onCallAccepted) ev.onCallAccepted(peerUuid); });
 
-    qDebug("[CallManager] Звонок принят, наш UDP порт=%d", m_media->localUdpPort());
+    std::fprintf(stderr, "[CallManager] Звонок принят, наш UDP порт=%d\n", m_media->localUdpPort());
 }
 
 // ── rejectCall ────────────────────────────────────────────────────────────────
 
-void CallManager::rejectCall(const QString& callId, const QString& reason) {
-    if (m_state != CallState::Ringing || m_callId != callId) return;
+void CallManager::rejectCall(const std::string& callId, const std::string& reason) {
+    std::string peerUuid;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (m_state != CallState::Ringing || m_callId != callId) return;
+        peerUuid = m_peerUuid;
+    }
 
-    QJsonObject reject;
+    nlohmann::json reject;
     reject["type"]   = "CALL_REJECT";
     reject["callId"] = callId;
     reject["reason"] = reason;
-    netSend(m_net, m_peerUuid, reject);
+    m_net->sendFrame(peerUuid, reject);
 
-    qDebug("[CallManager] Звонок отклонён: %s", qPrintable(reason));
+    std::fprintf(stderr, "[CallManager] Звонок отклонён: %s\n", reason.c_str());
     resetState();
 }
 
 // ── endCall ───────────────────────────────────────────────────────────────────
 
 void CallManager::endCall() {
-    if (m_state == CallState::Idle) return;
+    std::string peerUuid, callId;
+    bool wasActive = false;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        if (m_state == CallState::Idle) return;
+        peerUuid   = m_peerUuid;
+        callId     = m_callId;
+        wasActive  = (m_state == CallState::InCall ||
+                      m_state == CallState::Calling ||
+                      m_state == CallState::Ringing);
+    }
 
-    const QUuid peer = m_peerUuid;
-    const bool wasActive = (m_state == CallState::InCall ||
-                            m_state == CallState::Calling ||
-                            m_state == CallState::Ringing);
-
-    if (wasActive && !m_callId.isEmpty() && !m_peerUuid.isNull()) {
-        QJsonObject end;
+    if (wasActive && !callId.empty() && !peerUuid.empty()) {
+        nlohmann::json end;
         end["type"]   = "CALL_END";
-        end["callId"] = m_callId;
-        netSend(m_net, m_peerUuid, end);
+        end["callId"] = callId;
+        m_net->sendFrame(peerUuid, end);
     }
 
     m_media->endCall();
     setState(CallState::Ended);
-    if (!peer.isNull()) emit callEnded(peer);
+    if (!peerUuid.empty())
+        fire([&peerUuid](const CallEvent& ev) { if (ev.onCallEnded) ev.onCallEnded(peerUuid); });
 
     // Переход Ended → Idle через 1 с (чтобы UI успел показать "Звонок завершён")
-    QTimer::singleShot(1000, this, [this]() { resetState(); });
+    auto timer = std::make_shared<asio::steady_timer>(m_net->ioContext());
+    timer->expires_after(std::chrono::milliseconds(1000));
+    int gen;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_endedTimer = timer;
+        gen = m_generation;
+    }
+    timer->async_wait([this, gen, timer](const std::error_code& tec) {
+        if (tec) return; // отменён
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            if (gen != m_generation) return;
+        }
+        resetState();
+    });
 }
 
 // ── handleSignaling ────────────────────────────────────────────────────────────
 
-void CallManager::handleSignaling(const QUuid& from, const QJsonObject& msg) {
-    const QString type   = msg["type"].toString();
-    const QString callId = msg["callId"].toString();
+void CallManager::handleSignaling(const std::string& from, const nlohmann::json& msg) {
+    const std::string type   = msg.value("type", std::string());
+    const std::string callId = msg.value("callId", std::string());
 
     if (type == "CALL_INVITE") {
-        if (m_state != CallState::Idle) {
+        if (state() != CallState::Idle) {
             // Уже в звонке — отклоняем
-            QJsonObject reject;
+            nlohmann::json reject;
             reject["type"]   = "CALL_REJECT";
             reject["callId"] = callId;
             reject["reason"] = "busy";
-            netSend(m_net, from, reject);
+            m_net->sendFrame(from, reject);
             return;
         }
 
-        const quint16 callerUdpPort = static_cast<quint16>(msg["udpPort"].toInt());
-        const QByteArray salt = QByteArray::fromHex(
-            msg["mediaKeySalt"].toString().toLatin1());
+        const auto callerUdpPort = static_cast<uint16_t>(msg.value("udpPort", 0));
+        const Bytes salt = bytesFromHex(msg.value("mediaKeySalt", std::string()));
 
-        // Сохраняем данные приглашения
-        m_peerUuid             = from;
-        m_callId               = callId;
-        m_pendingCallerUdpPort = callerUdpPort;
-        m_pendingMediaSalt     = salt;
+        // Получаем IP/имя пира из NetworkManager
+        const auto peerInfo = m_net->getPeerInfo(from);
 
-        // Получаем IP пира из NetworkManager
-        const auto peerInfo = m_net->getPeerInfo(quid2s(from));
-        m_peerIp = QHostAddress(QString::fromStdString(peerInfo.ip));
-
-        setState(CallState::Ringing);
-        emit incomingCall(from, QString::fromStdString(peerInfo.name), callId);
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            m_peerUuid             = from;
+            m_callId               = callId;
+            m_pendingCallerUdpPort = callerUdpPort;
+            m_pendingMediaSalt     = salt;
+            m_peerIp               = peerInfo.ip;
+            m_state                = CallState::Ringing;
+        }
+        fire([](const CallEvent& ev) { if (ev.onStateChanged) ev.onStateChanged(CallState::Ringing); });
+        fire([&](const CallEvent& ev) {
+            if (ev.onIncomingCall) ev.onIncomingCall(from, peerInfo.name, callId);
+        });
 
     } else if (type == "CALL_ACCEPT") {
-        if (m_state != CallState::Calling || m_callId != callId) return;
-
-        if (m_callTimeout) {
-            m_callTimeout->stop();
-            m_callTimeout->deleteLater();
-            m_callTimeout = nullptr;
+        std::string peerIp;
+        Bytes       salt;
+        bool        valid = false;
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            if (m_state == CallState::Calling && m_callId == callId) {
+                valid  = true;
+                peerIp = m_peerIp;
+                salt   = m_pendingMediaSalt;
+                cancelTimers(); // останавливаем таймаут 30 с
+            }
         }
+        if (!valid) return;
 
-        const quint16 peerUdpPort = static_cast<quint16>(msg["udpPort"].toInt());
-        startMedia(m_peerIp, peerUdpPort, m_callId, m_pendingMediaSalt);
+        const auto peerUdpPort = static_cast<uint16_t>(msg.value("udpPort", 0));
+        startMedia(peerIp, peerUdpPort, callId, salt);
         if (!m_media->isInCall()) return;
 
         setState(CallState::InCall);
-        emit callAccepted(m_peerUuid);
+        fire([&from](const CallEvent& ev) { if (ev.onCallAccepted) ev.onCallAccepted(from); });
 
-        qDebug("[CallManager] CALL_ACCEPT получен, peerUdpPort=%d", peerUdpPort);
+        std::fprintf(stderr, "[CallManager] CALL_ACCEPT получен, peerUdpPort=%d\n",
+                      static_cast<int>(peerUdpPort));
 
     } else if (type == "CALL_REJECT") {
-        if (m_state != CallState::Calling || m_callId != callId) return;
+        std::string peerUuid;
+        bool        valid = false;
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            if (m_state == CallState::Calling && m_callId == callId) {
+                valid    = true;
+                peerUuid = m_peerUuid;
+            }
+        }
+        if (!valid) return;
 
-        const QString reason = msg["reason"].toString();
-        qDebug("[CallManager] Звонок отклонён пиром: %s", qPrintable(reason));
+        const std::string reason = msg.value("reason", std::string());
+        std::fprintf(stderr, "[CallManager] Звонок отклонён пиром: %s\n", reason.c_str());
 
-        const QUuid peer = m_peerUuid;
         resetState();
-        emit callRejected(peer, reason);
+        fire([&](const CallEvent& ev) { if (ev.onCallRejected) ev.onCallRejected(peerUuid, reason); });
 
     } else if (type == "CALL_END") {
-        if ((m_state != CallState::InCall && m_state != CallState::Ringing &&
-             m_state != CallState::Calling) || m_callId != callId) return;
+        std::string peerUuid;
+        bool        valid = false;
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            if ((m_state == CallState::InCall || m_state == CallState::Ringing ||
+                 m_state == CallState::Calling) && m_callId == callId) {
+                valid    = true;
+                peerUuid = m_peerUuid;
+            }
+        }
+        if (!valid) return;
 
-        qDebug("[CallManager] CALL_END получен от пира");
+        std::fprintf(stderr, "[CallManager] CALL_END получен от пира\n");
         m_media->endCall();
 
-        const QUuid peer = m_peerUuid;
         setState(CallState::Ended);
-        emit callEnded(peer);
-        QTimer::singleShot(1000, this, [this]() { resetState(); });
+        fire([&](const CallEvent& ev) { if (ev.onCallEnded) ev.onCallEnded(peerUuid); });
+
+        auto timer = std::make_shared<asio::steady_timer>(m_net->ioContext());
+        timer->expires_after(std::chrono::milliseconds(1000));
+        int gen;
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            m_endedTimer = timer;
+            gen = m_generation;
+        }
+        timer->async_wait([this, gen, timer](const std::error_code& tec) {
+            if (tec) return;
+            {
+                std::lock_guard<std::mutex> lk(m_mutex);
+                if (gen != m_generation) return;
+            }
+            resetState();
+        });
     }
 }
 
 // ── startMedia ────────────────────────────────────────────────────────────────
 
-void CallManager::startMedia(const QHostAddress& peerIp, quint16 peerUdpPort,
-                               const QString& callId, const QByteArray& salt)
+void CallManager::startMedia(const std::string& peerIp, uint16_t peerUdpPort,
+                              const std::string& callId, const Bytes& salt)
 {
-    if (!m_e2e->hasSession(bridge::fromQUuid(m_peerUuid))) {
-        emit callError("Нет E2E сессии — медиа не может быть запущено");
+    std::string peerUuid;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        peerUuid = m_peerUuid;
+    }
+
+    if (!m_e2e->hasSession(peerUuid)) {
+        fire([](const CallEvent& ev) { if (ev.onCallError) ev.onCallError("Нет E2E сессии — медиа не может быть запущено"); });
         resetState();
         return;
     }
 
-    const QByteArray mediaKey = bridge::toQBA(
-        m_e2e->snapshotMediaKey(bridge::fromQUuid(m_peerUuid),
-                                callId.toStdString(),
-                                bridge::fromQBA(salt)));
-    if (mediaKey.isEmpty()) {
-        emit callError("Не удалось вывести медиа-ключ");
+    const Bytes mediaKey = m_e2e->snapshotMediaKey(peerUuid, callId, salt);
+    if (mediaKey.empty()) {
+        fire([](const CallEvent& ev) { if (ev.onCallError) ev.onCallError("Не удалось вывести медиа-ключ"); });
         resetState();
         return;
     }
 
     // В режиме Client-Server — включаем UDP-ретрансляцию до startCall()
     if (SessionManager::instance().portForwardingMode() == PortForwardingMode::ClientServer) {
-        const QString relayIp  = QString::fromStdString(SessionManager::instance().relayServerIp());
+        const QString relayIp  = bridge::toQStr(SessionManager::instance().relayServerIp());
         const quint16 relayUdp = SessionManager::instance().relayUdpPort();
-        const QUuid myUuid     = QUuid::fromString(QString::fromStdString(Identity::instance().uuid()));
-        m_media->enableUdpRelay(relayIp, relayUdp, myUuid, m_peerUuid);
+        const QUuid   myUuid   = bridge::toQUuid(Identity::instance().uuid());
+        const QUuid   peerQUuid = bridge::toQUuid(peerUuid);
+        m_media->enableUdpRelay(relayIp, relayUdp, myUuid, peerQUuid);
     }
 
-    if (!m_media->startCall(peerIp, peerUdpPort, mediaKey)) {
-        // callError уже emitted через connect в конструкторе
+    if (!m_media->startCall(bridge::toQHostAddress(peerIp), peerUdpPort, bridge::toQBA(mediaKey))) {
+        // ошибка уже сообщена через MediaEngine::setErrorCallback
         resetState();
         return;
     }
-    qDebug("[CallManager] MediaEngine запущен, peerUdpPort=%d", peerUdpPort);
+    std::fprintf(stderr, "[CallManager] MediaEngine запущен, peerUdpPort=%d\n",
+                  static_cast<int>(peerUdpPort));
+}
+
+// ── Listener API ──────────────────────────────────────────────────────────────
+
+CallManager::Token CallManager::addListener(CallEvent ev) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    Token t = m_nextToken++;
+    m_listeners.emplace_back(t, std::move(ev));
+    return t;
+}
+
+void CallManager::removeListener(Token t) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    m_listeners.erase(
+        std::remove_if(m_listeners.begin(), m_listeners.end(),
+                       [t](const auto& p) { return p.first == t; }),
+        m_listeners.end());
 }

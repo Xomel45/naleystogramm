@@ -57,6 +57,15 @@ MediaEngine::~MediaEngine() {
     endCall();
 }
 
+void MediaEngine::setErrorCallback(std::function<void(const std::string&)> cb) {
+    m_errorCb = std::move(cb);
+}
+
+void MediaEngine::raiseError(const QString& msg) {
+    emit mediaError(msg);
+    if (m_errorCb) m_errorCb(msg.toStdString());
+}
+
 // ── startCall ────────────────────────────────────────────────────────────────
 
 bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
@@ -64,17 +73,17 @@ bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
 {
     if (m_inCall) return false;
     if (mediaKey.size() != 32) {
-        emit mediaError("Неверный размер медиа-ключа");
+        raiseError("Неверный размер медиа-ключа");
         return false;
     }
 
 #ifndef HAVE_OPUS
-    emit mediaError("libopus не найден — голосовые звонки недоступны");
+    raiseError("libopus не найден — голосовые звонки недоступны");
     return false;
 #endif
 
 #ifndef HAVE_QT_MULTIMEDIA
-    emit mediaError("Qt6Multimedia не найден — голосовые звонки недоступны");
+    raiseError("Qt6Multimedia не найден — голосовые звонки недоступны");
     return false;
 #endif
 
@@ -86,7 +95,7 @@ bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
     // ── UDP сокет ─────────────────────────────────────────────────────────────
     m_udpSocket = new QUdpSocket(this);
     if (!m_udpSocket->bind(QHostAddress::Any, 0)) {
-        emit mediaError(QString("Не удалось открыть UDP сокет: %1")
+        raiseError(QString("Не удалось открыть UDP сокет: %1")
                         .arg(m_udpSocket->errorString()));
         delete m_udpSocket; m_udpSocket = nullptr;
         return false;
@@ -97,7 +106,7 @@ bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
     // ── Opus кодек ────────────────────────────────────────────────────────────
     m_opus = new OpusState;
     if (!m_opus->init(kSampleRate, kChannels)) {
-        emit mediaError("Не удалось инициализировать Opus кодек");
+        raiseError("Не удалось инициализировать Opus кодек");
         delete m_opus; m_opus = nullptr;
         delete m_udpSocket; m_udpSocket = nullptr;
         return false;
@@ -116,14 +125,14 @@ bool MediaEngine::startCall(const QHostAddress& peerIp, quint16 peerUdpPort,
         ? m_preferredInput
         : QMediaDevices::defaultAudioInput();
     if (inputDev.isNull()) {
-        emit mediaError("Микрофон не найден");
+        raiseError("Микрофон не найден");
         endCall();
         return false;
     }
     m_capture = new QAudioSource(inputDev, fmt, this);
     m_captureDevice = m_capture->start();
     if (m_capture->error() != QAudio::NoError) {
-        emit mediaError(QString("Ошибка запуска микрофона: %1")
+        raiseError(QString("Ошибка запуска микрофона: %1")
                         .arg(static_cast<int>(m_capture->error())));
         endCall();
         return false;
@@ -241,7 +250,7 @@ void MediaEngine::setInputDevice(const QAudioDevice& dev) {
     m_capture = new QAudioSource(dev, fmt, this);
     m_captureDevice = m_capture->start();
     if (m_capture->error() != QAudio::NoError) {
-        emit mediaError(QString("Ошибка переключения микрофона: %1")
+        raiseError(QString("Ошибка переключения микрофона: %1")
                         .arg(static_cast<int>(m_capture->error())));
     }
     qDebug("[MediaEngine] Микрофон переключён: %s", qPrintable(dev.description()));
@@ -267,7 +276,7 @@ void MediaEngine::setOutputDevice(const QAudioDevice& dev) {
     m_playback = new QAudioSink(dev, fmt, this);
     m_playbackDevice = m_playback->start();
     if (m_playback->error() != QAudio::NoError) {
-        emit mediaError(QString("Ошибка переключения динамика: %1")
+        raiseError(QString("Ошибка переключения динамика: %1")
                         .arg(static_cast<int>(m_playback->error())));
     }
     qDebug("[MediaEngine] Динамик переключён: %s", qPrintable(dev.description()));

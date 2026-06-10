@@ -530,9 +530,12 @@ void NetworkManager::discoverExternalIp() {
 
 void NetworkManager::tryUpnp() {
     log("UPnP: запускаем маппинг порта " + std::to_string(m_localPort) + "...");
-    fire([this](NetworkEvent& ev) {
-        if (ev.onNeedUpnpMapping) ev.onNeedUpnpMapping(m_localPort);
-    });
+    if (!m_upnpMapper) {
+        m_upnpMapper = std::make_unique<UpnpMapper>(m_io,
+            [this](const std::string& msg, bool important) { log("[UPnP] " + msg, important); });
+    }
+    const std::string localIp = detectLocalLanIp();
+    m_upnpMapper->mapPort(m_localPort, localIp, [this](bool ok) { notifyUpnpResult(ok); });
 }
 
 void NetworkManager::notifyUpnpResult(bool ok) {

@@ -101,30 +101,50 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     // ── Голосовые звонки ─────────────────────────────────────────────────────
     connect(m_chat, &ChatWidget::callRequested,
             this, &MainWindow::onCallRequested);
-    connect(m_callManager, &CallManager::incomingCall,
-            this, &MainWindow::onIncomingCall);
-    connect(m_callManager, &CallManager::callAccepted,
-            this, [this](QUuid /*peer*/) {
-        if (m_callWindow) m_callWindow->setState(CallWindow::State::InCall);
-    });
-    connect(m_callManager, &CallManager::callRejected,
-            this, [this](QUuid /*peer*/, const QString& reason) {
-        if (m_callWindow) {
-            m_callWindow->hide();
-            m_callWindow->deleteLater();
-            m_callWindow = nullptr;
-        }
-        const QString msg = (reason == "busy") ? "Пир занят" :
-                            (reason == "timeout") ? "Нет ответа" :
-                            "Звонок отклонён";
-        QMessageBox::information(this, "Звонок", msg);
-    });
-    connect(m_callManager, &CallManager::callEnded,
-            this, &MainWindow::onCallEnded);
-    connect(m_callManager, &CallManager::callError,
-            this, [this](const QString& msg) {
-        QMessageBox::warning(this, "Ошибка звонка", msg);
-    });
+    {
+        CallManager::CallEvent ev;
+        ev.onIncomingCall = [this](const std::string& from, const std::string& callerName,
+                                    const std::string& callId) {
+            const QUuid qFrom = s2quid(from);
+            const QString qName = QString::fromStdString(callerName);
+            const QString qCallId = QString::fromStdString(callId);
+            QMetaObject::invokeMethod(this, [this, qFrom, qName, qCallId]() {
+                onIncomingCall(qFrom, qName, qCallId);
+            }, Qt::QueuedConnection);
+        };
+        ev.onCallAccepted = [this](const std::string& /*peerUuid*/) {
+            QMetaObject::invokeMethod(this, [this]() {
+                if (m_callWindow) m_callWindow->setState(CallWindow::State::InCall);
+            }, Qt::QueuedConnection);
+        };
+        ev.onCallRejected = [this](const std::string& /*peerUuid*/, const std::string& reason) {
+            const QString qReason = QString::fromStdString(reason);
+            QMetaObject::invokeMethod(this, [this, qReason]() {
+                if (m_callWindow) {
+                    m_callWindow->hide();
+                    m_callWindow->deleteLater();
+                    m_callWindow = nullptr;
+                }
+                const QString msg = (qReason == "busy") ? "Пир занят" :
+                                    (qReason == "timeout") ? "Нет ответа" :
+                                    "Звонок отклонён";
+                QMessageBox::information(this, "Звонок", msg);
+            }, Qt::QueuedConnection);
+        };
+        ev.onCallEnded = [this](const std::string& peerUuid) {
+            const QUuid qPeer = s2quid(peerUuid);
+            QMetaObject::invokeMethod(this, [this, qPeer]() {
+                onCallEnded(qPeer);
+            }, Qt::QueuedConnection);
+        };
+        ev.onCallError = [this](const std::string& msg) {
+            const QString qMsg = QString::fromStdString(msg);
+            QMetaObject::invokeMethod(this, [this, qMsg]() {
+                QMessageBox::warning(this, "Ошибка звонка", qMsg);
+            }, Qt::QueuedConnection);
+        };
+        m_callListenerToken = m_callManager->addListener(std::move(ev));
+    }
 
     // Голосовые: отправка из ChatWidget
     connect(m_chat, &ChatWidget::sendVoiceRequested,
@@ -459,6 +479,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
 
 MainWindow::~MainWindow() {
     DemoMode::instance().unsubscribe(m_demoToken);
+    m_callManager->removeListener(m_callListenerToken);
     delete ui;
 }
 
@@ -1035,7 +1056,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
     // ── Сигналинг голосовых звонков — делегируем CallManager ─────────────────
     if (type == "CALL_INVITE" || type == "CALL_ACCEPT" ||
         type == "CALL_REJECT" || type == "CALL_END") {
-        m_callManager->handleSignaling(from, msg);
+        m_callManager->handleSignaling(quid2s(from), bridge::fromQJsonObj(msg));
         return;
     }
 
@@ -1479,8 +1500,7 @@ void MainWindow::onCallRequested(QUuid peerUuid) {
     m_callWindow->setState(CallWindow::State::Calling);
     connect(m_callWindow, &CallWindow::muteToggled,
             m_callManager->mediaEngine(), &MediaEngine::setMuted);
-    connect(m_callWindow, &CallWindow::hangupClicked,
-            m_callManager, &CallManager::endCall);
+    connect(m_callWindow, &CallWindow::hangupClicked, this, [this]{ m_callManager->endCall(); });
     connect(m_callManager->mediaEngine(), &MediaEngine::audioLevelChanged,
             m_callWindow, &CallWindow::setAudioLevel);
 #ifdef HAVE_QT_MULTIMEDIA
@@ -1491,14 +1511,14 @@ void MainWindow::onCallRequested(QUuid peerUuid) {
 #endif
     m_callWindow->show();
 
-    m_callManager->initiateCall(peerUuid, QHostAddress(QString::fromStdString(info.ip)));
+    m_callManager->initiateCall(quid2s(peerUuid), info.ip);
 }
 
 void MainWindow::onIncomingCall(QUuid from, QString callerName, QString callId) {
     if (!checkPrivacy(SessionManager::instance().privacyCalls(), from)) {
         qDebug("[Main] Входящий звонок от %s отклонён (настройки конфиденциальности)",
                qPrintable(from.toString(QUuid::WithoutBraces)));
-        m_callManager->rejectCall(callId);
+        m_callManager->rejectCall(callId.toStdString());
         return;
     }
 
@@ -1507,13 +1527,12 @@ void MainWindow::onIncomingCall(QUuid from, QString callerName, QString callId) 
     m_callWindow->setState(CallWindow::State::Ringing);
     connect(m_callWindow, &CallWindow::muteToggled,
             m_callManager->mediaEngine(), &MediaEngine::setMuted);
-    connect(m_callWindow, &CallWindow::hangupClicked,
-            m_callManager, &CallManager::endCall);
+    connect(m_callWindow, &CallWindow::hangupClicked, this, [this]{ m_callManager->endCall(); });
     connect(m_callWindow, &CallWindow::acceptClicked, this, [this, callId]() {
-        m_callManager->acceptCall(callId);
+        m_callManager->acceptCall(callId.toStdString());
     });
     connect(m_callWindow, &CallWindow::rejectClicked, this, [this, callId]() {
-        m_callManager->rejectCall(callId);
+        m_callManager->rejectCall(callId.toStdString());
         if (m_callWindow) {
             m_callWindow->hide();
             m_callWindow->deleteLater();
