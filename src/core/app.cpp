@@ -27,7 +27,7 @@ static std::filesystem::path appDataDir() {
 #endif
 }
 
-App::App(QObject* parent) : QObject(parent) {
+App::App() {
 #ifdef HAVE_CURL
     curl_global_init(CURL_GLOBAL_ALL);
 #endif

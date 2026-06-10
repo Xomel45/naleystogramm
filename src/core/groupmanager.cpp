@@ -1,352 +1,466 @@
 #include "groupmanager.h"
 #include "storage.h"
 #include "../crypto/x3dh.h"
-#include "../crypto/qt_bridge.h"
-#include <QNetworkRequest>
-#include <QNetworkReply>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QUrl>
-#include <QDebug>
-#include <QDateTime>
+#include <nlohmann/json.hpp>
+#include <curl/curl.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
+#include <thread>
 
-static constexpr int kMaxReconnAttempts = 10;
-static constexpr int kReconnBaseMs = 2000;
+#if defined(_WIN32)
+#include <winsock2.h>
+#else
+#include <sys/socket.h>
+#include <sys/time.h>
+#endif
 
-GroupManager::GroupManager(StorageManager* storage, QObject* parent)
-    : QObject(parent)
-    , m_storage(storage)
-    , m_nam(new QNetworkAccessManager(this))
-{
-    m_nam->setProxy(QNetworkProxy::NoProxy);
+namespace {
+
+constexpr int kMaxReconnAttempts = 10;
+constexpr int kReconnBaseMs = 2000;
+
+int64_t nowMs() {
+    using namespace std::chrono;
+    return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
-GroupManager::~GroupManager() {}
+std::string toWs(const std::string& url) {
+    if (url.rfind("https://", 0) == 0) return "wss://" + url.substr(8);
+    if (url.rfind("http://", 0) == 0)  return "ws://"  + url.substr(7);
+    return url;
+}
+
+void interruptibleSleep(std::atomic<bool>& stop, int ms) {
+    while (ms > 0 && !stop.load()) {
+        const int chunk = std::min(ms, 100);
+        std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
+        ms -= chunk;
+    }
+}
+
+void setRecvTimeout(curl_socket_t sock, int ms) {
+#if defined(_WIN32)
+    DWORD timeout = static_cast<DWORD>(ms);
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+#else
+    struct timeval tv;
+    tv.tv_sec  = ms / 1000;
+    tv.tv_usec = (ms % 1000) * 1000;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
+}
+
+size_t curlWrite(void* ptr, size_t size, size_t nmemb, std::string* out) {
+    out->append(static_cast<char*>(ptr), size * nmemb);
+    return size * nmemb;
+}
+
+// Блокирующий HTTP-запрос (вызывать только из отдельного потока).
+bool httpRequest(const std::string& method, const std::string& url, const std::string& body,
+                 const std::vector<std::pair<std::string, std::string>>& extraHeaders,
+                 std::string& outBody, long& outCode) {
+    CURL* curl = curl_easy_init();
+    if (!curl) return false;
+
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &outBody);
+
+    struct curl_slist* hdrs = nullptr;
+    if (method == "POST") hdrs = curl_slist_append(hdrs, "Content-Type: application/json");
+    for (const auto& [k, v] : extraHeaders) hdrs = curl_slist_append(hdrs, (k + ": " + v).c_str());
+    if (hdrs) curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
+
+    if (method == "POST") {
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, static_cast<long>(body.size()));
+    } else if (method == "DELETE") {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+    }
+
+    const CURLcode rc = curl_easy_perform(curl);
+    if (hdrs) curl_slist_free_all(hdrs);
+    if (rc != CURLE_OK) {
+        curl_easy_cleanup(curl);
+        return false;
+    }
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &outCode);
+    curl_easy_cleanup(curl);
+    return true;
+}
+
+} // namespace
+
+// ── Conn ──────────────────────────────────────────────────────────────────────
+
+struct GroupManager::Conn {
+    Group info;
+    std::thread wsThread;
+    std::atomic<bool> stopRequested{false};
+    std::atomic<bool> connected{false};
+    std::mutex curlMutex;   // защищает curl + send/recv от гонки между потоками
+    CURL* curl{nullptr};
+    int reconnAttempts{0};
+};
+
+GroupManager::GroupManager(StorageManager* storage) : m_storage(storage) {}
+
+GroupManager::~GroupManager() {
+    std::vector<Conn*> conns;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        for (auto& [id, c] : m_conns) {
+            c->stopRequested = true;
+            conns.push_back(c.get());
+        }
+    }
+    for (auto* c : conns) {
+        if (c->wsThread.joinable()) c->wsThread.join();
+    }
+}
 
 // ── Crypto helpers ────────────────────────────────────────────────────────────
 
-QString GroupManager::encryptGroupMsg(const QByteArray& key, const QString& text) {
+std::string GroupManager::encryptGroupMsg(const Bytes& key, const std::string& text) {
     if (key.size() != 32) return {};
-    const QByteArray plain = text.toUtf8();
+    const Bytes plain = sv2bytes(text);
 
-    QByteArray nonce(12, '\0');
-    RAND_bytes(reinterpret_cast<unsigned char*>(nonce.data()), 12);
+    Bytes nonce(12);
+    RAND_bytes(nonce.data(), 12);
 
-    // AES-256-GCM
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) return {};
-    QByteArray ct(plain.size(), '\0');
-    QByteArray tag(16, '\0');
+    Bytes ct(plain.size());
+    Bytes tag(16);
     int len = 0;
 
     bool ok = true;
     ok = ok && EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) > 0;
     ok = ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) > 0;
-    ok = ok && EVP_EncryptInit_ex(ctx, nullptr, nullptr,
-                   reinterpret_cast<const unsigned char*>(key.constData()),
-                   reinterpret_cast<const unsigned char*>(nonce.constData())) > 0;
-    ok = ok && EVP_EncryptUpdate(ctx,
-                   reinterpret_cast<unsigned char*>(ct.data()), &len,
-                   reinterpret_cast<const unsigned char*>(plain.constData()), plain.size()) > 0;
+    ok = ok && EVP_EncryptInit_ex(ctx, nullptr, nullptr, key.data(), nonce.data()) > 0;
+    ok = ok && EVP_EncryptUpdate(ctx, ct.data(), &len, plain.data(),
+                                  static_cast<int>(plain.size())) > 0;
     int fin = 0;
-    ok = ok && EVP_EncryptFinal_ex(ctx,
-                   reinterpret_cast<unsigned char*>(ct.data()) + len, &fin) > 0;
-    ok = ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16,
-                   reinterpret_cast<unsigned char*>(tag.data())) > 0;
+    ok = ok && EVP_EncryptFinal_ex(ctx, ct.data() + len, &fin) > 0;
+    ok = ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, tag.data()) > 0;
     EVP_CIPHER_CTX_free(ctx);
     if (!ok) return {};
-    ct.resize(len + fin);
+    ct.resize(static_cast<size_t>(len + fin));
 
     // Формат: nonce(12) + ciphertext + tag(16)
-    QByteArray blob = nonce + ct + tag;
-    return QString::fromLatin1(blob.toBase64());
+    return bytesToBase64(nonce + ct + tag);
 }
 
-QString GroupManager::decryptGroupMsg(const QByteArray& key, const QString& base64) {
+std::string GroupManager::decryptGroupMsg(const Bytes& key, const std::string& base64) {
     if (key.size() != 32) return {};
-    const QByteArray blob = QByteArray::fromBase64(base64.toLatin1());
+    const Bytes blob = bytesFromBase64(base64);
     if (blob.size() < 12 + 16) return {};
 
-    const QByteArray nonce = blob.left(12);
-    const QByteArray tag   = blob.right(16);
-    const QByteArray ct    = blob.mid(12, blob.size() - 12 - 16);
+    const Bytes nonce = bytesLeft(blob, 12);
+    const Bytes tag   = bytesRight(blob, 16);
+    const Bytes ct    = bytesMid(blob, 12, blob.size() - 12 - 16);
 
     EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
     if (!ctx) return {};
-    QByteArray plain(ct.size(), '\0');
+    Bytes plain(ct.size());
     int len = 0, fin = 0;
     bool ok = true;
 
     ok = ok && EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr) > 0;
     ok = ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, 12, nullptr) > 0;
-    ok = ok && EVP_DecryptInit_ex(ctx, nullptr, nullptr,
-                   reinterpret_cast<const unsigned char*>(key.constData()),
-                   reinterpret_cast<const unsigned char*>(nonce.constData())) > 0;
-    ok = ok && EVP_DecryptUpdate(ctx,
-                   reinterpret_cast<unsigned char*>(plain.data()), &len,
-                   reinterpret_cast<const unsigned char*>(ct.constData()), ct.size()) > 0;
+    ok = ok && EVP_DecryptInit_ex(ctx, nullptr, nullptr, key.data(), nonce.data()) > 0;
+    ok = ok && EVP_DecryptUpdate(ctx, plain.data(), &len, ct.data(),
+                                  static_cast<int>(ct.size())) > 0;
     ok = ok && EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16,
-                   const_cast<char*>(tag.constData())) > 0;
-    ok = ok && EVP_DecryptFinal_ex(ctx,
-                   reinterpret_cast<unsigned char*>(plain.data()) + len, &fin) > 0;
+                                    const_cast<uint8_t*>(tag.data())) > 0;
+    ok = ok && EVP_DecryptFinal_ex(ctx, plain.data() + len, &fin) > 0;
     EVP_CIPHER_CTX_free(ctx);
-    if (!ok) { qWarning("[GroupManager] decryptGroupMsg: GCM auth failed"); return {}; }
-    plain.resize(len + fin);
-    return QString::fromUtf8(plain);
+    if (!ok) {
+        fprintf(stderr, "[GroupManager] decryptGroupMsg: GCM auth failed\n");
+        return {};
+    }
+    plain.resize(static_cast<size_t>(len + fin));
+    return std::string(plain.begin(), plain.end());
 }
 
 // ── Join ──────────────────────────────────────────────────────────────────────
 
-void GroupManager::joinGroup(const QString& serverUrl, const QString& username) {
-    // Генерируем ephemeral X25519 keypair для этой группы
-    Bytes privKeyB, pubKeyB;
-    if (!X3DH::generateX25519(privKeyB, pubKeyB)) {
-        emit joinError(serverUrl, "keygen failed");
+void GroupManager::joinGroup(const std::string& serverUrl, const std::string& username) {
+    Bytes privKey, pubKey;
+    if (!X3DH::generateX25519(privKey, pubKey)) {
+        fire([&](GroupEvent& ev) { if (ev.onJoinError) ev.onJoinError(serverUrl, "keygen failed"); });
         return;
     }
 
-    // POST /group/join
-    QUrl url(serverUrl + "/group/join");
-    QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    std::thread([this, serverUrl, username, privKey, pubKey]() {
+        const nlohmann::json joinBody{
+            {"username", username},
+            {"pubkey", bytesToBase64(pubKey)}
+        };
 
-    const QJsonObject body {
-        {"username", username},
-        {"pubkey",   QString::fromLatin1(bridge::toQBA(pubKeyB).toBase64())}
-    };
-
-    const QByteArray privKey = bridge::toQBA(privKeyB);
-    const QByteArray pubKey  = bridge::toQBA(pubKeyB);
-    QNetworkReply* reply = m_nam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, serverUrl, username, privKey, pubKey]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            qWarning("[GroupManager] join error: %s", qPrintable(reply->errorString()));
-            emit joinError(serverUrl, reply->errorString());
+        std::string respBody;
+        long httpCode = 0;
+        if (!httpRequest("POST", serverUrl + "/group/join", joinBody.dump(), {}, respBody, httpCode)
+            || httpCode / 100 != 2) {
+            fire([&](GroupEvent& ev) {
+                if (ev.onJoinError) ev.onJoinError(serverUrl, "join request failed (HTTP " + std::to_string(httpCode) + ")");
+            });
             return;
         }
-        const auto obj = QJsonDocument::fromJson(reply->readAll()).object();
-        const QString token     = obj["token"].toString();
-        const QString keyEncB64 = obj["group_key_enc"].toString();
-        const QString role      = obj["role"].toString("member");
 
-        // ECIES расшифровка группового ключа
-        const QByteArray encBlob = QByteArray::fromBase64(keyEncB64.toLatin1());
-        const QByteArray groupKey = bridge::toQBA(
-            X3DH::eciesDecrypt(bridge::fromQBA(privKey), bridge::fromQBA(encBlob)));
+        const auto obj = nlohmann::json::parse(respBody, nullptr, false);
+        if (obj.is_discarded()) {
+            fire([&](GroupEvent& ev) { if (ev.onJoinError) ev.onJoinError(serverUrl, "invalid join response"); });
+            return;
+        }
+        const std::string token     = obj.value("token", "");
+        const std::string keyEncB64 = obj.value("group_key_enc", "");
+        const std::string role      = obj.value("role", "member");
+
+        const Bytes groupKey = X3DH::eciesDecrypt(privKey, bytesFromBase64(keyEncB64));
         if (groupKey.size() != 32) {
-            qWarning("[GroupManager] ECIES decrypt failed for group_key_enc");
-            emit joinError(serverUrl, "key decryption failed");
+            fprintf(stderr, "[GroupManager] ECIES decrypt failed for group_key_enc\n");
+            fire([&](GroupEvent& ev) { if (ev.onJoinError) ev.onJoinError(serverUrl, "key decryption failed"); });
             return;
         }
 
-        // Получить имя и тип группы из /info
-        QUrl infoUrl(serverUrl + "/info");
-        QNetworkReply* infoReply = m_nam->get(QNetworkRequest(infoUrl));
-        connect(infoReply, &QNetworkReply::finished, this,
-                [this, infoReply, serverUrl, username, token, groupKey, privKey, pubKey, role]() {
-            infoReply->deleteLater();
-            const auto info = QJsonDocument::fromJson(infoReply->readAll()).object();
+        std::string infoBody;
+        long infoCode = 0;
+        httpRequest("GET", serverUrl + "/info", "", {}, infoBody, infoCode);
+        const auto info = nlohmann::json::parse(infoBody, nullptr, false);
 
-            Group g;
-            g.id           = serverUrl.toStdString();
-            g.name         = info["name"].toString(serverUrl).toStdString();
-            g.type         = info["broadcast_only"].toBool() ? GroupType::Channel : GroupType::Group;
-            g.serverUrl    = serverUrl.toStdString();
-            g.username     = username.toStdString();
-            g.token        = token.toStdString();
-            g.groupKey     = bridge::fromQBA(groupKey);
-            g.localPrivKey = bridge::fromQBA(privKey);
-            g.localPubKey  = bridge::fromQBA(pubKey);
-            g.isAdmin      = (role == "owner" || role == "admin");
-            g.joinedAt     = QDateTime::currentSecsSinceEpoch() * 1000LL;
+        Group g;
+        g.id        = serverUrl;
+        g.name      = (!info.is_discarded()) ? info.value("name", serverUrl) : serverUrl;
+        g.type      = (!info.is_discarded() && info.value("broadcast_only", false))
+                           ? GroupType::Channel : GroupType::Group;
+        g.serverUrl = serverUrl;
+        g.username  = username;
+        g.token     = token;
+        g.groupKey     = groupKey;
+        g.localPrivKey = privKey;
+        g.localPubKey  = pubKey;
+        g.isAdmin   = (role == "owner" || role == "admin");
+        g.joinedAt  = nowMs();
 
-            m_storage->saveGroup(g);
+        if (!m_storage->saveGroup(g)) {
+            fprintf(stderr, "[GroupManager] saveGroup failed for %s\n", serverUrl.c_str());
+        }
 
-            qDebug("[GroupManager] Вступили в %s как %s (%s)",
-                   qPrintable(serverUrl), qPrintable(username), qPrintable(role));
-            emit groupJoined(g);
-            connectGroup(g);
-        });
-    });
+        fire([&](GroupEvent& ev) { if (ev.onGroupJoined) ev.onGroupJoined(g); });
+        connectGroup(g);
+    }).detach();
 }
 
 // ── Leave ─────────────────────────────────────────────────────────────────────
 
-void GroupManager::leaveGroup(const QString& groupId) {
-    auto it = m_conns.find(groupId);
-    if (it == m_conns.end()) return;
-
-    const Group& g = it->info;
-
-    // HTTP DELETE /group/leave
-    QUrl url(QString::fromStdString(g.serverUrl) + "/group/leave");
-    QNetworkRequest req(url);
-    req.setRawHeader("Authorization", QByteArray("Bearer ") + QString::fromStdString(g.token).toUtf8());
-    m_nam->deleteResource(req);
-
-    if (it->ws) {
-        it->ws->close();
-        it->ws->deleteLater();
+void GroupManager::leaveGroup(const std::string& groupId) {
+    Conn* conn = nullptr;
+    Group g;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        auto it = m_conns.find(groupId);
+        if (it == m_conns.end()) return;
+        conn = it->second.get();
+        g = conn->info;
+        conn->stopRequested = true;
     }
-    if (it->reconnTimer) {
-        it->reconnTimer->stop();
-        it->reconnTimer->deleteLater();
+    if (conn->wsThread.joinable()) conn->wsThread.join();
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_conns.erase(groupId);
     }
-    m_conns.erase(it);
 
-    m_storage->deleteGroup(groupId.toStdString());
-    emit groupLeft(groupId);
+    std::thread([url = g.serverUrl, token = g.token]() {
+        std::string body;
+        long code = 0;
+        httpRequest("DELETE", url + "/group/leave", "", {{"Authorization", "Bearer " + token}}, body, code);
+    }).detach();
+
+    if (!m_storage->deleteGroup(groupId)) {
+        fprintf(stderr, "[GroupManager] deleteGroup failed for %s\n", groupId.c_str());
+    }
+    fire([&](GroupEvent& ev) { if (ev.onGroupLeft) ev.onGroupLeft(groupId); });
 }
 
 // ── Connect WS ───────────────────────────────────────────────────────────────
 
 void GroupManager::connectGroup(const Group& g) {
-    const QString qid = QString::fromStdString(g.id);
-    if (m_conns.contains(qid) && m_conns[qid].ws) {
-        m_conns[qid].info = g;
-    } else {
-        Conn c;
-        c.info = g;
-        m_conns[qid] = std::move(c);
+    Conn* conn = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        auto it = m_conns.find(g.id);
+        if (it != m_conns.end()) {
+            it->second->info = g;
+            return;
+        }
+        auto c = std::make_unique<Conn>();
+        c->info = g;
+        conn = c.get();
+        m_conns.emplace(g.id, std::move(c));
     }
-    openWs(qid);
+    conn->wsThread = std::thread(&GroupManager::wsThreadFunc, this, g.id, conn);
 }
 
-void GroupManager::openWs(const QString& groupId) {
-    auto& c = m_conns[groupId];
-    if (c.ws) {
-        c.ws->close();
-        c.ws->deleteLater();
-        c.ws = nullptr;
+void GroupManager::wsThreadFunc(const std::string& groupId, Conn* conn) {
+    for (;;) {
+        if (conn->stopRequested.load()) return;
+
+        CURL* curl = curl_easy_init();
+        if (curl) {
+            const std::string wsUrl = toWs(conn->info.serverUrl) + "/group/ws?token=" + conn->info.token;
+            curl_easy_setopt(curl, CURLOPT_URL, wsUrl.c_str());
+            curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 2L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+            curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+        }
+
+        if (!curl || curl_easy_perform(curl) != CURLE_OK) {
+            if (curl) curl_easy_cleanup(curl);
+            if (conn->stopRequested.load()) return;
+            if (++conn->reconnAttempts > kMaxReconnAttempts) {
+                fprintf(stderr, "[GroupManager] превышено число попыток реконнекта для %s\n", groupId.c_str());
+                return;
+            }
+            interruptibleSleep(conn->stopRequested, kReconnBaseMs << std::min(conn->reconnAttempts, 5));
+            continue;
+        }
+
+        curl_socket_t sock = CURL_SOCKET_BAD;
+        curl_easy_getinfo(curl, CURLINFO_ACTIVESOCKET, &sock);
+        if (sock != CURL_SOCKET_BAD) setRecvTimeout(sock, 200);
+
+        {
+            std::lock_guard<std::mutex> lk(conn->curlMutex);
+            conn->curl = curl;
+        }
+        conn->reconnAttempts = 0;
+        conn->connected = true;
+        fire([&](GroupEvent& ev) { if (ev.onWsConnected) ev.onWsConnected(groupId); });
+
+        std::string msgBuf;
+        std::vector<char> buf(8192);
+        while (!conn->stopRequested.load()) {
+            const curl_ws_frame* meta = nullptr;
+            size_t nread = 0;
+            CURLcode res;
+            {
+                std::lock_guard<std::mutex> lk(conn->curlMutex);
+                res = curl_ws_recv(curl, buf.data(), buf.size(), &nread, &meta);
+            }
+            if (res == CURLE_AGAIN) continue;
+            if (res != CURLE_OK) break;
+            if (meta && (meta->flags & CURLWS_CLOSE)) break;
+            msgBuf.append(buf.data(), nread);
+            if (meta && meta->bytesleft == 0) {
+                if (meta->flags & CURLWS_TEXT) handleWsFrame(groupId, msgBuf);
+                msgBuf.clear();
+            }
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(conn->curlMutex);
+            conn->curl = nullptr;
+        }
+        conn->connected = false;
+        curl_easy_cleanup(curl);
+        fire([&](GroupEvent& ev) { if (ev.onWsDisconnected) ev.onWsDisconnected(groupId); });
+
+        if (conn->stopRequested.load()) return;
+        if (++conn->reconnAttempts > kMaxReconnAttempts) {
+            fprintf(stderr, "[GroupManager] превышено число попыток реконнекта для %s\n", groupId.c_str());
+            return;
+        }
+        interruptibleSleep(conn->stopRequested, kReconnBaseMs << std::min(conn->reconnAttempts, 5));
     }
-
-    const QString wsUrl = QString::fromStdString(c.info.serverUrl)
-                             .replace("http://", "ws://")
-                             .replace("https://", "wss://")
-                          + "/group/ws?token=" + QString::fromStdString(c.info.token);
-
-    c.ws = new QWebSocket(QString(), QWebSocketProtocol::VersionLatest, this);
-
-    const QString gid = groupId;
-    connect(c.ws, &QWebSocket::connected, this, [this, gid]() { onWsConnected(gid); });
-    connect(c.ws, &QWebSocket::disconnected, this, [this, gid]() { onWsDisconnected(gid); });
-    connect(c.ws, &QWebSocket::textMessageReceived, this, [this, gid](const QString& msg) {
-        onWsTextMessage(gid, msg);
-    });
-    connect(c.ws, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::errorOccurred),
-            this, [this, gid](QAbstractSocket::SocketError) { onWsError(gid); });
-
-    c.ws->open(QUrl(wsUrl));
-}
-
-void GroupManager::onWsConnected(const QString& groupId) {
-    if (!m_conns.contains(groupId)) return;
-    m_conns[groupId].reconnAttempts = 0;
-    qDebug("[GroupManager] WS подключён: %s", qPrintable(groupId));
-    emit wsConnected(groupId);
-}
-
-void GroupManager::onWsDisconnected(const QString& groupId) {
-    emit wsDisconnected(groupId);
-    scheduleReconnect(groupId);
-}
-
-void GroupManager::onWsError(const QString& groupId) {
-    if (!m_conns.contains(groupId)) return;
-    qWarning("[GroupManager] WS ошибка: %s", qPrintable(groupId));
-    scheduleReconnect(groupId);
-}
-
-void GroupManager::scheduleReconnect(const QString& groupId) {
-    auto it = m_conns.find(groupId);
-    if (it == m_conns.end()) return;
-    if (it->reconnAttempts >= kMaxReconnAttempts) {
-        qWarning("[GroupManager] Превышено число попыток реконнекта для %s", qPrintable(groupId));
-        return;
-    }
-    const int delay = kReconnBaseMs * (1 << qMin(it->reconnAttempts, 5));
-    it->reconnAttempts++;
-
-    if (!it->reconnTimer) {
-        it->reconnTimer = new QTimer(this);
-        it->reconnTimer->setSingleShot(true);
-        connect(it->reconnTimer, &QTimer::timeout, this, [this, groupId]() {
-            if (m_conns.contains(groupId)) openWs(groupId);
-        });
-    }
-    it->reconnTimer->start(delay);
 }
 
 // ── WS message handler ────────────────────────────────────────────────────────
 
-void GroupManager::onWsTextMessage(const QString& groupId, const QString& raw) {
-    const auto obj = QJsonDocument::fromJson(raw.toUtf8()).object();
-    const QString type = obj["type"].toString();
+void GroupManager::handleWsFrame(const std::string& groupId, const std::string& raw) {
+    const auto obj = nlohmann::json::parse(raw, nullptr, false);
+    if (obj.is_discarded()) return;
+    const std::string type = obj.value("type", "");
 
-    auto it = m_conns.find(groupId);
-    if (it == m_conns.end()) return;
-    const QByteArray key = bridge::toQBA(it->info.groupKey);
+    Bytes key;
+    std::string username;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        auto it = m_conns.find(groupId);
+        if (it == m_conns.end()) return;
+        key = it->second->info.groupKey;
+        username = it->second->info.username;
+    }
 
     if (type == "history") {
-        QList<GroupMessage> hist;
-        const auto msgs = obj["messages"].toArray();
-        for (const auto& mv : msgs) {
-            const auto mo = mv.toObject();
-            const QString decrypted = decryptGroupMsg(key, mo["data"].toString());
-            if (decrypted.isEmpty()) continue;
-            const QString sender = mo["sender"].toString();
-            const bool outgoing = (sender.toStdString() == it->info.username);
+        std::vector<GroupMessage> hist;
+        for (const auto& mv : obj.value("messages", nlohmann::json::array())) {
+            const std::string decrypted = decryptGroupMsg(key, mv.value("data", ""));
+            if (decrypted.empty()) continue;
+            const std::string sender = mv.value("sender", "");
             GroupMessage gm;
-            gm.groupId  = groupId.toStdString();
-            gm.sender   = sender.toStdString();
-            gm.text     = decrypted.toStdString();
-            gm.ts       = mo["ts"].toInteger();
-            gm.outgoing = outgoing;
-            // Сохраняем если ещё нет в БД (история — нет дублей)
-            m_storage->saveGroupMessage(gm);
-            hist.append(gm);
+            gm.groupId  = groupId;
+            gm.sender   = sender;
+            gm.text     = decrypted;
+            gm.ts       = mv.value("ts", int64_t{0});
+            gm.outgoing = (sender == username);
+            (void)m_storage->saveGroupMessage(gm);
+            hist.push_back(gm);
         }
-        emit historyLoaded(groupId, hist);
+        fire([&](GroupEvent& ev) { if (ev.onHistoryLoaded) ev.onHistoryLoaded(groupId, hist); });
 
     } else if (type == "msg") {
-        const QString sender    = obj["sender"].toString();
-        const QString decrypted = decryptGroupMsg(key, obj["data"].toString());
-        if (decrypted.isEmpty()) return;
-        const bool outgoing = (sender.toStdString() == it->info.username);
+        const std::string sender = obj.value("sender", "");
+        const std::string decrypted = decryptGroupMsg(key, obj.value("data", ""));
+        if (decrypted.empty()) return;
 
         GroupMessage gm;
-        gm.groupId  = groupId.toStdString();
-        gm.sender   = sender.toStdString();
-        gm.text     = decrypted.toStdString();
-        gm.ts       = obj["ts"].toInteger(QDateTime::currentSecsSinceEpoch());
-        gm.outgoing = outgoing;
-        m_storage->saveGroupMessage(gm);
-        emit messageReceived(gm);
+        gm.groupId  = groupId;
+        gm.sender   = sender;
+        gm.text     = decrypted;
+        gm.ts       = obj.value("ts", nowMs());
+        gm.outgoing = (sender == username);
+        (void)m_storage->saveGroupMessage(gm);
+        fire([&](GroupEvent& ev) { if (ev.onMessageReceived) ev.onMessageReceived(gm); });
 
     } else if (type == "join") {
-        emit memberJoined(groupId, obj["username"].toString(), obj["role"].toString("member"));
+        const std::string user = obj.value("username", "");
+        const std::string role = obj.value("role", "member");
+        fire([&](GroupEvent& ev) { if (ev.onMemberJoined) ev.onMemberJoined(groupId, user, role); });
+
     } else if (type == "leave") {
-        emit memberLeft(groupId, obj["username"].toString());
+        const std::string user = obj.value("username", "");
+        fire([&](GroupEvent& ev) { if (ev.onMemberLeft) ev.onMemberLeft(groupId, user); });
     }
 }
 
 // ── Send ──────────────────────────────────────────────────────────────────────
 
-bool GroupManager::sendMessage(const QString& groupId, const QString& text) {
-    auto it = m_conns.find(groupId);
-    if (it == m_conns.end() || !it->ws) return false;
-    if (it->ws->state() != QAbstractSocket::ConnectedState) return false;
+bool GroupManager::sendMessage(const std::string& groupId, const std::string& text) {
+    Conn* conn = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(m_mutex);
+        auto it = m_conns.find(groupId);
+        if (it == m_conns.end() || !it->second->connected.load()) return false;
+        conn = it->second.get();
+    }
 
-    const QString encrypted = encryptGroupMsg(bridge::toQBA(it->info.groupKey), text);
-    if (encrypted.isEmpty()) return false;
+    const std::string encrypted = encryptGroupMsg(conn->info.groupKey, text);
+    if (encrypted.empty()) return false;
 
-    const QJsonObject frame { {"type", "msg"}, {"data", encrypted} };
-    it->ws->sendTextMessage(QString::fromUtf8(QJsonDocument(frame).toJson(QJsonDocument::Compact)));
-    return true;
+    const nlohmann::json frame{{"type", "msg"}, {"data", encrypted}};
+    const std::string payload = frame.dump();
+
+    std::lock_guard<std::mutex> lk(conn->curlMutex);
+    if (!conn->curl) return false;
+    size_t sent = 0;
+    return curl_ws_send(conn->curl, payload.data(), payload.size(), &sent, 0, CURLWS_TEXT) == CURLE_OK;
 }
 
 // ── Load saved groups ─────────────────────────────────────────────────────────
@@ -355,19 +469,38 @@ void GroupManager::loadSavedGroups() {
     const auto saved = m_storage->allGroups();
     for (const Group& g : saved) {
         if (g.token.empty() || g.groupKey.size() != 32) continue;
-        m_conns[QString::fromStdString(g.id)].info = g;
-        openWs(QString::fromStdString(g.id));
-        qDebug("[GroupManager] Загружена группа %s", g.name.c_str());
+        connectGroup(g);
+        fprintf(stderr, "[GroupManager] Загружена группа %s\n", g.name.c_str());
     }
 }
 
-QList<Group> GroupManager::groups() const {
-    QList<Group> list;
+std::vector<Group> GroupManager::groups() const {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    std::vector<Group> list;
     list.reserve(m_conns.size());
-    for (const auto& c : m_conns) list.append(c.info);
+    for (const auto& [id, c] : m_conns) list.push_back(c->info);
     return list;
 }
 
-Group GroupManager::groupById(const QString& id) const {
-    return m_conns.contains(id) ? m_conns[id].info : Group{};
+Group GroupManager::groupById(const std::string& id) const {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    auto it = m_conns.find(id);
+    return it != m_conns.end() ? it->second->info : Group{};
+}
+
+// ── Listeners ─────────────────────────────────────────────────────────────────
+
+GroupManager::Token GroupManager::addListener(GroupEvent ev) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    const Token t = m_nextToken++;
+    m_listeners.emplace_back(t, std::move(ev));
+    return t;
+}
+
+void GroupManager::removeListener(Token t) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    m_listeners.erase(
+        std::remove_if(m_listeners.begin(), m_listeners.end(),
+                       [t](const auto& p) { return p.first == t; }),
+        m_listeners.end());
 }

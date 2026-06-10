@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(naleystogramm VERSION 0.8.1.1 LANGUAGES CXX)
+project(naleystogramm VERSION 0.8.2 LANGUAGES CXX)
 
 if(WIN32 OR MINGW OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
     enable_language(RC)
@@ -37,7 +37,6 @@ find_package(Qt6 REQUIRED COMPONENTS
     Concurrent
     LinguistTools
     OPTIONAL_COMPONENTS
-    WebSockets
     Multimedia
 )
 
@@ -95,17 +94,18 @@ endif()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ПРАВИЛО: core и crypto НЕ включают Qt напрямую.
-#   ✅ Все Qt↔std конвертации — через src/crypto/qt_bridge.h (только из UI).
+#   ✅ Все Qt↔std конвертации — через src/crypto/qt_bridge.h.
 #   🔍 Проверить нарушения:  cmake --build . --target core-purity
-#   🔒 Hard-запрет (после Phase 6): cmake -DSTRICT_NO_QT_IN_CORE=ON
+#   🔒 STRICT_NO_QT_IN_CORE=ON (по умолчанию) — запрет на уровне компилятора,
+#      кроме src/core/callmanager.cpp (граница CallManager↔MediaEngine).
 # ══════════════════════════════════════════════════════════════════════════════
 option(STRICT_NO_QT_IN_CORE
-    "Запретить Qt в naleystogramm-core на уровне компилятора (включать после Phase 6)"
-    OFF)
+    "Запретить Qt в naleystogramm-core на уровне компилятора (кроме callmanager.cpp)"
+    ON)
 
 # ── Core sources (core/ + crypto/) ───────────────────────────────────────────
-# Цель: naleystogramm-core — статическая библиотека без Qt.
-# Статус: МИГРАЦИЯ. Qt ещё присутствует в Phase 6 файлах — убирается поэтапно.
+# naleystogramm-core — статическая библиотека без Qt (единственное исключение —
+# callmanager.cpp, граница CallManager↔MediaEngine через qt_bridge.h).
 set(CORE_SOURCES
     # Core
     src/core/identity.h
@@ -278,33 +278,37 @@ add_custom_target(translations ALL DEPENDS ${QM_FILES}
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ██  naleystogramm-core  ██
-# Статическая Qt-free библиотека (целевое состояние).
-# Сейчас: Qt присутствует — убирается поэтапно (Фазы 1-7 плана миграции).
+# Статическая Qt-free библиотека.
 # ══════════════════════════════════════════════════════════════════════════════
 add_library(naleystogramm-core STATIC ${CORE_SOURCES})
 
-# PUBLIC: типы Qt используются в .h заголовках core — нужны всем, кто include core.
-# После миграции этот блок будет удалён.
+# PUBLIC: callmanager.cpp включает qt_bridge.h (QString/QByteArray/QUuid из Core,
+# QHostAddress из Network) на границе CallManager↔MediaEngine — нужны всем,
+# кто линкует core.
 target_link_libraries(naleystogramm-core PUBLIC
     Qt6::Core
     Qt6::Network
-    Qt6::Concurrent
     OpenSSL::SSL
     OpenSSL::Crypto
 )
 
 # ── Qt-запрет в core ──────────────────────────────────────────────────────────
-# STRICT_NO_QT_IN_CORE=ON: компилятор получает -include no_qt.h, который
-# через #pragma GCC poison делает любой #include <QXxx> ошибкой компиляции.
-# Включать только когда Phase 6 завершена (все Qt убраны из core).
+# STRICT_NO_QT_IN_CORE=ON: каждый .cpp из CORE_SOURCES (кроме callmanager.cpp)
+# получает -include no_qt.h, который через #pragma GCC poison делает любой
+# #include <QXxx> ошибкой компиляции. callmanager.cpp — единственное
+# документированное исключение (граница CallManager↔MediaEngine, qt_bridge.h).
 if(STRICT_NO_QT_IN_CORE)
-    if(NOT (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"))
-        message(FATAL_ERROR "STRICT_NO_QT_IN_CORE требует GCC или Clang")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        foreach(_src ${CORE_SOURCES})
+            if(_src MATCHES "\\.cpp$" AND NOT _src MATCHES "callmanager\\.cpp$")
+                set_source_files_properties(${_src} PROPERTIES
+                    COMPILE_OPTIONS "-include${CMAKE_CURRENT_SOURCE_DIR}/src/core/no_qt.h")
+            endif()
+        endforeach()
+        message(STATUS "STRICT_NO_QT_IN_CORE: ON — Qt запрещён в core (кроме callmanager.cpp)")
+    else()
+        message(STATUS "STRICT_NO_QT_IN_CORE: пропущено — требует GCC/Clang")
     endif()
-    target_compile_options(naleystogramm-core PRIVATE
-        -include ${CMAKE_CURRENT_SOURCE_DIR}/src/core/no_qt.h
-    )
-    message(STATUS "STRICT_NO_QT_IN_CORE: ON — Qt запрещён в core на уровне компилятора")
 else()
     message(STATUS "STRICT_NO_QT_IN_CORE: OFF — используй 'make core-purity' для проверки")
 endif()
@@ -356,7 +360,7 @@ target_include_directories(naleystogramm-core PUBLIC
 # APP_VERSION используется в updatechecker.h и sessionmanager.cpp
 target_compile_definitions(naleystogramm-core PUBLIC
     APP_VERSION="${PROJECT_VERSION}"
-    APP_CODENAME="Шалунишко"
+    APP_CODENAME="Оплошность"
 )
 
 # Asio: PUBLIC — network.h включает asio.hpp, поэтому все зависимые таргеты
@@ -393,20 +397,7 @@ else()
     message(STATUS "                 Установить: sudo pacman -S alsa-lib  или  sudo apt install libasound2-dev")
 endif()
 
-# Qt6WebSockets опционален — GroupManager (core + UI)
-if(Qt6WebSockets_FOUND)
-    target_sources(naleystogramm-core PRIVATE
-        src/core/groupmanager.h
-        src/core/groupmanager.cpp
-    )
-    target_link_libraries(naleystogramm-core PUBLIC Qt6::WebSockets)
-    target_compile_definitions(naleystogramm-core PUBLIC HAVE_QT_WEBSOCKETS)
-    message(STATUS "Qt6WebSockets:   найден — группы и каналы включены")
-else()
-    message(STATUS "Qt6WebSockets:   не найден — группы и каналы отключены")
-endif()
-
-# libcurl (UpdateChecker — HTTPS без QNetworkAccessManager)
+# libcurl (UpdateChecker — HTTPS без QNetworkAccessManager; GroupManager — HTTP join/leave/info + WS чат)
 find_package(CURL QUIET)
 if(CURL_FOUND)
     message(STATUS "libcurl:         найден — UpdateChecker использует libcurl")
@@ -414,6 +405,19 @@ if(CURL_FOUND)
     target_link_libraries(naleystogramm-core PRIVATE CURL::libcurl)
 else()
     message(STATUS "libcurl:         не найден — UpdateChecker отключён (stub)")
+endif()
+
+# GroupManager — HTTP join/leave/info + WebSocket чат через libcurl (curl_ws_*)
+if(CURL_FOUND)
+    set(HAVE_GROUPS TRUE)
+    target_sources(naleystogramm-core PRIVATE
+        src/core/groupmanager.h
+        src/core/groupmanager.cpp
+    )
+    target_compile_definitions(naleystogramm-core PUBLIC HAVE_GROUPS)
+    message(STATUS "Группы/каналы:   включены (libcurl WS)")
+else()
+    message(STATUS "Группы/каналы:   отключены (нет libcurl)")
 endif()
 
 # SQLCipher (Storage)
@@ -432,8 +436,8 @@ endif()
 # ══════════════════════════════════════════════════════════════════════════════
 add_executable(naleystogramm ${UI_SOURCES})
 
-# GroupChatWidget + JoinGroupDialog — только при наличии Qt6WebSockets
-if(Qt6WebSockets_FOUND)
+# GroupChatWidget + JoinGroupDialog — только при наличии libcurl (HAVE_GROUPS)
+if(HAVE_GROUPS)
     target_sources(naleystogramm PRIVATE
         src/ui/groupchatwidget.h
         src/ui/groupchatwidget.cpp
@@ -447,7 +451,7 @@ add_dependencies(naleystogramm translations)
 target_compile_definitions(naleystogramm PRIVATE
     TRANSLATIONS_DIR="${TRANSLATIONS_OUTPUT_DIR}"
     APP_VERSION="${PROJECT_VERSION}"
-    APP_CODENAME="Шалунишко"
+    APP_CODENAME="Оплошность"
 )
 
 target_include_directories(naleystogramm PRIVATE
@@ -457,16 +461,20 @@ target_include_directories(naleystogramm PRIVATE
     src/plugins
 )
 
-# naleystogramm-core тянет Qt6::Core/Network/Sql/Concurrent/WebSockets транзитивно
+# naleystogramm-core тянет Qt6::Core/Network/Sql/Concurrent транзитивно
 target_link_libraries(naleystogramm PRIVATE
     naleystogramm-core
     Qt6::Widgets
 )
 
 # libopus: голосовые звонки (MediaEngine, UI — не в core)
+# HAVE_OPUS должен быть PUBLIC на naleystogramm-core: mediaengine.h (с условным
+# полем OpusState* m_opus) включается и из callmanager.cpp (naleystogramm-core) —
+# без этого sizeof(MediaEngine) расходится между TU (ODR violation, heap corruption
+# в new MediaEngine(nullptr) внутри CallManager::CallManager).
 if(OPUS_FOUND)
     message(STATUS "libopus:         найден ${OPUS_VERSION} — голосовые звонки включены")
-    target_compile_definitions(naleystogramm PRIVATE HAVE_OPUS)
+    target_compile_definitions(naleystogramm-core PUBLIC HAVE_OPUS)
     target_include_directories(naleystogramm PRIVATE ${OPUS_INCLUDE_DIRS})
     target_link_libraries(naleystogramm PRIVATE ${OPUS_LIBRARIES})
 else()

@@ -1,5 +1,4 @@
 #pragma once
-#include <QObject>
 #include <memory>
 
 class StorageManager;
@@ -13,11 +12,10 @@ class RemoteShellManager;
 // Создаётся в main() до MainWindow; передаётся по ссылке в конструктор MainWindow.
 // Управляет порядком инициализации: KeyProtector → Storage → E2E → Network → остальные.
 // NetworkManager::init() (запуск сервера) вызывается из MainWindow после подключения сигналов.
-class App : public QObject {
-    Q_OBJECT
+class App {
 public:
-    explicit App(QObject* parent = nullptr);
-    ~App() override;
+    App();
+    ~App();
 
     [[nodiscard]] StorageManager&     storage();
     [[nodiscard]] E2EManager&         e2e();

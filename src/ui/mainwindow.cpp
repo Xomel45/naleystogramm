@@ -24,7 +24,7 @@
 #include "shellwindow.h"
 #include "shellmonitor.h"
 #include "sidedrawer.h"
-#ifdef HAVE_QT_WEBSOCKETS
+#ifdef HAVE_GROUPS
 #include "groupchatwidget.h"
 #include "dialogs/joingroupdialog.h"
 #include "../core/groupmanager.h"
@@ -534,6 +534,9 @@ MainWindow::~MainWindow() {
     m_callManager->removeListener(m_callListenerToken);
     m_fileTransfer->removeListener(m_fileTransferListenerToken);
     m_shellManager->removeListener(m_shellListenerToken);
+#ifdef HAVE_GROUPS
+    if (m_groupManager) m_groupManager->removeListener(m_groupListenerToken);
+#endif
     delete ui;
 }
 
@@ -659,19 +662,19 @@ void MainWindow::setupUi() {
         m_chat->prependHistory(QList<Message>(older.begin(), older.end()));
     });
 
-#ifdef HAVE_QT_WEBSOCKETS
+#ifdef HAVE_GROUPS
     // GroupChatWidget — добавляем рядом с m_chat в стек
     m_groupChat = new GroupChatWidget();
     connect(m_groupChat, &GroupChatWidget::sendMessage, this, [this](const QString& text) {
         if (m_activeGroup.isEmpty()) return;
-        if (!m_groupManager->sendMessage(m_activeGroup, text)) {
+        if (!m_groupManager->sendMessage(m_activeGroup.toStdString(), text.toStdString())) {
             qWarning("[Main] GroupManager: не удалось отправить сообщение в %s",
                      qPrintable(m_activeGroup));
         } else {
             // Показываем своё сообщение сразу (оптимистично)
             GroupMessage gm;
             gm.groupId  = m_activeGroup.toStdString();
-            gm.sender   = m_groupManager->groupById(m_activeGroup).username;
+            gm.sender   = m_groupManager->groupById(m_activeGroup.toStdString()).username;
             gm.text     = text.toStdString();
             gm.ts       = QDateTime::currentMSecsSinceEpoch();
             gm.outgoing = true;
@@ -683,49 +686,76 @@ void MainWindow::setupUi() {
         if (m_activeGroup.isEmpty()) return;
         const QString gid = m_activeGroup;
         m_activeGroup.clear();
-        m_groupManager->leaveGroup(gid);
+        m_groupManager->leaveGroup(gid.toStdString());
         m_contacts->removeGroup(gid);
     });
 
     // Инициализируем GroupManager
-    m_groupManager = new GroupManager(m_storage, this);
-    connect(m_groupManager, &GroupManager::groupJoined, this, [this](const Group& g) {
-        m_contacts->addOrUpdateGroup(g);
-    });
-    connect(m_groupManager, &GroupManager::wsConnected, this, [this](const QString& gid) {
-        m_contacts->setGroupConnected(gid, true);
-        if (m_activeGroup == gid) m_groupChat->setConnected(true);
-    });
-    connect(m_groupManager, &GroupManager::wsDisconnected, this, [this](const QString& gid) {
-        m_contacts->setGroupConnected(gid, false);
-        if (m_activeGroup == gid) m_groupChat->setConnected(false);
-    });
-    connect(m_groupManager, &GroupManager::messageReceived, this, [this](const GroupMessage& msg) {
-        const QString qgid = QString::fromStdString(msg.groupId);
-        m_contacts->updateGroupLastMessage(qgid,
-            QString::fromStdString(msg.sender + ": " + msg.text));
-        if (m_activeGroup == qgid) {
-            m_groupChat->appendMessage(msg);
-        } else {
-            m_contacts->incrementGroupUnread(qgid);
-        }
-    });
-    connect(m_groupManager, &GroupManager::historyLoaded,
-            this, [this](const QString& gid, const QList<GroupMessage>& msgs) {
-        if (m_activeGroup == gid) m_groupChat->loadHistory(msgs);
-    });
-    connect(m_groupManager, &GroupManager::memberJoined,
-            this, [this](const QString& gid, const QString& user, const QString&) {
-        if (m_activeGroup == gid) m_groupChat->appendSystemMsg(user + " вступил(а)");
-    });
-    connect(m_groupManager, &GroupManager::memberLeft,
-            this, [this](const QString& gid, const QString& user) {
-        if (m_activeGroup == gid) m_groupChat->appendSystemMsg(user + " покинул(а) группу");
-    });
-    connect(m_groupManager, &GroupManager::joinError, this, [this](const QString& url, const QString& err) {
-        QMessageBox::warning(this, "Ошибка вступления",
-                             "Не удалось вступить в группу:\n" + url + "\n\n" + err);
-    });
+    m_groupManager = std::make_unique<GroupManager>(m_storage);
+    {
+        GroupManager::GroupEvent ev;
+        ev.onGroupJoined = [this](const Group& g) {
+            QMetaObject::invokeMethod(this, [this, g]() {
+                m_contacts->addOrUpdateGroup(g);
+            }, Qt::QueuedConnection);
+        };
+        ev.onWsConnected = [this](const std::string& groupId) {
+            const QString gid = QString::fromStdString(groupId);
+            QMetaObject::invokeMethod(this, [this, gid]() {
+                m_contacts->setGroupConnected(gid, true);
+                if (m_activeGroup == gid) m_groupChat->setConnected(true);
+            }, Qt::QueuedConnection);
+        };
+        ev.onWsDisconnected = [this](const std::string& groupId) {
+            const QString gid = QString::fromStdString(groupId);
+            QMetaObject::invokeMethod(this, [this, gid]() {
+                m_contacts->setGroupConnected(gid, false);
+                if (m_activeGroup == gid) m_groupChat->setConnected(false);
+            }, Qt::QueuedConnection);
+        };
+        ev.onMessageReceived = [this](const GroupMessage& msg) {
+            QMetaObject::invokeMethod(this, [this, msg]() {
+                const QString qgid = QString::fromStdString(msg.groupId);
+                m_contacts->updateGroupLastMessage(qgid,
+                    QString::fromStdString(msg.sender + ": " + msg.text));
+                if (m_activeGroup == qgid) {
+                    m_groupChat->appendMessage(msg);
+                } else {
+                    m_contacts->incrementGroupUnread(qgid);
+                }
+            }, Qt::QueuedConnection);
+        };
+        ev.onHistoryLoaded = [this](const std::string& groupId, const std::vector<GroupMessage>& msgs) {
+            const QString gid = QString::fromStdString(groupId);
+            const QList<GroupMessage> qmsgs(msgs.begin(), msgs.end());
+            QMetaObject::invokeMethod(this, [this, gid, qmsgs]() {
+                if (m_activeGroup == gid) m_groupChat->loadHistory(qmsgs);
+            }, Qt::QueuedConnection);
+        };
+        ev.onMemberJoined = [this](const std::string& groupId, const std::string& username, const std::string&) {
+            const QString gid = QString::fromStdString(groupId);
+            const QString user = QString::fromStdString(username);
+            QMetaObject::invokeMethod(this, [this, gid, user]() {
+                if (m_activeGroup == gid) m_groupChat->appendSystemMsg(user + " вступил(а)");
+            }, Qt::QueuedConnection);
+        };
+        ev.onMemberLeft = [this](const std::string& groupId, const std::string& username) {
+            const QString gid = QString::fromStdString(groupId);
+            const QString user = QString::fromStdString(username);
+            QMetaObject::invokeMethod(this, [this, gid, user]() {
+                if (m_activeGroup == gid) m_groupChat->appendSystemMsg(user + " покинул(а) группу");
+            }, Qt::QueuedConnection);
+        };
+        ev.onJoinError = [this](const std::string& serverUrl, const std::string& error) {
+            const QString url = QString::fromStdString(serverUrl);
+            const QString err = QString::fromStdString(error);
+            QMetaObject::invokeMethod(this, [this, url, err]() {
+                QMessageBox::warning(this, "Ошибка вступления",
+                                     "Не удалось вступить в группу:\n" + url + "\n\n" + err);
+            }, Qt::QueuedConnection);
+        };
+        m_groupListenerToken = m_groupManager->addListener(std::move(ev));
+    }
 
     // Загружаем сохранённые группы
     m_groupManager->loadSavedGroups();
@@ -736,14 +766,14 @@ void MainWindow::setupUi() {
         const QString myName = QString::fromStdString(SessionManager::instance().displayName());
         auto* dlg = new JoinGroupDialog(myName, this);
         if (dlg->exec() == QDialog::Accepted)
-            m_groupManager->joinGroup(dlg->serverUrl(), dlg->username());
+            m_groupManager->joinGroup(dlg->serverUrl().toStdString(), dlg->username().toStdString());
         dlg->deleteLater();
     });
     connect(m_contacts, &ContactsWidget::groupSelected, this, [this](const QString& gid) {
         m_activeGroup = gid;
         m_activePeer  = QUuid();  // сбросить активный 1:1 чат
 
-        const Group g = m_groupManager->groupById(gid);
+        const Group g = m_groupManager->groupById(gid.toStdString());
         m_groupChat->openGroup(g);
         m_groupChat->setConnected(m_contacts->isGroupConnected(gid));
 
@@ -756,7 +786,7 @@ void MainWindow::setupUi() {
         m_rightStack->setCurrentWidget(m_groupChat);
     });
     connect(m_contacts, &ContactsWidget::leaveGroupRequested, this, [this](const QString& gid) {
-        m_groupManager->leaveGroup(gid);
+        m_groupManager->leaveGroup(gid.toStdString());
         m_contacts->removeGroup(gid);
         if (m_activeGroup == gid) {
             m_activeGroup.clear();
@@ -764,12 +794,12 @@ void MainWindow::setupUi() {
         }
     });
 
-#endif // HAVE_QT_WEBSOCKETS
+#endif // HAVE_GROUPS
 
-    // Правая панель: стек из m_chat (и m_groupChat при наличии WebSockets)
+    // Правая панель: стек из m_chat (и m_groupChat при наличии групп)
     m_rightStack = new QStackedWidget;
     m_rightStack->addWidget(m_chat);
-#ifdef HAVE_QT_WEBSOCKETS
+#ifdef HAVE_GROUPS
     m_rightStack->addWidget(m_groupChat);
 #endif
     m_rightStack->setCurrentWidget(m_chat);
@@ -1403,7 +1433,7 @@ void MainWindow::onAddContactClicked() {
 
 void MainWindow::onContactSelected(QUuid uuid) {
     m_activePeer  = uuid;
-#ifdef HAVE_QT_WEBSOCKETS
+#ifdef HAVE_GROUPS
     m_activeGroup.clear();
 #endif
     m_contacts->clearUnread(uuid);

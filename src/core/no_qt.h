@@ -7,7 +7,11 @@
 //  «use of poisoned identifier».
 //
 //  Включать Qt-типы в core запрещено. Все конвертации — через:
-//    src/crypto/qt_bridge.h  (только из UI-слоя)
+//    src/crypto/qt_bridge.h
+//
+//  Единственное исключение: src/core/callmanager.cpp (граница
+//  CallManager↔MediaEngine) — этот файл исключён из -include в CMakeLists.txt
+//  и не подхватывает данный заголовок.
 // ══════════════════════════════════════════════════════════════════════════════
 
 #if defined(__GNUC__) || defined(__clang__)

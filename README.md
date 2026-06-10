@@ -4,7 +4,7 @@
 
 **Зашифрованный P2P-мессенджер без серверов и слежки**
 
-[![Version](https://img.shields.io/badge/version-0.8.1-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
+[![Version](https://img.shields.io/badge/version-0.8.2-7c6aff?style=flat-square)](https://github.com/Xomel45/naleystogramm/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-4a4a7a?style=flat-square)](#установка)
 [![Qt](https://img.shields.io/badge/Qt-6.x-41cd52?style=flat-square)](https://www.qt.io/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
@@ -89,17 +89,17 @@ Naleystogramm — десктопный мессенджер с прямым за
 
 ```bash
 # AppImage — работает на любом дистрибутиве, Qt не нужен
-chmod +x Naleystogramm-0.8.1-x86_64.AppImage
-./Naleystogramm-0.8.1-x86_64.AppImage
+chmod +x Naleystogramm-0.8.2-x86_64.AppImage
+./Naleystogramm-0.8.2-x86_64.AppImage
 
 # Arch Linux / pacman
-sudo pacman -U naleystogramm-0.8.1-1-x86_64.pkg.tar.zst
+sudo pacman -U naleystogramm-0.8.2-1-x86_64.pkg.tar.zst
 
 # Debian / Ubuntu / Mint
-sudo dpkg -i naleystogramm_0.8.1_amd64.deb
+sudo dpkg -i naleystogramm_0.8.2_amd64.deb
 
 # Fedora / RHEL / openSUSE
-sudo dnf install ./naleystogramm-0.8.1-1.x86_64.rpm
+sudo dnf install ./naleystogramm-0.8.2-1.x86_64.rpm
 ```
 
 ### Windows
@@ -175,7 +175,7 @@ cmake --build build-win -j$(( $(nproc) - 2 ))
 ./deploy.sh release all --clean
 ```
 
-Артефакты: `builds/releases/0.8.1-linux/` и `builds/releases/0.8.1-windows/` (+ `.zip`)
+Артефакты: `builds/releases/0.8.2-linux/` и `builds/releases/0.8.2-windows/` (+ `.zip`)
 
 ---
 
@@ -210,6 +210,25 @@ deploy.sh         — скрипт сборки релизов
 ---
 
 ## Changelog
+
+### v0.8.2 «Оплошность»
+
+**Архитектура — Qt-free core завершён**
+- `App` (`app.h`/`app.cpp`) переведён с `QObject` на обычный класс — последний Qt-класс в `naleystogramm-core` устранён
+- `STRICT_NO_QT_IN_CORE` включён по умолчанию: компилятор сам блокирует `#include <QString>`/`<QObject>`/... в core (`-include no_qt.h`, `#pragma GCC poison`); единственное документированное исключение — `callmanager.cpp` (граница `CallManager` ↔ `MediaEngine` через `qt_bridge.h`)
+- `naleystogramm-core` больше не линкует `Qt6::Concurrent`
+- `UpnpMapper`, `CallManager`, `FileTransfer`, `RemoteShellManager`, `AudioRecorder`, `GroupManager` переведены на Qt-free реализации (asio, std::fstream, POSIX/Win32-процессы, ALSA/WinMM, libcurl) с листенер-паттерном событий вместо Qt-сигналов
+- Исправлена регрессия UPnP: проброс портов не работал из-за мёртвого коллбэка `onNeedUpnpMapping`, который никогда не назначался
+
+**Сеть**
+- Минимальная совместимая версия пира поднята до `0.8.1.1` (форсированный апдейт — клиенты ≤0.8.1 отклоняются при подключении)
+
+**Исправления**
+- Краш при старте (heap corruption, `malloc(): invalid size`): `HAVE_OPUS` был объявлен только для `naleystogramm` (executable), а `mediaengine.h` (с условным полем `OpusState* m_opus`) подключается и из `callmanager.cpp` (`naleystogramm-core`) — `sizeof(MediaEngine)` расходился между TU, `new MediaEngine(nullptr)` в `CallManager` выделял меньше памяти, чем писал конструктор. `HAVE_OPUS` теперь `PUBLIC` на `naleystogramm-core`
+
+*Изменения в Android-версии — см. [naleystogramm-mobile](https://github.com/Xomel45/naleystogramm-mobile)*
+
+---
 
 ### v0.8.1 «Шалунишко»
 
@@ -361,6 +380,6 @@ deploy.sh         — скрипт сборки релизов
 
 <div align="center">
 
-*v0.8.1 «Шалунишко»*
+*v0.8.2 «Оплошность»*
 
 </div>
