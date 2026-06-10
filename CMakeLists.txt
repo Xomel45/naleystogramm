@@ -138,6 +138,8 @@ set(CORE_SOURCES
     src/core/callmanager.cpp
     src/core/remoteshellmanager.h
     src/core/remoteshellmanager.cpp
+    src/core/shellprocess.h
+    src/core/shellprocess.cpp
     # Crypto
     src/crypto/securedata.h
     src/crypto/openssl_raii.h

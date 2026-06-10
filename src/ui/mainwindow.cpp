@@ -271,24 +271,53 @@ MainWindow::MainWindow(App& app, QWidget* parent)
             this, &MainWindow::onSendVoice);
 
     // ── Удалённый шелл ───────────────────────────────────────────────────────
-    connect(m_shellManager, &RemoteShellManager::shellChallengeGenerated,
-            this, &MainWindow::onShellChallengeGenerated);
-    connect(m_shellManager, &RemoteShellManager::shellSessionStarted,
-            this, &MainWindow::onShellSessionStarted);
-    connect(m_shellManager, &RemoteShellManager::shellPasswordRequired,
-            this, &MainWindow::onShellPasswordRequired);
-    connect(m_shellManager, &RemoteShellManager::shellAccepted,
-            this, &MainWindow::onShellAccepted);
-    connect(m_shellManager, &RemoteShellManager::shellRejected,
-            this, &MainWindow::onShellRejected);
-    connect(m_shellManager, &RemoteShellManager::dataReceived,
-            this, &MainWindow::onShellDataReceived);
-    connect(m_shellManager, &RemoteShellManager::inputMonitored,
-            this, &MainWindow::onInputMonitored);
-    connect(m_shellManager, &RemoteShellManager::sessionEnded,
-            this, &MainWindow::onShellSessionEnded);
-    connect(m_shellManager, &RemoteShellManager::privilegeEscalationDetected,
-            this, &MainWindow::onPrivilegeEscalationDetected);
+    {
+        RemoteShellManager::ShellEvent ev;
+        ev.onChallengeGenerated = [this](const std::string& sid, const std::string& peer,
+                                          const std::string& name, const std::string& otp) {
+            QMetaObject::invokeMethod(this, [this, sid, peer, name, otp]{
+                onShellChallengeGenerated(QString::fromStdString(sid), bridge::toQUuid(peer),
+                                           QString::fromStdString(name), QString::fromStdString(otp));
+            }, Qt::QueuedConnection);
+        };
+        ev.onPasswordRequired = [this](const std::string& sid, const std::string& peer, const std::string& name) {
+            QMetaObject::invokeMethod(this, [this, sid, peer, name]{
+                onShellPasswordRequired(QString::fromStdString(sid), bridge::toQUuid(peer), QString::fromStdString(name));
+            }, Qt::QueuedConnection);
+        };
+        ev.onAccepted = [this](const std::string& sid, const std::string& peer, const std::string& name) {
+            QMetaObject::invokeMethod(this, [this, sid, peer, name]{
+                onShellAccepted(QString::fromStdString(sid), bridge::toQUuid(peer), QString::fromStdString(name));
+            }, Qt::QueuedConnection);
+        };
+        ev.onSessionStarted = [this](const std::string& sid) {
+            QMetaObject::invokeMethod(this, [this, sid]{ onShellSessionStarted(QString::fromStdString(sid)); }, Qt::QueuedConnection);
+        };
+        ev.onRejected = [this](const std::string& sid, const std::string& reason) {
+            QMetaObject::invokeMethod(this, [this, sid, reason]{
+                onShellRejected(QString::fromStdString(sid), QString::fromStdString(reason));
+            }, Qt::QueuedConnection);
+        };
+        ev.onDataReceived = [this](const std::string& sid, const Bytes& data) {
+            QMetaObject::invokeMethod(this, [this, sid, data]{
+                onShellDataReceived(QString::fromStdString(sid), bridge::toQBA(data));
+            }, Qt::QueuedConnection);
+        };
+        ev.onInputMonitored = [this](const std::string& sid, const Bytes& data) {
+            QMetaObject::invokeMethod(this, [this, sid, data]{
+                onInputMonitored(QString::fromStdString(sid), bridge::toQBA(data));
+            }, Qt::QueuedConnection);
+        };
+        ev.onSessionEnded = [this](const std::string& sid, const std::string& reason) {
+            QMetaObject::invokeMethod(this, [this, sid, reason]{
+                onShellSessionEnded(QString::fromStdString(sid), QString::fromStdString(reason));
+            }, Qt::QueuedConnection);
+        };
+        ev.onPrivilegeEscalationDetected = [this](const std::string& sid) {
+            QMetaObject::invokeMethod(this, [this, sid]{ onPrivilegeEscalationDetected(QString::fromStdString(sid)); }, Qt::QueuedConnection);
+        };
+        m_shellListenerToken = m_shellManager->addListener(std::move(ev));
+    }
 
     // Подключаем логирование сети к централизованному логгеру
     connect(m_settings, &SettingsPanel::verboseLoggingChanged, this, [this](bool v) {
@@ -504,6 +533,7 @@ MainWindow::~MainWindow() {
     DemoMode::instance().unsubscribe(m_demoToken);
     m_callManager->removeListener(m_callListenerToken);
     m_fileTransfer->removeListener(m_fileTransferListenerToken);
+    m_shellManager->removeListener(m_shellListenerToken);
     delete ui;
 }
 
@@ -1087,7 +1117,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
     // ── Сигналинг удалённого шелла — делегируем RemoteShellManager ────────────
     if (type == "SHELL_REQUEST" || type == "SHELL_ACCEPT" ||
         type == "SHELL_REJECT"  || type == "SHELL_KILL") {
-        m_shellManager->handleSignaling(from, msg);
+        m_shellManager->handleSignaling(quid2s(from), bridge::fromQJsonObj(msg));
         return;
     }
 
@@ -1098,7 +1128,7 @@ void MainWindow::onMessageReceived(QUuid from, QJsonObject msg) {
     if (type == "SHELL_DATA" || type == "SHELL_INPUT") {
         const auto plain = m_e2e->decrypt(bridge::fromQUuid(from), bridge::fromQJsonObj(msg));
         if (plain.has_value())
-            m_shellManager->handleDecryptedData(from, bridge::toQBA(*plain));
+            m_shellManager->handleDecryptedData(quid2s(from), *plain);
         return;
     }
 
@@ -1810,7 +1840,7 @@ void MainWindow::onShellRequestedFromProfile(QUuid peerUuid) {
             tr("Контакт не в сети."));
         return;
     }
-    m_shellManager->requestShell(peerUuid);
+    m_shellManager->requestShell(quid2s(peerUuid));
     statusBar()->showMessage(tr("Запрос шелла отправлен..."), 4000);
 }
 
@@ -1819,13 +1849,13 @@ void MainWindow::onShellChallengeGenerated(QString sessionId, QUuid from,
                                             QString peerName, QString otp) {
     if (!SessionManager::instance().remoteShellEnabled()) {
         qWarning("[Shell] Входящий запрос отклонён: удалённый шелл отключён в настройках");
-        m_shellManager->rejectRequest(sessionId, "disabled_by_user");
+        m_shellManager->rejectRequest(sessionId.toStdString(), "disabled_by_user");
         return;
     }
     if (!checkPrivacy(SessionManager::instance().privacyShell(), from)) {
         qDebug("[Shell] Входящий запрос от %s отклонён (настройки конфиденциальности)",
                qPrintable(from.toString(QUuid::WithoutBraces)));
-        m_shellManager->rejectRequest(sessionId, "privacy");
+        m_shellManager->rejectRequest(sessionId.toStdString(), "privacy");
         return;
     }
 
@@ -1838,7 +1868,7 @@ void MainWindow::onShellChallengeGenerated(QString sessionId, QUuid from,
     m_shellMonitors.insert(sessionId, monitor);
     connect(monitor, &ShellMonitor::terminateRequested,
             this, [this](const QString& sid) {
-        m_shellManager->killSession(sid, "receiver_terminated");
+        m_shellManager->killSession(sid.toStdString(), "receiver_terminated");
     });
 
     // Показываем OTP пользователю — только кнопка «Отклонить»
@@ -1857,25 +1887,19 @@ void MainWindow::onShellChallengeGenerated(QString sessionId, QUuid from,
     box->setAttribute(Qt::WA_DeleteOnClose);
 
     connect(box, &QMessageBox::finished, this, [this, sessionId, monitor, box](int result) {
+        m_shellChallengeBoxes.remove(sessionId);
         if (result == QMessageBox::Cancel) {
             // Пользователь явно нажал «Отклонить»
             m_shellMonitors.remove(sessionId);
             monitor->deleteLater();
-            m_shellManager->rejectRequest(sessionId, "declined");
+            m_shellManager->rejectRequest(sessionId.toStdString(), "declined");
         }
         // Если диалог закрылся иначе (shellSessionStarted) — сессия уже работает
     });
 
     // Автозакрытие диалога когда шелл запущен (пароль принят инициатором)
-    connect(m_shellManager, &RemoteShellManager::shellSessionStarted,
-            box, [box, sessionId](const QString& sid) {
-        if (sid == sessionId) box->done(QMessageBox::Ok);
-    });
-    // Автозакрытие если сессия завершилась до принятия пароля
-    connect(m_shellManager, &RemoteShellManager::sessionEnded,
-            box, [box, sessionId](const QString& sid, const QString&) {
-        if (sid == sessionId) box->done(QMessageBox::Ok);
-    });
+    // или сессия завершилась до принятия пароля — см. onShellSessionStarted/onShellSessionEnded
+    m_shellChallengeBoxes.insert(sessionId, box);
 
     box->show();
     statusBar()->showMessage(tr("Входящий запрос шелла от %1").arg(name), 6000);
@@ -1883,6 +1907,8 @@ void MainWindow::onShellChallengeGenerated(QString sessionId, QUuid from,
 
 // Receiver: шелл-процесс успешно запущен — показываем монитор
 void MainWindow::onShellSessionStarted(QString sessionId) {
+    if (auto* box = m_shellChallengeBoxes.take(sessionId)) box->done(QMessageBox::Ok);
+
     auto it = m_shellMonitors.find(sessionId);
     if (it == m_shellMonitors.end()) return;
     it.value()->show();
@@ -1903,11 +1929,11 @@ void MainWindow::onShellPasswordRequired(QString sessionId, QUuid /*peerUuid*/,
         &ok);
 
     if (!ok || password.trimmed().isEmpty()) {
-        m_shellManager->killSession(sessionId, "initiator_cancelled");
+        m_shellManager->killSession(sessionId.toStdString(), "initiator_cancelled");
         return;
     }
 
-    m_shellManager->respondToChallenge(sessionId, password.trimmed().toUpper());
+    m_shellManager->respondToChallenge(sessionId.toStdString(), password.trimmed().toUpper().toStdString());
 }
 
 // Инициатор: пир принял запрос — открываем ShellWindow
@@ -1919,11 +1945,11 @@ void MainWindow::onShellAccepted(QString sessionId, QUuid /*peerUuid*/, QString 
 
     connect(win, &ShellWindow::inputSubmitted,
             this, [this](const QString& sid, const QByteArray& data) {
-        m_shellManager->sendInput(sid, data);
+        m_shellManager->sendInput(sid.toStdString(), bridge::fromQBA(data));
     });
     connect(win, &ShellWindow::terminateRequested,
             this, [this](const QString& sid) {
-        m_shellManager->killSession(sid, "initiator_terminated");
+        m_shellManager->killSession(sid.toStdString(), "initiator_terminated");
     });
     win->show();
     statusBar()->showMessage(tr("Шелл-сессия с %1 открыта").arg(name), 4000);
@@ -1962,6 +1988,8 @@ void MainWindow::onInputMonitored(QString sessionId, QByteArray data) {
 
 // Сессия завершена — закрываем окна обеих сторон и очищаем хэши
 void MainWindow::onShellSessionEnded(QString sessionId, QString reason) {
+    if (auto* box = m_shellChallengeBoxes.take(sessionId)) box->done(QMessageBox::Ok);
+
     if (auto* win = m_shellWindows.value(sessionId, nullptr)) {
         win->showSessionEnded(reason);
         // Даём пользователю прочитать сообщение — не закрываем принудительно

@@ -32,5 +32,5 @@ private:
     NetworkManager*                m_network     {nullptr};
     std::unique_ptr<FileTransfer>  m_fileTransfer;
     std::unique_ptr<CallManager>   m_callManager;
-    RemoteShellManager*            m_shellManager{nullptr};
+    std::unique_ptr<RemoteShellManager> m_shellManager;
 };

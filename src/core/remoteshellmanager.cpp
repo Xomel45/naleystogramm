@@ -1,78 +1,88 @@
 #include "remoteshellmanager.h"
 #include "network.h"
 #include "../crypto/e2e.h"
-#include "../crypto/qt_bridge.h"
-#include <QProcess>
-#include <QTimer>
-#include <QRandomGenerator>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QFile>
-#include <QDebug>
+#include <algorithm>
+#include <cstdio>
+#include <random>
+#include <regex>
 
-// Migration helpers — Phase 6 will migrate these call sites fully
-static inline std::string quid2s(const QUuid& u) {
-    return u.toString(QUuid::WithoutBraces).toStdString();
-}
-static inline void netSend(NetworkManager* net, const QUuid& u, const QJsonObject& o) {
-    net->sendFrame(quid2s(u), bridge::fromQJsonObj(o));
+// ── UUID v4 (как в callmanager.cpp — независимая копия, чтобы не тянуть
+//    приватные хелперы NetworkManager) ─────────────────────────────────────────
+static std::string generateUuid() {
+    static std::random_device rd;
+    static std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint64_t> dist;
+    uint64_t hi = dist(gen);
+    uint64_t lo = dist(gen);
+    hi = (hi & 0xFFFFFFFFFFFF0FFFULL) | 0x0000000000004000ULL;  // version 4
+    lo = (lo & 0x3FFFFFFFFFFFFFFFULL) | 0x8000000000000000ULL;  // variant 10xx
+    char buf[37];
+    std::snprintf(buf, sizeof(buf),
+        "%08x-%04x-%04x-%04x-%012llx",
+        static_cast<uint32_t>(hi >> 32),
+        static_cast<uint16_t>(hi >> 16),
+        static_cast<uint16_t>(hi),
+        static_cast<uint16_t>(lo >> 48),
+        static_cast<unsigned long long>(lo & 0x0000FFFFFFFFFFFFULL));
+    return std::string(buf);
 }
 
 // ── Конструктор / деструктор ──────────────────────────────────────────────────
 
-RemoteShellManager::RemoteShellManager(NetworkManager* net, E2EManager* e2e,
-                                        QObject* parent)
-    : QObject(parent), m_net(net), m_e2e(e2e)
+RemoteShellManager::RemoteShellManager(NetworkManager* net, E2EManager* e2e)
+    : m_net(net), m_e2e(e2e), m_destroyed(std::make_shared<std::atomic<bool>>(false))
 {}
 
 RemoteShellManager::~RemoteShellManager() {
-    for (auto& sd : m_sessions) {
-        if (sd.inactivityTimer) { sd.inactivityTimer->stop(); }
-        if (sd.process) {
-            sd.process->kill();
-            sd.process->waitForFinished(1000);
-        }
+    *m_destroyed = true;
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+    for (auto& [id, sd] : m_sessions) {
+        if (sd.inactivityTimer) sd.inactivityTimer->cancel();
+        sd.process.reset(); // ShellProcess::~ShellProcess() вызывает kill()
     }
+    m_sessions.clear();
 }
 
 // ── Инициатор: запросить шелл ─────────────────────────────────────────────────
 
-void RemoteShellManager::requestShell(const QUuid& peerUuid) {
+void RemoteShellManager::requestShell(const std::string& peerUuid) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+
     // Допускается не более одной одновременной сессии
     if (m_sessions.size() >= kMaxConcurrentSessions) {
-        qWarning("[Shell] Отказ: уже есть активная сессия (максимум %d)",
-                 kMaxConcurrentSessions);
-        emit shellRejected(QString{}, "max_sessions");
+        std::fprintf(stderr, "[Shell] Отказ: уже есть активная сессия (максимум %d)\n",
+                      kMaxConcurrentSessions);
+        fire([](ShellEvent& ev) { if (ev.onRejected) ev.onRejected(std::string{}, "max_sessions"); });
         return;
     }
 
-    const QString sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    const QString peerName  = QString::fromStdString(m_net->getPeerInfo(quid2s(peerUuid)).name);
+    const std::string sessionId = generateUuid();
+    const std::string peerName  = m_net->getPeerInfo(peerUuid).name;
 
     SessionData sd;
     sd.role     = Role::Initiator;
     sd.peerUuid = peerUuid;
     sd.peerName = peerName;
-    m_sessions.insert(sessionId, sd);
+    m_sessions.emplace(sessionId, std::move(sd));
 
-    netSend(m_net, peerUuid, QJsonObject{
+    m_net->sendFrame(peerUuid, nlohmann::json{
         {"type",      "SHELL_REQUEST"},
         {"sessionId", sessionId},
     });
 
-    qDebug("[Shell] Запрошен шелл у %s, сессия=%s",
-           qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)),
-           qPrintable(sessionId.left(8)));
+    std::fprintf(stderr, "[Shell] Запрошен шелл у %s, сессия=%s\n",
+                  peerUuid.substr(0, 8).c_str(), sessionId.substr(0, 8).c_str());
 }
 
 // ── Получатель: явно отклонить запрос ────────────────────────────────────────
 
-void RemoteShellManager::rejectRequest(const QString& sessionId,
-                                        const QString& reason) {
+void RemoteShellManager::rejectRequest(const std::string& sessionId,
+                                        const std::string& reason) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
-    netSend(m_net, it->peerUuid, QJsonObject{
+    m_net->sendFrame(it->second.peerUuid, nlohmann::json{
         {"type",      "SHELL_REJECT"},
         {"sessionId", sessionId},
         {"reason",    reason},
@@ -80,51 +90,54 @@ void RemoteShellManager::rejectRequest(const QString& sessionId,
 
     cleanupSession(sessionId);
 
-    qDebug("[Shell] Сессия %s отклонена: %s",
-           qPrintable(sessionId.left(8)), qPrintable(reason));
+    std::fprintf(stderr, "[Shell] Сессия %s отклонена: %s\n",
+                  sessionId.substr(0, 8).c_str(), reason.c_str());
 }
 
 // ── Инициатор: ответить на OTP-запрос ────────────────────────────────────────
 
-void RemoteShellManager::respondToChallenge(const QString& sessionId,
-                                             const QString& password) {
+void RemoteShellManager::respondToChallenge(const std::string& sessionId,
+                                             const std::string& password) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     auto it = m_sessions.find(sessionId);
-    if (it == m_sessions.end() || it->role != Role::Initiator) return;
+    if (it == m_sessions.end() || it->second.role != Role::Initiator) return;
 
-    netSend(m_net, it->peerUuid, QJsonObject{
+    m_net->sendFrame(it->second.peerUuid, nlohmann::json{
         {"type",      "SHELL_CHALLENGE_RESPONSE"},
         {"sessionId", sessionId},
         {"password",  password},
     });
 
-    qDebug("[Shell] Отправлен ответ на OTP-запрос, сессия=%s",
-           qPrintable(sessionId.left(8)));
+    std::fprintf(stderr, "[Shell] Отправлен ответ на OTP-запрос, сессия=%s\n",
+                  sessionId.substr(0, 8).c_str());
 }
 
 // ── Инициатор: отправить ввод ─────────────────────────────────────────────────
 
-void RemoteShellManager::sendInput(const QString& sessionId,
-                                    const QByteArray& data) {
+void RemoteShellManager::sendInput(const std::string& sessionId, const Bytes& data) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     auto it = m_sessions.find(sessionId);
-    if (it == m_sessions.end() || it->role != Role::Initiator) return;
+    if (it == m_sessions.end() || it->second.role != Role::Initiator) return;
 
     // ══ КРИТИЧЕСКАЯ ПРОВЕРКА БЕЗОПАСНОСТИ ════════════════════════════════════
     if (hasForbiddenPattern(data)) {
-        qCritical("[Shell][SECURITY] ЭСКАЛАЦИЯ ПРИВИЛЕГИЙ! Сессия %s уничтожена.",
-                  qPrintable(sessionId.left(8)));
+        std::fprintf(stderr, "[Shell][SECURITY] ЭСКАЛАЦИЯ ПРИВИЛЕГИЙ! Сессия %s уничтожена.\n",
+                      sessionId.substr(0, 8).c_str());
         killSession(sessionId, "privilege_escalation");
-        emit privilegeEscalationDetected(sessionId);
+        fire([&sessionId](ShellEvent& ev) {
+            if (ev.onPrivilegeEscalationDetected) ev.onPrivilegeEscalationDetected(sessionId);
+        });
         return;
     }
     // ═════════════════════════════════════════════════════════════════════════
 
     resetInactivityTimer(sessionId);
 
-    sendEncrypted(it->peerUuid,
-        QJsonObject{
+    sendEncrypted(it->second.peerUuid,
+        nlohmann::json{
             {"shell_type", "SHELL_INPUT"},
             {"session",    sessionId},
-            {"data",       QString::fromLatin1(data.toBase64())},
+            {"data",       bytesToBase64(data)},
         },
         "SHELL_INPUT"
     );
@@ -132,35 +145,36 @@ void RemoteShellManager::sendInput(const QString& sessionId,
 
 // ── Завершить сессию ──────────────────────────────────────────────────────────
 
-void RemoteShellManager::killSession(const QString& sessionId,
-                                      const QString& reason) {
+void RemoteShellManager::killSession(const std::string& sessionId,
+                                      const std::string& reason) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
-    netSend(m_net, it->peerUuid, QJsonObject{
+    m_net->sendFrame(it->second.peerUuid, nlohmann::json{
         {"type",      "SHELL_KILL"},
         {"sessionId", sessionId},
         {"reason",    reason},
     });
 
     cleanupSession(sessionId);
-    emit sessionEnded(sessionId, reason);
+    fire([&](ShellEvent& ev) { if (ev.onSessionEnded) ev.onSessionEnded(sessionId, reason); });
 }
 
 // ── Обработчик незашифрованного сигналинга ────────────────────────────────────
 
-void RemoteShellManager::handleSignaling(const QUuid& from,
-                                          const QJsonObject& msg) {
-    const QString type      = msg["type"].toString();
-    const QString sessionId = msg["sessionId"].toString();
+void RemoteShellManager::handleSignaling(const std::string& from, const nlohmann::json& msg) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+    const std::string type      = msg.value("type", std::string());
+    const std::string sessionId = msg.value("sessionId", std::string());
 
     // ── SHELL_REQUEST: от инициатора к получателю ─────────────────────────────
     if (type == "SHELL_REQUEST") {
         // Не допускаем более одной одновременной сессии
         if (m_sessions.size() >= kMaxConcurrentSessions) {
-            qWarning("[Shell] Входящий SHELL_REQUEST отклонён: занято (сессий=%zu)",
-                     static_cast<std::size_t>(m_sessions.size()));
-            netSend(m_net, from, QJsonObject{
+            std::fprintf(stderr, "[Shell] Входящий SHELL_REQUEST отклонён: занято (сессий=%zu)\n",
+                          m_sessions.size());
+            m_net->sendFrame(from, nlohmann::json{
                 {"type",      "SHELL_REJECT"},
                 {"sessionId", sessionId},
                 {"reason",    "busy"},
@@ -168,52 +182,56 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
             return;
         }
 
-        const QString peerName = QString::fromStdString(m_net->getPeerInfo(quid2s(from)).name);
-        const QString otp      = generateOtp();
+        const std::string peerName = m_net->getPeerInfo(from).name;
+        const std::string otp      = generateOtp();
 
         SessionData sd;
         sd.role     = Role::Receiver;
         sd.peerUuid = from;
         sd.peerName = peerName;
         sd.otp      = otp;
-        m_sessions.insert(sessionId, sd);
+        m_sessions.emplace(sessionId, std::move(sd));
 
         // Сообщаем инициатору что ждём ответа на OTP-запрос
-        netSend(m_net, from, QJsonObject{
+        m_net->sendFrame(from, nlohmann::json{
             {"type",      "SHELL_CHALLENGE"},
             {"sessionId", sessionId},
         });
 
-        qDebug("[Shell] Входящий запрос от %s, сессия=%s — OTP сгенерирован",
-               qPrintable(from.toString(QUuid::WithoutBraces).left(8)),
-               qPrintable(sessionId.left(8)));
+        std::fprintf(stderr, "[Shell] Входящий запрос от %s, сессия=%s — OTP сгенерирован\n",
+                      from.substr(0, 8).c_str(), sessionId.substr(0, 8).c_str());
 
         // Показываем OTP в окне получателя — пользователь сообщает его инициатору
-        emit shellChallengeGenerated(sessionId, from, peerName, otp);
+        fire([&](ShellEvent& ev) {
+            if (ev.onChallengeGenerated) ev.onChallengeGenerated(sessionId, from, peerName, otp);
+        });
 
     // ── SHELL_CHALLENGE: от получателя к инициатору ───────────────────────────
     } else if (type == "SHELL_CHALLENGE") {
         auto it = m_sessions.find(sessionId);
-        if (it == m_sessions.end() || it->role != Role::Initiator) return;
+        if (it == m_sessions.end() || it->second.role != Role::Initiator) return;
 
-        qDebug("[Shell] Получен OTP-запрос, сессия=%s — ожидаем ввод пароля",
-               qPrintable(sessionId.left(8)));
+        std::fprintf(stderr, "[Shell] Получен OTP-запрос, сессия=%s — ожидаем ввод пароля\n",
+                      sessionId.substr(0, 8).c_str());
 
         // Просим инициатора ввести пароль, который виден у получателя
-        emit shellPasswordRequired(sessionId, from, it->peerName);
+        const std::string peerName = it->second.peerName;
+        fire([&](ShellEvent& ev) {
+            if (ev.onPasswordRequired) ev.onPasswordRequired(sessionId, from, peerName);
+        });
 
     // ── SHELL_CHALLENGE_RESPONSE: от инициатора к получателю ─────────────────
     } else if (type == "SHELL_CHALLENGE_RESPONSE") {
         auto it = m_sessions.find(sessionId);
-        if (it == m_sessions.end() || it->role != Role::Receiver) return;
+        if (it == m_sessions.end() || it->second.role != Role::Receiver) return;
 
-        const QString entered = msg["password"].toString();
+        const std::string entered = msg.value("password", std::string());
 
-        if (entered.isEmpty() || entered != it->otp) {
-            qWarning("[Shell][SECURITY] Неверный OTP для сессии %s — шелл отклонён",
-                     qPrintable(sessionId.left(8)));
+        if (entered.empty() || entered != it->second.otp) {
+            std::fprintf(stderr, "[Shell][SECURITY] Неверный OTP для сессии %s — шелл отклонён\n",
+                          sessionId.substr(0, 8).c_str());
 
-            netSend(m_net, from, QJsonObject{
+            m_net->sendFrame(from, nlohmann::json{
                 {"type",      "SHELL_REJECT"},
                 {"sessionId", sessionId},
                 {"reason",    "wrong_password"},
@@ -224,145 +242,148 @@ void RemoteShellManager::handleSignaling(const QUuid& from,
         }
 
         // Пароль верный — запускаем шелл и подтверждаем инициатору
-        it->otp.clear(); // одноразовый: сразу обнуляем
+        it->second.otp.clear(); // одноразовый: сразу обнуляем
 
-        netSend(m_net, from, QJsonObject{
+        m_net->sendFrame(from, nlohmann::json{
             {"type",      "SHELL_ACCEPT"},
             {"sessionId", sessionId},
         });
 
         spawnProcess(sessionId);
 
-        qDebug("[Shell] OTP верный, сессия=%s — шелл запускается",
-               qPrintable(sessionId.left(8)));
+        std::fprintf(stderr, "[Shell] OTP верный, сессия=%s — шелл запускается\n",
+                      sessionId.substr(0, 8).c_str());
 
     // ── SHELL_ACCEPT: от получателя к инициатору ─────────────────────────────
     } else if (type == "SHELL_ACCEPT") {
         auto it = m_sessions.find(sessionId);
-        if (it == m_sessions.end() || it->role != Role::Initiator) return;
+        if (it == m_sessions.end() || it->second.role != Role::Initiator) return;
 
         resetInactivityTimer(sessionId);
 
-        qDebug("[Shell] Шелл принят пиром, сессия=%s",
-               qPrintable(sessionId.left(8)));
+        std::fprintf(stderr, "[Shell] Шелл принят пиром, сессия=%s\n",
+                      sessionId.substr(0, 8).c_str());
 
-        emit shellAccepted(sessionId, from, it->peerName);
+        const std::string peerName = it->second.peerName;
+        fire([&](ShellEvent& ev) { if (ev.onAccepted) ev.onAccepted(sessionId, from, peerName); });
 
     // ── SHELL_REJECT: от получателя к инициатору ─────────────────────────────
     } else if (type == "SHELL_REJECT") {
         auto it = m_sessions.find(sessionId);
         if (it == m_sessions.end()) return;
 
-        const QString reason = msg["reason"].toString("declined");
+        const std::string reason = msg.value("reason", std::string("declined"));
         cleanupSession(sessionId);
 
-        qDebug("[Shell] Запрос шелла отклонён: %s", qPrintable(reason));
+        std::fprintf(stderr, "[Shell] Запрос шелла отклонён: %s\n", reason.c_str());
 
-        emit shellRejected(sessionId, reason);
+        fire([&](ShellEvent& ev) { if (ev.onRejected) ev.onRejected(sessionId, reason); });
 
     // ── SHELL_KILL: завершение с любой стороны ────────────────────────────────
     } else if (type == "SHELL_KILL") {
         auto it = m_sessions.find(sessionId);
         if (it == m_sessions.end()) return;
 
-        const QString reason = msg["reason"].toString("terminated");
+        const std::string reason = msg.value("reason", std::string("terminated"));
 
-        qDebug("[Shell] Получен SHELL_KILL: сессия=%s причина=%s",
-               qPrintable(sessionId.left(8)), qPrintable(reason));
+        std::fprintf(stderr, "[Shell] Получен SHELL_KILL: сессия=%s причина=%s\n",
+                      sessionId.substr(0, 8).c_str(), reason.c_str());
 
         cleanupSession(sessionId);
-        emit sessionEnded(sessionId, reason);
+        fire([&](ShellEvent& ev) { if (ev.onSessionEnded) ev.onSessionEnded(sessionId, reason); });
     }
 }
 
 // ── Обработчик расшифрованных данных SHELL_DATA / SHELL_INPUT ─────────────────
 
-void RemoteShellManager::handleDecryptedData(const QUuid& from,
-                                              const QByteArray& plaintext) {
-    const QJsonObject inner     = QJsonDocument::fromJson(plaintext).object();
-    const QString     shellType = inner["shell_type"].toString();
-    const QString     sessionId = inner["session"].toString();
-    const QByteArray  data      = QByteArray::fromBase64(
-        inner["data"].toString().toLatin1());
+void RemoteShellManager::handleDecryptedData(const std::string& from, const Bytes& plaintext) {
+    std::lock_guard<std::recursive_mutex> lk(m_mutex);
+
+    const auto inner = nlohmann::json::parse(plaintext.begin(), plaintext.end(), nullptr, false);
+    if (inner.is_discarded()) return;
+
+    const std::string shellType = inner.value("shell_type", std::string());
+    const std::string sessionId = inner.value("session", std::string());
+    const Bytes       data      = bytesFromBase64(inner.value("data", std::string()));
 
     if (shellType == "SHELL_DATA") {
         // stdout/stderr от удалённого шелла → отображаем в ShellWindow инициатора
         resetInactivityTimer(sessionId);
-        emit dataReceived(sessionId, data);
+        fire([&](ShellEvent& ev) { if (ev.onDataReceived) ev.onDataReceived(sessionId, data); });
 
     } else if (shellType == "SHELL_INPUT") {
         auto it = m_sessions.find(sessionId);
-        if (it == m_sessions.end() || it->role != Role::Receiver || !it->process) {
-            qWarning("[Shell] SHELL_INPUT: нет активного процесса для сессии %s",
-                     qPrintable(sessionId.left(8)));
+        if (it == m_sessions.end() || it->second.role != Role::Receiver || !it->second.process) {
+            std::fprintf(stderr, "[Shell] SHELL_INPUT: нет активного процесса для сессии %s\n",
+                          sessionId.substr(0, 8).c_str());
             return;
         }
 
         // ══ ВТОРИЧНАЯ ПРОВЕРКА БЕЗОПАСНОСТИ (defence in depth) ═══════════════
         if (hasForbiddenPattern(data)) {
-            qCritical("[Shell][SECURITY] ЭСКАЛАЦИЯ (получатель): сессия %s уничтожена",
-                      qPrintable(sessionId.left(8)));
+            std::fprintf(stderr, "[Shell][SECURITY] ЭСКАЛАЦИЯ (получатель): сессия %s уничтожена\n",
+                          sessionId.substr(0, 8).c_str());
 
-            netSend(m_net, from, QJsonObject{
+            m_net->sendFrame(from, nlohmann::json{
                 {"type",      "SHELL_KILL"},
                 {"sessionId", sessionId},
                 {"reason",    "privilege_escalation"},
             });
 
             cleanupSession(sessionId);
-            emit sessionEnded(sessionId, "privilege_escalation");
+            fire([&](ShellEvent& ev) { if (ev.onSessionEnded) ev.onSessionEnded(sessionId, "privilege_escalation"); });
             return;
         }
         // ═════════════════════════════════════════════════════════════════════
 
         resetInactivityTimer(sessionId);
-        emit inputMonitored(sessionId, data);
+        fire([&](ShellEvent& ev) { if (ev.onInputMonitored) ev.onInputMonitored(sessionId, data); });
 
-        QByteArray cmd = data;
-        if (!cmd.endsWith('\n')) cmd.append('\n');
-        it->process->write(cmd);
+        Bytes cmd = data;
+        if (cmd.empty() || cmd.back() != '\n') cmd.push_back('\n');
+        it->second.process->write(cmd);
     }
 }
 
 // ── Проверка на эскалацию привилегий ─────────────────────────────────────────
 
-bool RemoteShellManager::hasForbiddenPattern(const QByteArray& input) {
-    static const QList<QRegularExpression> kPatterns = {
+bool RemoteShellManager::hasForbiddenPattern(const Bytes& input) {
+    static const std::vector<std::regex> kPatterns = {
         // sudo / su / pkexec / doas / runas / gsudo как самостоятельные слова
-        QRegularExpression(R"(\b(sudo|su|pkexec|doas|runas|gsudo)\b)",
-                           QRegularExpression::CaseInsensitiveOption),
+        std::regex(R"(\b(sudo|su|pkexec|doas|runas|gsudo)\b)",
+                   std::regex::ECMAScript | std::regex::icase),
         // Полные пути к sudo/su (обход $PATH)
-        QRegularExpression(R"(/usr(/local)?/bin/(sudo|su|pkexec|doas))"),
+        std::regex(R"(/usr(/local)?/bin/(sudo|su|pkexec|doas))"),
         // env-bypass: env sudo, env -i sudo, env VAR=x sudo и т.д.
-        QRegularExpression(R"(\benv\b[^|&;]*\b(sudo|su|pkexec)\b)"),
+        std::regex(R"(\benv\b[^|&;]*\b(sudo|su|pkexec)\b)"),
         // chmod +s / chmod 4xxx / chmod 6xxx (setuid / setgid бит)
-        QRegularExpression(R"(\bchmod\b[^|&;]*[+\-][sS]|\bchmod\s+[46][0-7]{3}\b)"),
+        std::regex(R"(\bchmod\b[^|&;]*[+\-][sS]|\bchmod\s+[46][0-7]{3}\b)"),
         // setcap, newuidmap, newgidmap, nsenter (namespace / capabilities)
-        QRegularExpression(R"(\b(setcap|newuidmap|newgidmap|nsenter)\b)"),
+        std::regex(R"(\b(setcap|newuidmap|newgidmap|nsenter)\b)"),
         // chown root — смена владельца на root
-        QRegularExpression(R"(\bchown\s+(root[: ]|0[: ]))",
-                           QRegularExpression::CaseInsensitiveOption),
+        std::regex(R"(\bchown\s+(root[: ]|0[: ]))",
+                   std::regex::ECMAScript | std::regex::icase),
         // Запись в /etc/passwd, /etc/shadow, /etc/sudoers, /etc/crontab и др.
-        QRegularExpression(R"(>{1,2}\s*/etc/(passwd|shadow|sudoers|crontab|cron\.\S*|hosts|ld\.so\.(conf|preload)))",
-                           QRegularExpression::CaseInsensitiveOption),
+        std::regex(R"(>{1,2}\s*/etc/(passwd|shadow|sudoers|crontab|cron\.\S*|hosts|ld\.so\.(conf|preload)))",
+                   std::regex::ECMAScript | std::regex::icase),
         // tee в /etc/
-        QRegularExpression(R"(\btee\b[^|&;]*/etc/)"),
+        std::regex(R"(\btee\b[^|&;]*/etc/)"),
         // Python/Perl/Ruby setuid one-liners
-        QRegularExpression(R"(\b(python[23]?|perl|ruby)\b[^|&;]*\b(setuid|setgid)\s*\()"),
+        std::regex(R"(\b(python[23]?|perl|ruby)\b[^|&;]*\b(setuid|setgid)\s*\()"),
         // LD_PRELOAD / LD_LIBRARY_PATH инъекция
-        QRegularExpression(R"(\bLD_(PRELOAD|LIBRARY_PATH)\s*=)"),
+        std::regex(R"(\bLD_(PRELOAD|LIBRARY_PATH)\s*=)"),
         // Чтение физической памяти ядра
-        QRegularExpression(R"(/dev/(mem|kmem|port)\b)"),
+        std::regex(R"(/dev/(mem|kmem|port)\b)"),
         // PowerShell RunAs (Windows)
-        QRegularExpression(R"(Start-Process\s+\S*\s+-Verb\s+RunAs)",
-                           QRegularExpression::CaseInsensitiveOption),
+        std::regex(R"(Start-Process\s+\S*\s+-Verb\s+RunAs)",
+                   std::regex::ECMAScript | std::regex::icase),
         // crontab -e / at now (инъекция cron)
-        QRegularExpression(R"(\bcrontab\s+-e|\bat\s+now\b)"),
+        std::regex(R"(\bcrontab\s+-e|\bat\s+now\b)"),
     };
 
-    const QString str = QString::fromUtf8(input);
+    const std::string str(input.begin(), input.end());
     for (const auto& pat : kPatterns) {
-        if (pat.match(str).hasMatch())
+        if (std::regex_search(str, pat))
             return true;
     }
     return false;
@@ -370,161 +391,168 @@ bool RemoteShellManager::hasForbiddenPattern(const QByteArray& input) {
 
 // ── Генерация одноразового пароля ─────────────────────────────────────────────
 
-QString RemoteShellManager::generateOtp() {
+std::string RemoteShellManager::generateOtp() {
     // Исключаем визуально похожие символы: 0/O, 1/I, B/8 и т.д.
-    static const QString kChars = QStringLiteral("ACDEFGHJKLMNPQRTUVWXYZ2346789");
-    QString otp;
+    static const std::string kChars = "ACDEFGHJKLMNPQRTUVWXYZ2346789";
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_int_distribution<std::size_t> dist(0, kChars.size() - 1);
+
+    std::string otp;
     otp.reserve(kOtpLength);
     for (int i = 0; i < kOtpLength; ++i)
-        otp += kChars[static_cast<int>(
-            QRandomGenerator::global()->bounded(static_cast<quint32>(kChars.size())))];
+        otp += kChars[dist(gen)];
     return otp;
 }
 
 // ── Отправка зашифрованных данных ─────────────────────────────────────────────
 
-void RemoteShellManager::sendEncrypted(const QUuid& peerUuid,
-                                        const QJsonObject& innerObj,
-                                        const QString& outerType) {
-    if (!m_e2e->hasSession(bridge::fromQUuid(peerUuid))) {
-        qWarning("[Shell] Нет E2E-сессии для %s — данные шелла не отправлены",
-                 qPrintable(peerUuid.toString(QUuid::WithoutBraces).left(8)));
+void RemoteShellManager::sendEncrypted(const std::string& peerUuid,
+                                        const nlohmann::json& innerObj,
+                                        const std::string& outerType) {
+    if (!m_e2e->hasSession(peerUuid)) {
+        std::fprintf(stderr, "[Shell] Нет E2E-сессии для %s — данные шелла не отправлены\n",
+                      peerUuid.substr(0, 8).c_str());
         return;
     }
 
-    const QByteArray innerJson =
-        QJsonDocument(innerObj).toJson(QJsonDocument::Compact);
-    QJsonObject env = bridge::toQJsonObj(
-        m_e2e->encrypt(bridge::fromQUuid(peerUuid), bridge::fromQBA(innerJson)));
-    if (env.isEmpty()) return;
+    const std::string innerJson = innerObj.dump();
+    nlohmann::json env = m_e2e->encrypt(peerUuid, sv2bytes(innerJson));
+    if (env.empty()) return;
 
     // decrypt() не использует поле type — подмена безопасна
     env["type"] = outerType;
-    netSend(m_net, peerUuid, env);
+    m_net->sendFrame(peerUuid, env);
 }
 
 // ── Запуск шелл-процесса ──────────────────────────────────────────────────────
 
-void RemoteShellManager::spawnProcess(const QString& sessionId) {
+void RemoteShellManager::spawnProcess(const std::string& sessionId) {
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
-    SessionData& sd = it.value();
+    SessionData& sd = it->second;
+    const std::string peerUuid = sd.peerUuid;
 
-    auto* proc = new QProcess(this);
-    proc->setProcessChannelMode(QProcess::MergedChannels);
+    auto proc = std::make_unique<ShellProcess>();
+    const bool ok = proc->start(
+        // onOutput
+        [this, sessionId, peerUuid, destroyed = m_destroyed](const Bytes& out) {
+            asio::post(m_net->ioContext(), [this, sessionId, peerUuid, out, destroyed]() {
+                if (*destroyed) return;
+                std::lock_guard<std::recursive_mutex> lk(m_mutex);
+                auto sit = m_sessions.find(sessionId);
+                if (sit == m_sessions.end()) return;
+                resetInactivityTimer(sessionId);
+                sendEncrypted(peerUuid, nlohmann::json{
+                    {"shell_type", "SHELL_DATA"},
+                    {"session",    sessionId},
+                    {"data",       bytesToBase64(out)},
+                }, "SHELL_DATA");
+            });
+        },
+        // onExit
+        [this, sessionId, peerUuid, destroyed = m_destroyed]() {
+            asio::post(m_net->ioContext(), [this, sessionId, peerUuid, destroyed]() {
+                if (*destroyed) return;
+                std::lock_guard<std::recursive_mutex> lk(m_mutex);
+                auto sit = m_sessions.find(sessionId);
+                if (sit == m_sessions.end()) return;
 
-#ifdef Q_OS_WIN
-    proc->start("powershell.exe", {"-NoLogo", "-NoExit", "-NonInteractive"});
-#else
-    QString shell = "/bin/bash";
-    if (!QFile::exists(shell)) {
-        shell = "/bin/zsh";
-        if (!QFile::exists(shell))
-            shell = "/bin/sh";
-    }
-    proc->start(shell, {});
-#endif
+                std::fprintf(stderr, "[Shell] Шелл-процесс завершился, сессия=%s\n",
+                              sessionId.substr(0, 8).c_str());
 
-    if (!proc->waitForStarted(5000)) {
-        qWarning("[Shell] Не удалось запустить шелл: %s",
-                 qPrintable(proc->errorString()));
-        proc->deleteLater();
-        netSend(m_net, sd.peerUuid, QJsonObject{
+                m_net->sendFrame(peerUuid, nlohmann::json{
+                    {"type",      "SHELL_KILL"},
+                    {"sessionId", sessionId},
+                    {"reason",    "process_exited"},
+                });
+                cleanupSession(sessionId);
+                fire([&](ShellEvent& ev) { if (ev.onSessionEnded) ev.onSessionEnded(sessionId, "process_exited"); });
+            });
+        });
+
+    if (!ok) {
+        std::fprintf(stderr, "[Shell] Не удалось запустить шелл\n");
+        m_net->sendFrame(peerUuid, nlohmann::json{
             {"type",      "SHELL_KILL"},
             {"sessionId", sessionId},
             {"reason",    "spawn_failed"},
         });
         m_sessions.erase(it);
-        emit sessionEnded(sessionId, "spawn_failed");
+        fire([&](ShellEvent& ev) { if (ev.onSessionEnded) ev.onSessionEnded(sessionId, "spawn_failed"); });
         return;
     }
 
-    sd.process = proc;
+    sd.process         = std::move(proc);
+    sd.inactivityTimer = std::make_shared<asio::steady_timer>(m_net->ioContext());
+    resetInactivityTimer(sessionId); // запускает первый таймаут бездействия
 
-    const QUuid peerUuid = sd.peerUuid;
+    std::fprintf(stderr, "[Shell] Шелл-процесс запущен, сессия=%s, таймаут=%d мин\n",
+                  sessionId.substr(0, 8).c_str(), kSessionTimeoutMs / 60000);
 
-    connect(proc, &QProcess::readyReadStandardOutput,
-            this, [this, sessionId, peerUuid, proc]() {
-        resetInactivityTimer(sessionId);
-        const QByteArray out = proc->readAllStandardOutput();
-        if (out.isEmpty()) return;
-
-        sendEncrypted(peerUuid,
-            QJsonObject{
-                {"shell_type", "SHELL_DATA"},
-                {"session",    sessionId},
-                {"data",       QString::fromLatin1(out.toBase64())},
-            },
-            "SHELL_DATA"
-        );
-    });
-
-    connect(proc, &QProcess::finished,
-            this, [this, sessionId, peerUuid](int, QProcess::ExitStatus) {
-        if (!m_sessions.contains(sessionId)) return;
-
-        qDebug("[Shell] Шелл-процесс завершился, сессия=%s",
-               qPrintable(sessionId.left(8)));
-
-        netSend(m_net, peerUuid, QJsonObject{
-            {"type",      "SHELL_KILL"},
-            {"sessionId", sessionId},
-            {"reason",    "process_exited"},
-        });
-        cleanupSession(sessionId);
-        emit sessionEnded(sessionId, "process_exited");
-    });
-
-    // Таймер бездействия: убиваем сессию через kSessionTimeoutMs
-    auto* timer = new QTimer(this);
-    timer->setSingleShot(true);
-    timer->setInterval(kSessionTimeoutMs);
-    connect(timer, &QTimer::timeout, this, [this, sessionId]() {
-        qWarning("[Shell] Таймаут бездействия: сессия %s завершена",
-                 qPrintable(sessionId.left(8)));
-        killSession(sessionId, "timeout");
-        emit sessionEnded(sessionId, "timeout");
-    });
-    sd.inactivityTimer = timer;
-    timer->start();
-
-    qDebug("[Shell] Шелл-процесс запущен (pid=%lld), сессия=%s, таймаут=%d мин",
-           static_cast<long long>(proc->processId()),
-           qPrintable(sessionId.left(8)),
-           kSessionTimeoutMs / 60000);
-
-    emit shellSessionStarted(sessionId);
+    fire([&](ShellEvent& ev) { if (ev.onSessionStarted) ev.onSessionStarted(sessionId); });
 }
 
 // ── Сброс таймера бездействия ─────────────────────────────────────────────────
 
-void RemoteShellManager::resetInactivityTimer(const QString& sessionId) {
+void RemoteShellManager::resetInactivityTimer(const std::string& sessionId) {
     auto it = m_sessions.find(sessionId);
-    if (it == m_sessions.end()) return;
-    if (it->inactivityTimer)
-        it->inactivityTimer->start(); // restart() — сбрасывает отсчёт
+    if (it == m_sessions.end() || !it->second.inactivityTimer) return;
+
+    SessionData& sd = it->second;
+    ++sd.timerGeneration;
+    const int gen = sd.timerGeneration;
+
+    sd.inactivityTimer->expires_after(std::chrono::milliseconds(kSessionTimeoutMs));
+    sd.inactivityTimer->async_wait([this, sessionId, gen, destroyed = m_destroyed](const std::error_code& ec) {
+        if (*destroyed || ec) return; // ec=operation_aborted при rearm/отмене
+        std::lock_guard<std::recursive_mutex> lk(m_mutex);
+        auto sit = m_sessions.find(sessionId);
+        if (sit == m_sessions.end() || sit->second.timerGeneration != gen) return;
+
+        std::fprintf(stderr, "[Shell] Таймаут бездействия: сессия %s завершена\n",
+                      sessionId.substr(0, 8).c_str());
+
+        const std::string peerUuid = sit->second.peerUuid;
+        m_net->sendFrame(peerUuid, nlohmann::json{
+            {"type",      "SHELL_KILL"},
+            {"sessionId", sessionId},
+            {"reason",    "timeout"},
+        });
+        cleanupSession(sessionId);
+        fire([&](ShellEvent& ev) { if (ev.onSessionEnded) ev.onSessionEnded(sessionId, "timeout"); });
+    });
 }
 
 // ── Очистка сессии ────────────────────────────────────────────────────────────
 
-void RemoteShellManager::cleanupSession(const QString& sessionId) {
+void RemoteShellManager::cleanupSession(const std::string& sessionId) {
     auto it = m_sessions.find(sessionId);
     if (it == m_sessions.end()) return;
 
-    if (it->inactivityTimer) {
-        it->inactivityTimer->stop();
-        it->inactivityTimer->deleteLater();
-        it->inactivityTimer = nullptr;
+    if (it->second.inactivityTimer) {
+        it->second.inactivityTimer->cancel();
+        it->second.inactivityTimer.reset();
     }
-
-    if (it->process) {
-        it->process->disconnect(this);
-        it->process->kill();
-        it->process->waitForFinished(2000);
-        it->process->deleteLater();
-        it->process = nullptr;
-    }
+    it->second.process.reset(); // ShellProcess::~ShellProcess() вызывает kill()
 
     m_sessions.erase(it);
+}
+
+// ── Listener API ──────────────────────────────────────────────────────────────
+
+RemoteShellManager::Token RemoteShellManager::addListener(ShellEvent ev) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    Token t = m_nextToken++;
+    m_listeners.emplace_back(t, std::move(ev));
+    return t;
+}
+
+void RemoteShellManager::removeListener(Token t) {
+    std::lock_guard<std::mutex> lk(m_listenerMutex);
+    m_listeners.erase(
+        std::remove_if(m_listeners.begin(), m_listeners.end(),
+                       [t](const auto& p) { return p.first == t; }),
+        m_listeners.end());
 }

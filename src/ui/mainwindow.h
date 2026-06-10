@@ -36,6 +36,7 @@ class ContactProfileDialog;
 class ShellWindow;
 class ShellMonitor;
 class QLineEdit;
+class QMessageBox;
 class SideDrawer;
 
 class MainWindow : public QMainWindow {
@@ -177,7 +178,11 @@ private:
     uint32_t         m_netListenerToken{0};
     uint32_t         m_callListenerToken{0};
     uint32_t         m_fileTransferListenerToken{0};
+    uint32_t         m_shellListenerToken{0};
     UpdateChecker*   m_updateChecker{nullptr};
+
+    // sessionId → диалог OTP-запроса (Receiver), для автозакрытия
+    QHash<QString, QMessageBox*> m_shellChallengeBoxes;
 
 signals:
     // Emitted on Qt thread when network reports peer info changed
