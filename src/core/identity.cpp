@@ -1,6 +1,7 @@
 #include "identity.h"
 #include "sessionmanager.h"
 #include <chrono>
+#include <cctype>
 #include <optional>
 
 Identity& Identity::instance() {
@@ -38,6 +39,19 @@ std::string Identity::connectionString(const std::string& ip, uint16_t port) con
     return m_uuid + "@" + ip + ":" + std::to_string(port);
 }
 
+bool Identity::isValidUuid(const std::string& uuid) {
+    // "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" — 36 chars, hyphens at 8,13,18,23
+    if (uuid.size() != 36) return false;
+    static constexpr int kHyphenPos[] = {8, 13, 18, 23};
+    for (const int pos : kHyphenPos)
+        if (uuid[pos] != '-') return false;
+    for (int i = 0; i < 36; ++i) {
+        if (i == 8 || i == 13 || i == 18 || i == 23) continue;
+        if (!std::isxdigit(static_cast<unsigned char>(uuid[i]))) return false;
+    }
+    return true;
+}
+
 std::optional<PeerInfo> Identity::parseConnectionString(const std::string& str) {
     // format: "UUID@IP:Port"
     const auto atPos = str.find('@');
@@ -46,7 +60,7 @@ std::optional<PeerInfo> Identity::parseConnectionString(const std::string& str) 
     const std::string uuid   = str.substr(0, atPos);
     const std::string ipPort = str.substr(atPos + 1);
 
-    if (uuid.empty()) return std::nullopt;
+    if (!isValidUuid(uuid)) return std::nullopt;
 
     const auto colonPos = ipPort.rfind(':');
     if (colonPos == std::string::npos) return std::nullopt;

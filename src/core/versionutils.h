@@ -5,7 +5,14 @@
 #include <algorithm>
 
 // ── VersionUtils ──────────────────────────────────────────────────────────────
-// Header-only. Сравнивает семантические версии "major.minor.patch[.hotfix]".
+// Header-only. Сравнивает версии формата "major.minor.patch[.hotfix]".
+//
+// Схема:
+//   major  — масштабный редизайн/переработка части проекта
+//   minor  — развитие функций и исправление ошибок
+//   patch  — 0: beta/alpha; 1+: стабильный релиз
+//   hotfix — внеплановая сборка поверх сломанного patch (обычно отсутствует);
+//            x.x.x.y > x.x.x, но x.x.x.y < x.x.(x+1)
 
 class VersionUtils {
 public:

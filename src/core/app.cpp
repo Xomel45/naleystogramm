@@ -10,6 +10,9 @@
 #include <filesystem>
 #include <cstdlib>
 #include <cstdio>
+#ifdef HAVE_CURL
+#  include <curl/curl.h>
+#endif
 
 static std::filesystem::path appDataDir() {
 #ifdef _WIN32
@@ -25,6 +28,10 @@ static std::filesystem::path appDataDir() {
 }
 
 App::App(QObject* parent) : QObject(parent) {
+#ifdef HAVE_CURL
+    curl_global_init(CURL_GLOBAL_ALL);
+#endif
+
     auto& id = Identity::instance();
     id.load();
 
@@ -47,7 +54,11 @@ App::App(QObject* parent) : QObject(parent) {
     m_shellManager = new RemoteShellManager(m_network, m_e2e.get(), this);
 }
 
-App::~App() = default;
+App::~App() {
+#ifdef HAVE_CURL
+    curl_global_cleanup();
+#endif
+}
 
 StorageManager&     App::storage()     { return *m_storage; }
 E2EManager&         App::e2e()         { return *m_e2e; }

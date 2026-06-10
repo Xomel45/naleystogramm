@@ -92,9 +92,19 @@ else()
     message(STATUS "nlohmann/json:   FetchContent v3.11.3")
 endif()
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ПРАВИЛО: core и crypto НЕ включают Qt напрямую.
+#   ✅ Все Qt↔std конвертации — через src/crypto/qt_bridge.h (только из UI).
+#   🔍 Проверить нарушения:  cmake --build . --target core-purity
+#   🔒 Hard-запрет (после Phase 6): cmake -DSTRICT_NO_QT_IN_CORE=ON
+# ══════════════════════════════════════════════════════════════════════════════
+option(STRICT_NO_QT_IN_CORE
+    "Запретить Qt в naleystogramm-core на уровне компилятора (включать после Phase 6)"
+    OFF)
+
 # ── Core sources (core/ + crypto/) ───────────────────────────────────────────
 # Цель: naleystogramm-core — статическая библиотека без Qt.
-# Статус: МИГРАЦИЯ. Qt ещё присутствует, убирается файл за файлом (Фазы 1-7).
+# Статус: МИГРАЦИЯ. Qt ещё присутствует в Phase 6 файлах — убирается поэтапно.
 set(CORE_SOURCES
     # Core
     src/core/identity.h
@@ -278,6 +288,48 @@ target_link_libraries(naleystogramm-core PUBLIC
     Qt6::Concurrent
     OpenSSL::SSL
     OpenSSL::Crypto
+)
+
+# ── Qt-запрет в core ──────────────────────────────────────────────────────────
+# STRICT_NO_QT_IN_CORE=ON: компилятор получает -include no_qt.h, который
+# через #pragma GCC poison делает любой #include <QXxx> ошибкой компиляции.
+# Включать только когда Phase 6 завершена (все Qt убраны из core).
+if(STRICT_NO_QT_IN_CORE)
+    if(NOT (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"))
+        message(FATAL_ERROR "STRICT_NO_QT_IN_CORE требует GCC или Clang")
+    endif()
+    target_compile_options(naleystogramm-core PRIVATE
+        -include ${CMAKE_CURRENT_SOURCE_DIR}/src/core/no_qt.h
+    )
+    message(STATUS "STRICT_NO_QT_IN_CORE: ON — Qt запрещён в core на уровне компилятора")
+else()
+    message(STATUS "STRICT_NO_QT_IN_CORE: OFF — используй 'make core-purity' для проверки")
+endif()
+
+# Таргет для ручной проверки нарушений Qt в core (не ломает сборку)
+add_custom_target(core-purity
+    COMMAND ${CMAKE_COMMAND} -E cmake_echo_color --cyan
+        "=== Проверка Qt-зависимостей в naleystogramm-core ==="
+    COMMAND bash -c
+        "violations=\$(grep -rn --include='*.h' --include='*.cpp' \
+            -e '#include <Q' -e '#include \"Q' \
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ \
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/crypto/ \
+          | grep -v 'qt_bridge\\.h' \
+          | grep -v 'no_qt\\.h'); \
+         if [ -n \"\$violations\" ]; then \
+           echo ''; \
+           echo '\\033[1;31m❌ НАРУШЕНИЯ — Qt в core:\\033[0m'; \
+           echo \"\$violations\"; \
+           echo ''; \
+           echo 'Все Qt↔std конвертации должны идти через src/crypto/qt_bridge.h'; \
+           exit 1; \
+         else \
+           echo '\\033[1;32m✅ Чисто — Qt в core не найден\\033[0m'; \
+         fi"
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMENT "Проверка отсутствия Qt в naleystogramm-core"
+    VERBATIM
 )
 
 # sqlite3 для Storage (SQLCipher уже подключается ниже, если найден)

@@ -32,6 +32,9 @@ public:
     // Parse a connection string received from a contact
     static std::optional<PeerInfo> parseConnectionString(const std::string& str);
 
+    // "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" — accepts upper and lower case hex
+    static bool isValidUuid(const std::string& uuid);
+
 private:
     Identity() = default;
     std::string m_filePath;

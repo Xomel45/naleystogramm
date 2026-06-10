@@ -61,6 +61,8 @@ struct PeerConnection {
     std::string helloVersion   {};
     bool        isLinkedDevice {false};
     std::string pendingPairCode{};
+    // UUID we expect in HANDSHAKE_ACK; empty for device-pairing flows (verified by OTP instead)
+    std::string expectedUuid   {};
 };
 
 // ── Публичная информация о пире ───────────────────────────────────────────────
@@ -174,6 +176,13 @@ private:
 
     struct PeerReconnectInfo { std::string name, ip; uint16_t port{0}; };
     std::unordered_map<std::string, PeerReconnectInfo>                  m_reconnectInfo;
+
+    struct IpBanRecord {
+        int     failures    {0};
+        int64_t firstFailMs {0};
+        int64_t bannedUntil {0};  // epoch ms; 0 = not banned
+    };
+    std::unordered_map<std::string, IpBanRecord> m_ipBanRecords;
     std::unordered_map<std::string, int>                                m_reconnectAttempts;
     std::unordered_map<std::string, std::shared_ptr<asio::steady_timer>> m_reconnectTimers;
     std::unordered_map<std::string, std::queue<nlohmann::json>>         m_messageQueues;
@@ -206,8 +215,10 @@ private:
     void sendViaRelay      (const std::string& targetUuid, const nlohmann::json& obj);
     void handleRelayFrame  (const std::string& fromUuid, const nlohmann::json& innerObj);
     void handleFrame       (PeerConnection& peer, const nlohmann::json& obj);
-    void sendClientHello   (asio::ip::tcp::socket& sock);
-    void sendHandshake     (asio::ip::tcp::socket& sock);
+    void sendClientHello    (asio::ip::tcp::socket& sock);
+    void sendHandshake      (asio::ip::tcp::socket& sock);
+    void sendUuidChallenge  (asio::ip::tcp::socket& sock, const std::string& expectedUuid);
+    void recordUuidFailure  (const std::string& ip);
     void tryParseFrames    (PeerConnection& conn, bool isPending);
     void log               (const std::string& message, bool forceVerbose = false);
     void scheduleReconnect (const std::string& uuid);

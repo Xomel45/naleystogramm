@@ -129,15 +129,20 @@ static std::pair<std::string, std::string> pickAsset(const nlohmann::json& asset
 }
 
 // ── Semver ────────────────────────────────────────────────────────────────────
+// Схема версий: major.minor.patch[.hotfix]
+//   patch=0          — beta/alpha
+//   patch=1+         — стабильный релиз
+//   hotfix (4-й)     — внеплановая сборка поверх сломанного patch; выше
+//                      предыдущего patch, но ниже следующего (x.x.x.y < x.x.x+1)
 
-static std::tuple<int,int,int> parseSemver(const std::string& v) {
+static std::tuple<int,int,int,int> parseSemver(const std::string& v) {
     std::string s = v;
     if (!s.empty() && (s[0] == 'v' || s[0] == 'V')) s = s.substr(1);
     const auto dash = s.find('-');
     if (dash != std::string::npos) s = s.substr(0, dash);
-    int maj = 0, min = 0, pat = 0;
-    std::sscanf(s.c_str(), "%d.%d.%d", &maj, &min, &pat);
-    return {maj, min, pat};
+    int maj = 0, min = 0, pat = 0, hot = 0;
+    std::sscanf(s.c_str(), "%d.%d.%d.%d", &maj, &min, &pat, &hot);
+    return {maj, min, pat, hot};
 }
 
 // ── Timestamp helpers ─────────────────────────────────────────────────────────
@@ -377,9 +382,10 @@ void UpdateChecker::doCheck() {
 }
 
 bool UpdateChecker::isNewerVersion(const std::string& remote, const std::string& local) {
-    const auto [rMaj, rMin, rPat] = parseSemver(remote);
-    const auto [lMaj, lMin, lPat] = parseSemver(local);
+    const auto [rMaj, rMin, rPat, rHot] = parseSemver(remote);
+    const auto [lMaj, lMin, lPat, lHot] = parseSemver(local);
     if (rMaj != lMaj) return rMaj > lMaj;
     if (rMin != lMin) return rMin > lMin;
-    return rPat > lPat;
+    if (rPat != lPat) return rPat > lPat;
+    return rHot > lHot;
 }

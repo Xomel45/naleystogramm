@@ -82,6 +82,9 @@ static std::string sanitizeCtrl(const std::string& s, std::size_t maxLen = 256) 
     return r;
 }
 
+static constexpr int     kMaxUuidFailures  = 5;
+static constexpr int64_t kBanDurationMs    = 30LL * 60 * 1000;  // 30 minutes
+
 // ── Constructor / Destructor ──────────────────────────────────────────────────
 
 NetworkManager::NetworkManager()
@@ -447,15 +450,30 @@ void NetworkManager::discoverExternalIp() {
     return;
 #else
     std::thread([this]() {
+        static constexpr const char* kIpSources[] = {
+            "https://api.ipify.org?format=json",
+            "http://api.ipify.org?format=json",
+            "http://ip4.seeip.org/json",
+            "http://ifconfig.me/ip",
+        };
         std::string body;
         CURL* curl = curl_easy_init();
         if (curl) {
-            curl_easy_setopt(curl, CURLOPT_URL,           "https://api.ipify.org?format=json");
-            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curlWrite);
-            curl_easy_setopt(curl, CURLOPT_WRITEDATA,     &body);
-            curl_easy_setopt(curl, CURLOPT_TIMEOUT,       5L);
+            curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,  curlWrite);
+            curl_easy_setopt(curl, CURLOPT_WRITEDATA,      &body);
+            curl_easy_setopt(curl, CURLOPT_TIMEOUT,        8L);
             curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-            curl_easy_perform(curl);
+            curl_easy_setopt(curl, CURLOPT_USERAGENT,      "naleystogramm/" APP_VERSION);
+            for (const char* url : kIpSources) {
+                body.clear();
+                curl_easy_setopt(curl, CURLOPT_URL, url);
+                const CURLcode rc = curl_easy_perform(curl);
+                if (rc != CURLE_OK) {
+                    log(std::string("discoverExternalIp [") + url + "]: " + curl_easy_strerror(rc), true);
+                    continue;
+                }
+                if (!body.empty()) break;
+            }
             curl_easy_cleanup(curl);
         }
 
@@ -482,15 +500,18 @@ void NetworkManager::discoverExternalIp() {
                 return inNum && parts == 3 && val <= 255;
             };
 
-            const auto doc = nlohmann::json::parse(body, nullptr, false);
+            // trim whitespace from raw body
             std::string ip;
-            if (!doc.is_discarded() && doc.is_object())
-                ip = doc.value("ip", std::string{});
-
-            // trim whitespace
-            const auto s = ip.find_first_not_of(" \t\r\n");
-            const auto e = ip.find_last_not_of(" \t\r\n");
-            if (s != std::string::npos) ip = ip.substr(s, e - s + 1);
+            {
+                const auto s = body.find_first_not_of(" \t\r\n");
+                const auto e = body.find_last_not_of(" \t\r\n");
+                const std::string trimmed = (s != std::string::npos) ? body.substr(s, e - s + 1) : std::string{};
+                const auto doc = nlohmann::json::parse(trimmed, nullptr, false);
+                if (!doc.is_discarded() && doc.is_object())
+                    ip = doc.value("ip", std::string{});
+                else
+                    ip = trimmed;  // plain-text response (e.g. ifconfig.me)
+            }
 
             if (!isValidIp(ip)) {
                 log("Невалидный внешний IP: '" + ip + "'", true);
@@ -769,6 +790,7 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
                 .socket         = nullptr,
                 .state          = ConnectionState::Connecting,
                 .connectedSince = currentEpochMs(),
+                .expectedUuid   = peer.uuid,
             };
             m_relayPeers.insert(peer.uuid);
             fire([&peer](NetworkEvent& ev){
@@ -852,6 +874,7 @@ void NetworkManager::connectToPeer(const PeerInfo& peer) {
                     .state          = ConnectionState::Connected,
                     .lastActivity   = currentEpochMs(),
                     .connectedSince = currentEpochMs(),
+                    .expectedUuid   = peer.uuid,
                 };
                 resetReconnectState(peer.uuid);
 
@@ -959,6 +982,17 @@ void NetworkManager::handleFrame(PeerConnection& peer, const nlohmann::json& obj
         return;
     }
 
+    // IP ban check
+    {
+        const auto bit = m_ipBanRecords.find(peer.ip);
+        if (bit != m_ipBanRecords.end() && bit->second.bannedUntil > currentEpochMs()) {
+            const int64_t secLeft = (bit->second.bannedUntil - currentEpochMs()) / 1000;
+            log("IP " + peer.ip + " забанен ещё " + std::to_string(secLeft) + " сек — разрываем", true);
+            if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
+            return;
+        }
+    }
+
     const std::string type = obj.value("type", std::string{});
     peer.lastActivity = currentEpochMs();
 
@@ -1013,8 +1047,13 @@ void NetworkManager::handleFrame(PeerConnection& peer, const nlohmann::json& obj
             return;
         }
 
-        log("SERVER_HELLO OK — отправляем HANDSHAKE → «" + peerName + "»");
-        if (peer.socket) sendHandshake(*peer.socket);
+        if (!peer.expectedUuid.empty()) {
+            log("SERVER_HELLO OK — UUID_CHALLENGE → «" + peerName + "»");
+            if (peer.socket) sendUuidChallenge(*peer.socket, peer.expectedUuid);
+        } else {
+            log("SERVER_HELLO OK — отправляем HANDSHAKE → «" + peerName + "»");
+            if (peer.socket) sendHandshake(*peer.socket);
+        }
         return;
     }
 
@@ -1098,9 +1137,36 @@ void NetworkManager::handleFrame(PeerConnection& peer, const nlohmann::json& obj
         return;
     }
 
+    if (type == "UUID_CHALLENGE") {
+        const std::string challenged = obj.value("uuid", std::string{});
+        const bool isOurs = (challenged == Identity::instance().uuid());
+        if (!isOurs) {
+            recordUuidFailure(peer.ip);
+        }
+        nlohmann::json resp;
+        resp["type"]      = "UUID_RESPONSE";
+        resp["confirmed"] = isOurs;
+        if (peer.socket) writeFrame(*peer.socket, resp);
+        if (!isOurs) {
+            if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
+        }
+        return;
+    }
+
+    if (type == "UUID_RESPONSE") {
+        if (!obj.value("confirmed", false)) {
+            log("UUID_RESPONSE: пир " + peer.ip + " отклонил UUID — закрываем", true);
+            if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
+            return;
+        }
+        log("UUID_RESPONSE: пир " + peer.ip + " подтвердил UUID — отправляем HANDSHAKE");
+        if (peer.socket) sendHandshake(*peer.socket);
+        return;
+    }
+
     if (type == "HANDSHAKE") {
         const std::string parsedUuid = obj.value("uuid", std::string{});
-        if (parsedUuid.empty()) {
+        if (!Identity::isValidUuid(parsedUuid)) {
             log("HANDSHAKE: невалидный UUID от " + peer.ip, true);
             if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
             return;
@@ -1154,6 +1220,18 @@ void NetworkManager::handleFrame(PeerConnection& peer, const nlohmann::json& obj
 
             const std::string confirmedUuid = obj.value("uuid", std::string{});
             const std::string confirmedName = obj.value("name", std::string{});
+
+            if (!Identity::isValidUuid(confirmedUuid)) {
+                log("HANDSHAKE_ACK: невалидный UUID от " + peer.ip, true);
+                if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
+                return;
+            }
+            if (!peer.expectedUuid.empty() && confirmedUuid != peer.expectedUuid) {
+                log("HANDSHAKE_ACK: UUID mismatch от " + peer.ip
+                    + " (ожидали " + peer.expectedUuid + ", получили " + confirmedUuid + ")", true);
+                if (peer.socket) { std::error_code ec; peer.socket->close(ec); }
+                return;
+            }
 
             auto existIt = m_peers.find(confirmedUuid);
             if (existIt != m_peers.end() &&
@@ -1252,6 +1330,35 @@ void NetworkManager::sendHandshake(asio::ip::tcp::socket& sock) {
     obj["birthday"]   = SessionManager::instance().birthday();
     obj["version"]    = APP_VERSION;
     writeFrame(sock, obj);
+}
+
+void NetworkManager::sendUuidChallenge(asio::ip::tcp::socket& sock, const std::string& expectedUuid) {
+    nlohmann::json obj;
+    obj["type"] = "UUID_CHALLENGE";
+    obj["uuid"] = expectedUuid;
+    writeFrame(sock, obj);
+}
+
+void NetworkManager::recordUuidFailure(const std::string& ip) {
+    const int64_t now = currentEpochMs();
+    auto& rec = m_ipBanRecords[ip];
+
+    if (rec.bannedUntil > 0 && rec.bannedUntil <= now) {
+        // Previous ban expired — reset counter
+        rec = IpBanRecord{};
+    }
+
+    if (rec.firstFailMs == 0) rec.firstFailMs = now;
+    ++rec.failures;
+
+    if (rec.failures >= kMaxUuidFailures) {
+        rec.bannedUntil = now + kBanDurationMs;
+        log("IP " + ip + " забанен на 30 минут после "
+            + std::to_string(rec.failures) + " неверных UUID", true);
+    } else {
+        log("IP " + ip + " — неверный UUID ("
+            + std::to_string(rec.failures) + "/" + std::to_string(kMaxUuidFailures) + ")", true);
+    }
 }
 
 // ── sendFrame ─────────────────────────────────────────────────────────────────

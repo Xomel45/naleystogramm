@@ -142,14 +142,7 @@ SettingsProfilePage::SettingsProfilePage(QWidget* parent) : SettingsPageBase(par
     m_lay->addWidget(mkInsetSep());
     m_lay->addWidget(makeInfoField(":/icons/nav_profile.png",      tr("Мой ID"),        m_uuidEdit, true));
 
-    connect(m_uuidEdit, &QLineEdit::cursorPositionChanged, this, [this]() {
-        const QString full = QString::fromStdString(SessionManager::instance().uuid());
-        QApplication::clipboard()->setText(full);
-        m_uuidEdit->setPlaceholderText(tr("Скопировано!"));
-        QTimer::singleShot(1500, m_uuidEdit, [this]() {
-            if (m_uuidEdit) m_uuidEdit->setPlaceholderText({});
-        });
-    });
+    m_uuidEdit->installEventFilter(this);
 
     m_lay->addWidget(spHint(tr("   Поделитесь своим ID — другие смогут подключиться к вам")));
     m_lay->addWidget(mkSep());
@@ -279,6 +272,15 @@ void SettingsProfilePage::applyAvatarPixmap(const QString& path) {
 bool SettingsProfilePage::eventFilter(QObject* watched, QEvent* event) {
     if (watched == m_avatarLabel && event->type() == QEvent::MouseButtonRelease) {
         onAvatarClicked();
+        return true;
+    }
+    if (watched == m_uuidEdit && event->type() == QEvent::MouseButtonPress) {
+        const QString full = QString::fromStdString(SessionManager::instance().uuid());
+        QApplication::clipboard()->setText(full);
+        m_uuidEdit->setPlaceholderText(tr("Скопировано!"));
+        QTimer::singleShot(1500, m_uuidEdit, [this]() {
+            if (m_uuidEdit) m_uuidEdit->setPlaceholderText({});
+        });
         return true;
     }
     return SettingsPageBase::eventFilter(watched, event);
