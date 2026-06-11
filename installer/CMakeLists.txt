@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(naleystogramm-installer C)
 
+# Вложенный project() сбрасывает PROJECT_VERSION — восстанавливаем версию
+# родительского проекта (naleystogramm_VERSION остаётся видимой из родителя).
+set(PROJECT_VERSION "${naleystogramm_VERSION}")
+
 # ── Только для Windows (кросс-компиляция MinGW) ────────────────────────────
 if(NOT WIN32 AND NOT CMAKE_CROSSCOMPILING)
     message(STATUS "Инсталлер собирается только под Windows (MinGW). Пропускаем.")

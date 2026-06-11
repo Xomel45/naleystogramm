@@ -28,9 +28,9 @@ void strings_init(void);
 #define STR_P1_TITLE      S(L"Добро пожаловать",          L"Welcome")
 #define STR_P1_SUB        S(L"Выберите режим установки",  L"Choose installation mode")
 #define STR_P1_BODY       S( \
-    L"Этот мастер установит Naleystogramm " APP_VERSION L" на ваш компьютер.\n\n" \
+    L"Этот мастер установит Naleystogramm " APP_VERSION L" на ваш компьютер.\r\n\r\n" \
     L"Выберите, откуда взять файлы приложения:", \
-    L"This wizard will install Naleystogramm " APP_VERSION L" on your computer.\n\n" \
+    L"This wizard will install Naleystogramm " APP_VERSION L" on your computer.\r\n\r\n" \
     L"Choose where to get the application files:")
 #define STR_P1_BUNDLE     S(L"Установить эту версию (" APP_VERSION L")",  \
                              L"Install this version (" APP_VERSION L")")
@@ -64,14 +64,14 @@ void strings_init(void);
 /* ── Страница 5: Финиш ───────────────────────────────────────── */
 #define STR_P5_TITLE      S(L"Готово!",                                L"Done!")
 #define STR_P5_OK         S( \
-    L"Naleystogramm " APP_VERSION L" успешно установлен.\n\n" \
+    L"Naleystogramm " APP_VERSION L" успешно установлен.\r\n\r\n" \
     L"Программа добавлена в \"Установка и удаление программ\".", \
-    L"Naleystogramm " APP_VERSION L" has been installed successfully.\n\n" \
+    L"Naleystogramm " APP_VERSION L" has been installed successfully.\r\n\r\n" \
     L"The program was added to \"Programs and Features\".")
 #define STR_P5_FAIL       S( \
-    L"Установка завершилась с ошибкой.\n\n" \
+    L"Установка завершилась с ошибкой.\r\n\r\n" \
     L"Смотрите журнал для подробностей.", \
-    L"Installation finished with errors.\n\n" \
+    L"Installation finished with errors.\r\n\r\n" \
     L"See the log for details.")
 #define STR_P5_LAUNCH     S(L"Запустить Naleystogramm",    L"Launch Naleystogramm")
 

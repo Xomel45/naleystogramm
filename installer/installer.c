@@ -33,6 +33,7 @@
 #define ID_PROGRESS      1040
 #define ID_LOG           1041
 #define ID_CHK_LAUNCH    1050
+#define ID_LBL_FINISH    1051
 
 /* ── Цвета (тёмный заголовок как у приложения) ─────────────────────────────── */
 #define CLR_HEADER_BG    RGB(30,  30,  40)
@@ -133,14 +134,14 @@ static HWND create_page_welcome(HWND parent) {
     int y0 = HDR_H + 10;
     int cw = WND_W - MARGIN * 2;
     HWND pg = CreateWindowExW(0, L"STATIC", NULL,
-                               WS_CHILD | SS_BLACKRECT,
+                               WS_CHILD,
                                0, HDR_H, WND_W, WND_H - HDR_H - BTN_H,
                                parent, NULL, GetModuleHandleW(NULL), NULL);
 
     make_ctrl(L"STATIC", STR_P1_BODY,
-               SS_LEFT | SS_WORDELLIPSIS,
-               MARGIN, y0, cw, 60, pg, NULL, s_font_body);
-    y0 += 70;
+               SS_LEFT,
+               MARGIN, y0, cw, 80, pg, NULL, s_font_body);
+    y0 += 90;
 
     make_ctrl(L"BUTTON", STR_P1_BUNDLE,
                BS_AUTORADIOBUTTON | WS_GROUP,
@@ -169,7 +170,7 @@ static HWND create_page_path(HWND parent) {
     int y0 = HDR_H + 15;
     int cw = WND_W - MARGIN * 2;
     HWND pg = CreateWindowExW(0, L"STATIC", NULL,
-                               WS_CHILD | SS_BLACKRECT,
+                               WS_CHILD,
                                0, HDR_H, WND_W, WND_H - HDR_H - BTN_H,
                                parent, NULL, GetModuleHandleW(NULL), NULL);
 
@@ -197,7 +198,7 @@ static HWND create_page_options(HWND parent) {
     int y0 = HDR_H + 15;
     int cw = WND_W - MARGIN * 2;
     HWND pg = CreateWindowExW(0, L"STATIC", NULL,
-                               WS_CHILD | SS_BLACKRECT,
+                               WS_CHILD,
                                0, HDR_H, WND_W, WND_H - HDR_H - BTN_H,
                                parent, NULL, GetModuleHandleW(NULL), NULL);
 
@@ -231,7 +232,7 @@ static HWND create_page_progress(HWND parent) {
     int y0 = HDR_H + 15;
     int cw = WND_W - MARGIN * 2;
     HWND pg = CreateWindowExW(0, L"STATIC", NULL,
-                               WS_CHILD | SS_BLACKRECT,
+                               WS_CHILD,
                                0, HDR_H, WND_W, WND_H - HDR_H - BTN_H,
                                parent, NULL, GetModuleHandleW(NULL), NULL);
 
@@ -263,13 +264,13 @@ static HWND create_page_finish(HWND parent) {
     int y0 = HDR_H + 20;
     int cw = WND_W - MARGIN * 2;
     HWND pg = CreateWindowExW(0, L"STATIC", NULL,
-                               WS_CHILD | SS_BLACKRECT,
+                               WS_CHILD,
                                0, HDR_H, WND_W, WND_H - HDR_H - BTN_H,
                                parent, NULL, GetModuleHandleW(NULL), NULL);
 
     make_ctrl(L"STATIC", STR_P5_OK,
-               SS_LEFT | SS_WORDELLIPSIS,
-               MARGIN, y0, cw, 80, pg, NULL, s_font_body);
+               SS_LEFT,
+               MARGIN, y0, cw, 80, pg, (HMENU)ID_LBL_FINISH, s_font_body);
     y0 += 90;
 
     make_ctrl(L"BUTTON", STR_P5_LAUNCH,
@@ -339,8 +340,7 @@ static void do_browse(HWND hwnd) {
         if (SHGetPathFromIDListW(pidl, path)) {
             wchar_t full[MAX_PATH];
             _snwprintf(full, MAX_PATH, L"%s\\" APP_NAME, path);
-            SetDlgItemTextW(GetParent(GetParent(hwnd)),
-                             ID_EDIT_PATH, full);
+            SetDlgItemTextW(s_hwnd_pages[PAGE_PATH], ID_EDIT_PATH, full);
             /* Обновляем и g_state */
             wcsncpy(g_state.install_path, full, MAX_PATH - 1);
         }
@@ -479,7 +479,7 @@ static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         /* Обновляем текст финишной страницы в зависимости от результата */
         if (!g_state.install_success) {
             HWND pg = s_hwnd_pages[PAGE_FINISH];
-            HWND hStatic = GetWindow(pg, GW_CHILD);
+            HWND hStatic = GetDlgItem(pg, ID_LBL_FINISH);
             if (hStatic) SetWindowTextW(hStatic, STR_P5_FAIL);
         }
         return 0;
@@ -505,18 +505,30 @@ static HWND create_main_window(HINSTANCE hInst) {
     wc.hIcon         = LoadIconW(hInst, MAKEINTRESOURCEW(IDI_APP));
     RegisterClassExW(&wc);
 
+    /* CreateWindowExW принимает РАЗМЕР ОКНА ЦЕЛИКОМ (с рамкой и заголовком),
+     * а вся раскладка дочерних контролов рассчитана на WND_W x WND_H как
+     * размер КЛИЕНТСКОЙ области. Без поправки нижняя полоса кнопок
+     * (Назад/Далее/Отмена) уезжает за пределы окна. */
+    const DWORD wndStyle   = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    const DWORD wndExStyle = WS_EX_APPWINDOW;
+
+    RECT rc = {0, 0, WND_W, WND_H};
+    AdjustWindowRectEx(&rc, wndStyle, FALSE, wndExStyle);
+    int outer_w = rc.right  - rc.left;
+    int outer_h = rc.bottom - rc.top;
+
     /* Центрирование на экране */
     int sx = GetSystemMetrics(SM_CXSCREEN);
     int sy = GetSystemMetrics(SM_CYSCREEN);
-    int wx = (sx - WND_W) / 2;
-    int wy = (sy - WND_H) / 2;
+    int wx = (sx - outer_w) / 2;
+    int wy = (sy - outer_h) / 2;
 
     HWND hwnd = CreateWindowExW(
-        WS_EX_APPWINDOW,
+        wndExStyle,
         L"NaleystogrammInstaller",
         STR_TITLE,
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        wx, wy, WND_W, WND_H,
+        wndStyle,
+        wx, wy, outer_w, outer_h,
         NULL, NULL, hInst, NULL);
 
     if (!hwnd) return NULL;
@@ -559,7 +571,7 @@ static HWND create_main_window(HINSTANCE hInst) {
         wcscpy(g_state.install_path, L"C:\\Program Files\\" APP_NAME);
     }
     /* Установить текст edit box на странице PATH */
-    SetDlgItemTextW(hwnd, ID_EDIT_PATH, g_state.install_path);
+    SetDlgItemTextW(s_hwnd_pages[PAGE_PATH], ID_EDIT_PATH, g_state.install_path);
 
     show_page(hwnd, PAGE_WELCOME);
     return hwnd;
