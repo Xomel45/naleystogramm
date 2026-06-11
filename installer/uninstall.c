@@ -43,7 +43,7 @@ int run_uninstall(HINSTANCE hInst) {
     wchar_t install_path[MAX_PATH] = {0};
     if (!registry_get_install_path(install_path, MAX_PATH)) {
         MessageBoxW(NULL,
-            S(L"Naleystogramm не найден в реестре.", L"Naleystogramm not found in registry."),
+            STR_UNINSTALL_NOTFOUND,
             STR_UNINSTALL_TITLE, MB_OK | MB_ICONWARNING);
         CoUninitialize();
         return 1;
