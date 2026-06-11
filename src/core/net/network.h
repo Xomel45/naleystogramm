@@ -37,14 +37,14 @@ struct PeerConnection {
     uint16_t    serverPort     {0};
 
     std::shared_ptr<asio::ip::tcp::socket> socket;
-    std::string readBuf;
+    std::string readBuf{};
 
     ConnectionState state             {ConnectionState::Disconnected};
     int             reconnectAttempts {0};
     int64_t         lastActivity      {0};   // epoch ms
 
-    std::shared_ptr<asio::steady_timer> pingTimer;
-    std::shared_ptr<asio::steady_timer> pongTimeoutTimer;
+    std::shared_ptr<asio::steady_timer> pingTimer{};
+    std::shared_ptr<asio::steady_timer> pongTimeoutTimer{};
     std::chrono::steady_clock::time_point pingStart {};
     bool            awaitingPong      {false};
 
