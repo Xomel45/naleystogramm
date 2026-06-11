@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 project(naleystogramm VERSION 0.8.2 LANGUAGES CXX)
 
+# C нужен для вендоренных glad/nanovg (.c) — naleystogramm-glui (Phase 0 PoC)
+enable_language(C)
+
 if(WIN32 OR MINGW OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
     enable_language(RC)
 endif()
@@ -15,6 +18,9 @@ set(CMAKE_AUTOUIC_SEARCH_PATHS src/ui)
 
 # ── Опция: статическая Windows сборка ─────────────────────────────────────────
 option(WIN_STATIC "Полная статическая компоновка Windows .exe (требует static Qt6)" OFF)
+
+# ── Опция: OpenGL UI PoC (Phase 0, изолированный от Qt-сборки таргет) ─────────
+option(BUILD_GLUI_POC "Экспериментальный OpenGL UI PoC (naleystogramm-glui)" ON)
 
 if(WIN32 AND WIN_STATIC)
     if(NOT QT_STATIC_PREFIX)
@@ -57,7 +63,9 @@ if(PkgConfig_FOUND)
         pkg_check_modules(QRENCODE QUIET libqrencode)
         pkg_check_modules(ALSA QUIET alsa)
     endif()
+    pkg_check_modules(GLFW3 QUIET glfw3)
 endif()
+find_package(OpenGL QUIET)
 
 # ── Standalone Asio + nlohmann/json (header-only, для миграции Qt → std) ──────
 # Используется начиная с Фазы 1. При наличии системных пакетов (pacman -S asio
@@ -439,6 +447,62 @@ if(SQLCIPHER_FOUND)
 else()
     message(STATUS "SQLCipher:       не найден — шифрование БД отключено")
     message(STATUS "                 Установить: sudo apt install libsqlcipher-dev")
+endif()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ██  naleystogramm-glui  (Phase 0: OpenGL UI PoC, без Qt)  ██
+# Полностью изолированный таргет — не трогает naleystogramm/naleystogramm-core
+# конфигурацию выше. Линкует naleystogramm-core напрямую (Qt6::Core/Network
+# приходят транзитивно — ядро их использует, но glui-код их не включает).
+# ══════════════════════════════════════════════════════════════════════════════
+if(BUILD_GLUI_POC AND GLFW3_FOUND AND OPENGL_FOUND)
+    message(STATUS "naleystogramm-glui: включён (GLFW3 ${GLFW3_VERSION}, OpenGL найден)")
+
+    add_executable(naleystogramm-glui
+        third_party/glad/src/gl.c
+        third_party/nanovg/src/nanovg.c
+        src/glui/window.h
+        src/glui/window.cpp
+        src/glui/theme.h
+        src/glui/theme.cpp
+        src/glui/renderer.h
+        src/glui/renderer.cpp
+        src/glui/widgets/button.h
+        src/glui/widgets/button.cpp
+        src/glui/core_bridge.h
+        src/glui/core_bridge.cpp
+        src/glui/main.cpp
+    )
+
+    target_include_directories(naleystogramm-glui PRIVATE
+        third_party/glad/include
+        third_party/nanovg/src
+        src
+    )
+
+    target_compile_definitions(naleystogramm-glui PRIVATE
+        NANOVG_GL3_IMPLEMENTATION
+        APP_VERSION="${PROJECT_VERSION}"
+        APP_CODENAME="Оплошность"
+        GLUI_FONT_PATH="${CMAKE_SOURCE_DIR}/resources/fonts/NotoSans-Regular.ttf"
+    )
+
+    target_link_libraries(naleystogramm-glui PRIVATE
+        naleystogramm-core
+        ${GLFW3_LIBRARIES}
+        OpenGL::GL
+    )
+    target_include_directories(naleystogramm-glui PRIVATE ${GLFW3_INCLUDE_DIRS})
+    target_link_directories(naleystogramm-glui PRIVATE ${GLFW3_LIBRARY_DIRS})
+
+    if(UNIX AND NOT APPLE)
+        find_package(Threads REQUIRED)
+        target_link_libraries(naleystogramm-glui PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
+    endif()
+else()
+    if(BUILD_GLUI_POC)
+        message(STATUS "naleystogramm-glui: пропущен (нет GLFW3 и/или OpenGL)")
+    endif()
 endif()
 
 # ══════════════════════════════════════════════════════════════════════════════
