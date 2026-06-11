@@ -29,12 +29,14 @@ else()
 endif()
 
 # ── Find Qt6 ──────────────────────────────────────────────────────────────────
+# Sql и Concurrent сюда намеренно не входят: Storage использует sqlite3 C API
+# напрямую (naleystogramm-core), QtConcurrent нигде не вызывается. Их наличие
+# тянуло Qt6::QSQLiteDriverPlugin (отдельный встроенный sqlite3, дублирующий
+# тот, что уже статически слинкован в core) и лишние Qt6Sql/Qt6Concurrent DLL.
 find_package(Qt6 REQUIRED COMPONENTS
     Core
     Widgets
     Network
-    Sql
-    Concurrent
     LinguistTools
     OPTIONAL_COMPONENTS
     Multimedia
@@ -469,7 +471,7 @@ target_include_directories(naleystogramm PRIVATE
     src/plugins
 )
 
-# naleystogramm-core тянет Qt6::Core/Network/Sql/Concurrent транзитивно
+# naleystogramm-core тянет Qt6::Core/Network транзитивно
 target_link_libraries(naleystogramm PRIVATE
     naleystogramm-core
     Qt6::Widgets
@@ -597,7 +599,6 @@ if(WIN32)
             INCLUDE
                 Qt6::QWindowsIntegrationPlugin
                 Qt6::QWindowsVistaStylePlugin
-                Qt6::QSQLiteDriverPlugin
                 Qt6::QICOPlugin
                 Qt6::QJpegPlugin
                 Qt6::QGifPlugin

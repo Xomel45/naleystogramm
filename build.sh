@@ -165,8 +165,6 @@ build_windows() {
             "Qt6Core.dll"
             "Qt6Widgets.dll"
             "Qt6Network.dll"
-            "Qt6Sql.dll"
-            "Qt6Concurrent.dll"
             "Qt6Gui.dll"
         )
         for dll in "${QT_DLLS[@]}"; do
@@ -188,16 +186,6 @@ build_windows() {
         else
             echo "  ОШИБКА: platforms/qwindows.dll не найден!"
             echo "          Приложение упадёт при запуске!"
-        fi
-
-        # Qt6 SQLite драйвер
-        mkdir -p "$EXE_DIR/sqldrivers"
-        QSQLITE_DLL="$WIN_QT/lib/qt6/plugins/sqldrivers/qsqlite.dll"
-        if [ -f "$QSQLITE_DLL" ]; then
-            cp "$QSQLITE_DLL" "$EXE_DIR/sqldrivers/"
-            echo "  + sqldrivers/qsqlite.dll"
-        else
-            echo "  ? qsqlite.dll не найден (база данных не будет работать)"
         fi
 
         # Qt6 стили Windows
@@ -222,10 +210,8 @@ build_windows() {
         echo ""
         echo "  Минимальный набор для запуска .exe:"
         echo "    naleystogramm.exe"
-        echo "    Qt6Core.dll, Qt6Widgets.dll, Qt6Network.dll, Qt6Sql.dll"
-        echo "    Qt6Gui.dll, Qt6Concurrent.dll"
+        echo "    Qt6Core.dll, Qt6Widgets.dll, Qt6Network.dll, Qt6Gui.dll"
         echo "    platforms/qwindows.dll   ← обязательно!"
-        echo "    sqldrivers/qsqlite.dll"
     else
         echo ""
         echo "  Режим полной статики: DLL не нужны, только naleystogramm.exe"

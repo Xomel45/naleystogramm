@@ -285,10 +285,6 @@ cp "$QT_PLUGINS/tls/"*.so "$APPDIR/usr/plugins/tls/" 2>/dev/null || true
 mkdir -p "$APPDIR/usr/plugins/networkinformation"
 cp "$QT_PLUGINS/networkinformation/"*.so "$APPDIR/usr/plugins/networkinformation/" 2>/dev/null || true
 
-# SQL драйверы — ТОЛЬКО SQLite!
-mkdir -p "$APPDIR/usr/plugins/sqldrivers"
-cp "$QT_PLUGINS/sqldrivers/libqsqlite.so" "$APPDIR/usr/plugins/sqldrivers/" 2>/dev/null || true
-
 # XCB GL integrations
 mkdir -p "$APPDIR/usr/plugins/xcbglintegrations"
 cp "$QT_PLUGINS/xcbglintegrations/"*.so "$APPDIR/usr/plugins/xcbglintegrations/" 2>/dev/null || true

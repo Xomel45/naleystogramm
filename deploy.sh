@@ -347,7 +347,7 @@ deploy_release_windows() {
     copy_tracked "$BUILD_WIN/$APP_NAME.exe" "$dest/$APP_NAME.exe" "$APP_NAME.exe"
 
     log "Копирование Qt6 основных DLL..."
-    for dll in Qt6Core Qt6Widgets Qt6Network Qt6Sql Qt6Concurrent Qt6Gui Qt6Multimedia; do
+    for dll in Qt6Core Qt6Widgets Qt6Network Qt6Gui Qt6Multimedia; do
         copy_tracked "${WIN_QT_DLLS}/${dll}.dll" "$dest/${dll}.dll" "${dll}.dll"
     done
 
@@ -367,11 +367,6 @@ deploy_release_windows() {
         "platforms/qwindows.dll  ← без него крэш!"
 
     log "Копирование Qt6 плагинов..."
-    copy_tracked \
-        "${WIN_QT_PLUGINS}/sqldrivers/qsqlite.dll" \
-        "$dest/sqldrivers/qsqlite.dll" \
-        "sqldrivers/qsqlite.dll"
-
     # Qt6.8+: qmodernwindowsstyle.dll; старые версии: qwindowsvistastyle.dll
     for style_dll in qmodernwindowsstyle qwindowsvistastyle; do
         if [[ -f "${WIN_QT_PLUGINS}/styles/${style_dll}.dll" ]]; then
@@ -457,7 +452,6 @@ Naleystogramm v${VERSION} — Windows Release
 Структура папки:
   naleystogramm.exe         — основной исполняемый файл
   platforms/qwindows.dll    — Qt платформа Windows (обязательна!)
-  sqldrivers/qsqlite.dll    — Qt SQLite (база данных контактов)
   styles/                   — Qt стили Windows 10/11
   tls/                      — Qt TLS плагины (зашифрованные соединения)
   networkinformation/        — Qt сетевая информация
@@ -618,7 +612,7 @@ Section: net
 Priority: optional
 Architecture: amd64
 Installed-Size: ${installed_kb}
-Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6widgets6 | libqt6widgets6t64, libqt6network6 | libqt6network6t64, libqt6sql6 | libqt6sql6t64, libssl3 | libssl1.1
+Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6widgets6 | libqt6widgets6t64, libqt6network6 | libqt6network6t64, libssl3 | libssl1.1
 Recommends: libqt6multimedia6 | libqt6multimedia6t64, libopus0, libqrencode4
 Maintainer: xomel45 <xom.xom.zip@gmail.com>
 Homepage: https://github.com/xomel45/naleystogramm
@@ -899,7 +893,6 @@ show_help() {
     echo "        └── ${VERSION}-windows/"
     echo "            ├── naleystogramm.exe"
     echo "            ├── platforms/qwindows.dll"
-    echo "            ├── sqldrivers/qsqlite.dll"
     echo "            ├── styles/..."
     echo "            ├── translations/"
     echo "            ├── README.txt"
