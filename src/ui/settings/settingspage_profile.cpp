@@ -1,8 +1,8 @@
 #include "settingspage_profile.h"
 #include "settingshelpers.h"
 #include "../thememanager.h"
-#include "../../core/identity.h"
-#include "../../core/sessionmanager.h"
+#include "../../core/identity/identity.h"
+#include "../../core/storage/sessionmanager.h"
 #include <QLineEdit>
 #include <QLabel>
 #include <QPushButton>

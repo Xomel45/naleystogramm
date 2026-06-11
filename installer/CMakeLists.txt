@@ -35,6 +35,11 @@ set(INSTALLER_SOURCES
 
 set(INSTALLER_RC installer.rc)
 
+# windres не знает, что installer.rc включает payload.zip как RCDATA — без
+# этого изменение payload.zip не приводит к пересборке .rc, и в инсталлер
+# попадает старый/пустой payload из предыдущей сборки.
+set_source_files_properties(${INSTALLER_RC} PROPERTIES OBJECT_DEPENDS "${PAYLOAD_ZIP}")
+
 # ── Исполняемый файл ───────────────────────────────────────────────────────
 add_executable(naleystogramm-setup WIN32
     ${INSTALLER_SOURCES}

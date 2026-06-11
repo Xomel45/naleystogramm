@@ -1,8 +1,8 @@
 #include "settingspage_updates.h"
 #include "settingshelpers.h"
 #include "../toggleswitch.h"
-#include "../../core/sessionmanager.h"
-#include "../../core/updatechecker.h"
+#include "../../core/storage/sessionmanager.h"
+#include "../../core/diag/updatechecker.h"
 #include <QLabel>
 #include <QPushButton>
 #include <QHBoxLayout>

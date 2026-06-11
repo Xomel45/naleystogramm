@@ -47,10 +47,12 @@ private slots:
 private:
     void setupUi();
     void scrollToBottom();
+    void applyTheme();
     QWidget* makeBubble(const GroupMessage& msg);
 
     Group       m_group;
     bool        m_canSend{true};
+    bool        m_connected{false};
 
     // UI elements
     QLabel*     m_nameLabel{nullptr};

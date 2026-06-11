@@ -1,6 +1,6 @@
 #include "splashscreen.h"
 #include "thememanager.h"
-#include "../core/systeminfo.h"
+#include "../core/diag/systeminfo.h"
 #include <QVBoxLayout>
 #include <QLabel>
 #include <QProgressBar>

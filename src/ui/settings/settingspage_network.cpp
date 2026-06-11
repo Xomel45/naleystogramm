@@ -1,7 +1,7 @@
 #include "settingspage_network.h"
 #include "settingshelpers.h"
 #include "../wheelfilter.h"
-#include "../../core/sessionmanager.h"
+#include "../../core/storage/sessionmanager.h"
 #include "../../core/types.h"
 #include <QSpinBox>
 #include <QLineEdit>

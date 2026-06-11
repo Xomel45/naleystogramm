@@ -138,6 +138,22 @@ make_zip() {
     ok "  + $(basename "$abs_zip")  ($(file_size "$abs_zip"))"
 }
 
+# Упаковываем СОДЕРЖИМОЕ директории в ZIP без обёрточной папки (-9).
+# make_zip_flat <src_dir> <out.zip>
+# Нужно для payload.zip инсталлера: extract_zip_from_memory распаковывает
+# пути из архива как есть в install_path, а ярлыки/firewall/registry/autostart
+# в install.c ожидают naleystogramm.exe сразу в install_path, без вложенной
+# папки вида "0.8.2-windows/".
+make_zip_flat() {
+    local src_dir="$1" zip_out="$2"
+    local abs_zip
+    abs_zip="$(realpath -m "$zip_out")"
+    log "ZIP (flat): $(basename "$abs_zip")..."
+    rm -f "$abs_zip"
+    (cd "$src_dir" && zip -9 -r "$abs_zip" .)
+    ok "  + $(basename "$abs_zip")  ($(file_size "$abs_zip"))"
+}
+
 # Копируем файл с логированием; при отсутствии — warn, не fail
 copy_file() {
     local src="$1" dst="$2" label="$3"
@@ -796,9 +812,9 @@ deploy_release_windows_installer() {
         ok "Windows-релиз уже есть: $win_dir/"
     fi
 
-    # ── Шаг 2: создать payload.zip из папки релиза ────────────────────────────
+    # ── Шаг 2: создать payload.zip из папки релиза (без обёрточной папки) ─────
     log "Упаковка payload.zip..."
-    make_zip "$win_dir" "$payload_zip"
+    make_zip_flat "$win_dir" "$payload_zip"
     ok "payload.zip → $(file_size "$payload_zip")"
 
     # ── Шаг 3: собрать инсталлер (MinGW cross) ────────────────────────────────

@@ -1,6 +1,6 @@
 #include "thememanager.h"
 #include "customthememanager.h"
-#include "../core/sessionmanager.h"
+#include "../core/storage/sessionmanager.h"
 #include "../plugins/pluginmanager.h"
 #include <QApplication>
 #include <QPalette>

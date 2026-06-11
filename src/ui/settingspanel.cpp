@@ -11,7 +11,7 @@
 #include "settings/settingspage_updates.h"
 #include "settings/settingspage_debug.h"
 #include "settings/settingspage_plugins.h"
-#include "../core/updatechecker.h"
+#include "../core/diag/updatechecker.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QStackedWidget>

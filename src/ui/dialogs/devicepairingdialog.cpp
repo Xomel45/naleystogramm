@@ -1,7 +1,7 @@
 #include "devicepairingdialog.h"
-#include "../../core/device_pairing.h"
-#include "../../core/network.h"
-#include "../../core/sessionmanager.h"
+#include "../../core/identity/device_pairing.h"
+#include "../../core/net/network.h"
+#include "../../core/storage/sessionmanager.h"
 #include "../qrcodewidget.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>

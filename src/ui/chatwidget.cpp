@@ -1,7 +1,7 @@
 #include "chatwidget.h"
 #include "thememanager.h"
 #include "voicewaveform.h"
-#include "../core/audiorecorder.h"
+#include "../core/calls/audiorecorder.h"
 #include <QFileInfo>
 #include <QVBoxLayout>
 #include <QHBoxLayout>

@@ -1,8 +1,8 @@
 #include "contactprofiledialog.h"
-#include "../../core/network.h"
-#include "../../core/storage.h"
-#include "../../core/updatechecker.h"
-#include "../../core/versionutils.h"
+#include "../../core/net/network.h"
+#include "../../core/storage/storage.h"
+#include "../../core/diag/updatechecker.h"
+#include "../../core/diag/versionutils.h"
 #include "../thememanager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>

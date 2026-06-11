@@ -2,7 +2,7 @@
 #include "settingshelpers.h"
 #include "../settingspanel.h"
 #include "../thememanager.h"
-#include "../../core/sessionmanager.h"
+#include "../../core/storage/sessionmanager.h"
 #include <QLabel>
 #include <QPushButton>
 #include <QScrollArea>

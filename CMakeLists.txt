@@ -108,39 +108,47 @@ option(STRICT_NO_QT_IN_CORE
 # callmanager.cpp, граница CallManager↔MediaEngine через qt_bridge.h).
 set(CORE_SOURCES
     # Core
-    src/core/identity.h
-    src/core/identity.cpp
-    src/core/device_pairing.h
-    src/core/device_pairing.cpp
-    src/core/network.h
-    src/core/network.cpp
-    src/core/storage.h
-    src/core/storage.cpp
-    src/core/filetransfer.h
-    src/core/filetransfer.cpp
-    src/core/audiorecorder.h
-    src/core/audiorecorder.cpp
-    src/core/upnp.h
-    src/core/upnp.cpp
-    src/core/systeminfo.h
-    src/core/systeminfo.cpp
-    src/core/updatechecker.h
-    src/core/updatechecker.cpp
-    src/core/demomode.h
-    src/core/demomode.cpp
-    src/core/sessionmanager.h
-    src/core/sessionmanager.cpp
-    src/core/logger.h
-    src/core/logger.cpp
     src/core/types.h
     src/core/app.h
     src/core/app.cpp
-    src/core/callmanager.h
-    src/core/callmanager.cpp
-    src/core/remoteshellmanager.h
-    src/core/remoteshellmanager.cpp
-    src/core/shellprocess.h
-    src/core/shellprocess.cpp
+    # core/identity — identity + сопряжение устройств
+    src/core/identity/identity.h
+    src/core/identity/identity.cpp
+    src/core/identity/device_pairing.h
+    src/core/identity/device_pairing.cpp
+    # core/net — P2P-транспорт, UPnP
+    src/core/net/network.h
+    src/core/net/network.cpp
+    src/core/net/upnp.h
+    src/core/net/upnp.cpp
+    # core/storage — персистентность/настройки
+    src/core/storage/storage.h
+    src/core/storage/storage.cpp
+    src/core/storage/sessionmanager.h
+    src/core/storage/sessionmanager.cpp
+    # core/transfer — передача файлов
+    src/core/transfer/filetransfer.h
+    src/core/transfer/filetransfer.cpp
+    # core/calls — звонки и запись голоса
+    src/core/calls/callmanager.h
+    src/core/calls/callmanager.cpp
+    src/core/calls/audiorecorder.h
+    src/core/calls/audiorecorder.cpp
+    # core/shell — remote shell
+    src/core/shell/remoteshellmanager.h
+    src/core/shell/remoteshellmanager.cpp
+    src/core/shell/shellprocess.h
+    src/core/shell/shellprocess.cpp
+    # core/diag — диагностика, обновления, логи
+    src/core/diag/systeminfo.h
+    src/core/diag/systeminfo.cpp
+    src/core/diag/updatechecker.h
+    src/core/diag/updatechecker.cpp
+    src/core/diag/demomode.h
+    src/core/diag/demomode.cpp
+    src/core/diag/logger.h
+    src/core/diag/logger.cpp
+    src/core/diag/versionutils.h
     # Crypto
     src/crypto/securedata.h
     src/crypto/openssl_raii.h
@@ -411,8 +419,8 @@ endif()
 if(CURL_FOUND)
     set(HAVE_GROUPS TRUE)
     target_sources(naleystogramm-core PRIVATE
-        src/core/groupmanager.h
-        src/core/groupmanager.cpp
+        src/core/net/groupmanager.h
+        src/core/net/groupmanager.cpp
     )
     target_compile_definitions(naleystogramm-core PUBLIC HAVE_GROUPS)
     message(STATUS "Группы/каналы:   включены (libcurl WS)")

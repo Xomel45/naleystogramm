@@ -16,9 +16,9 @@
 #include "ui/mainwindow.h"
 #include "ui/splashscreen.h"
 #include "core/app.h"
-#include "core/sessionmanager.h"
-#include "core/systeminfo.h"
-#include "core/logger.h"
+#include "core/storage/sessionmanager.h"
+#include "core/diag/systeminfo.h"
+#include "core/diag/logger.h"
 #include "plugins/pluginmanager.h"
 
 // Путь к переводам (передаётся из CMake)

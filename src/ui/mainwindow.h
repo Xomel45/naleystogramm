@@ -9,8 +9,8 @@
 #include <QSet>
 #include <QSystemTrayIcon>
 #include <memory>
-#include "../core/sessionmanager.h"  // нужен PrivacyLevel в сигнатуре checkPrivacy
-#include "../core/demomode.h"
+#include "../core/storage/sessionmanager.h"  // нужен PrivacyLevel в сигнатуре checkPrivacy
+#include "../core/diag/demomode.h"
 
 namespace Ui { class MainWindow; }
 

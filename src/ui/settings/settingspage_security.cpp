@@ -1,6 +1,6 @@
 #include "settingspage_security.h"
 #include "settingshelpers.h"
-#include "../../core/sessionmanager.h"
+#include "../../core/storage/sessionmanager.h"
 #include <QPushButton>
 #include <QHBoxLayout>
 

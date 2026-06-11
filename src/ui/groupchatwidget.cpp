@@ -13,6 +13,9 @@
 
 GroupChatWidget::GroupChatWidget(QWidget* parent) : QWidget(parent) {
     setupUi();
+
+    connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+            this, [this](Theme) { applyTheme(); });
 }
 
 void GroupChatWidget::setupUi() {
@@ -53,9 +56,6 @@ void GroupChatWidget::setupUi() {
     headerLay->addWidget(m_membersBtn);
     headerLay->addWidget(m_leaveBtn);
 
-    header->setStyleSheet(QString("QWidget#chatHeader{background:%1;border-bottom:1px solid %2;}")
-                          .arg(p.bgElevated, p.border));
-
     connect(m_membersBtn, &QPushButton::clicked, this, &GroupChatWidget::membersRequested);
     connect(m_leaveBtn,   &QPushButton::clicked, this, &GroupChatWidget::leaveRequested);
 
@@ -94,10 +94,6 @@ void GroupChatWidget::setupUi() {
 
     inputLay->addWidget(m_input, 1);
     inputLay->addWidget(m_sendBtn);
-
-    m_inputBar->setStyleSheet(QString(
-        "QWidget#inputBar{background:%1;border-top:1px solid %2;}")
-        .arg(p.bgElevated, p.border));
 
     connect(m_sendBtn, &QPushButton::clicked, this, &GroupChatWidget::onSendClicked);
 
@@ -149,6 +145,7 @@ void GroupChatWidget::appendMessage(const GroupMessage& msg) {
 void GroupChatWidget::appendSystemMsg(const QString& text) {
     const ThemePalette& p = ThemeManager::instance().palette();
     auto* lbl = new QLabel(text);
+    lbl->setObjectName("systemMsg");
     lbl->setAlignment(Qt::AlignCenter);
     lbl->setStyleSheet(QString("color:%1;font-size:11px;padding:4px 0;").arg(p.textSecondary));
     m_msgLayout->insertWidget(m_msgLayout->count() - 1, lbl);
@@ -162,6 +159,7 @@ void GroupChatWidget::setCanSend(bool canSend) {
 
 void GroupChatWidget::setConnected(bool connected) {
     if (!m_statusLabel) return;
+    m_connected = connected;
     const ThemePalette& p = ThemeManager::instance().palette();
     const QString typeStr = m_group.type == GroupType::Channel ? "Канал" : "Группа";
     if (connected) {
@@ -170,6 +168,46 @@ void GroupChatWidget::setConnected(bool connected) {
     } else {
         m_statusLabel->setText(typeStr + " · нет соединения");
         m_statusLabel->setStyleSheet(QString("font-size:11px;color:%1;").arg(p.textSecondary));
+    }
+}
+
+void GroupChatWidget::applyTheme() {
+    const ThemePalette& p = ThemeManager::instance().palette();
+
+    m_nameLabel->setStyleSheet(QString("font-weight:600;font-size:14px;color:%1;").arg(p.textPrimary));
+    m_leaveBtn->setStyleSheet(QString("QPushButton{color:%1;}").arg(p.danger));
+    setConnected(m_connected);
+
+    // Перекрасить уже отрисованную историю сообщений
+    for (int i = 0; i < m_msgLayout->count() - 1; ++i) {
+        QWidget* w = m_msgLayout->itemAt(i)->widget();
+        if (!w) continue;
+
+        if (auto* sysLbl = qobject_cast<QLabel*>(w)) {
+            sysLbl->setStyleSheet(QString("color:%1;font-size:11px;padding:4px 0;").arg(p.textSecondary));
+            continue;
+        }
+
+        if (auto* senderLbl = w->findChild<QLabel*>("senderLbl"))
+            senderLbl->setStyleSheet(QString("font-size:11px;font-weight:600;color:%1;padding-left:8px;")
+                                     .arg(p.accent));
+
+        if (auto* bubble = w->findChild<QLabel*>("bubbleLbl")) {
+            const bool outgoing = w->property("outgoing").toBool();
+            if (outgoing)
+                bubble->setStyleSheet(QString(
+                    "QLabel{background:%1;color:%2;border-radius:12px;border-bottom-right-radius:4px;"
+                    "padding:8px 10px;font-size:13px;}")
+                    .arg(p.bgBubbleOut, p.textPrimary));
+            else
+                bubble->setStyleSheet(QString(
+                    "QLabel{background:%1;color:%2;border-radius:12px;border-bottom-left-radius:4px;"
+                    "padding:8px 10px;font-size:13px;}")
+                    .arg(p.bgBubbleIn, p.textPrimary));
+        }
+
+        for (auto* timeLbl : w->findChildren<QLabel*>("timeLbl"))
+            timeLbl->setStyleSheet(QString("font-size:10px;color:%1;").arg(p.textSecondary));
     }
 }
 
@@ -185,6 +223,7 @@ QWidget* GroupChatWidget::makeBubble(const GroupMessage& msg) {
     const ThemePalette& p = ThemeManager::instance().palette();
 
     auto* row = new QWidget;
+    row->setProperty("outgoing", msg.outgoing);
     auto* rowLay = new QVBoxLayout(row);
     rowLay->setContentsMargins(4, 2, 4, 2);
     rowLay->setSpacing(2);
@@ -192,12 +231,14 @@ QWidget* GroupChatWidget::makeBubble(const GroupMessage& msg) {
     if (!msg.outgoing) {
         // Имя отправителя над пузырём (как в TG-группах)
         auto* senderLbl = new QLabel(QString::fromStdString(msg.sender));
+        senderLbl->setObjectName("senderLbl");
         senderLbl->setStyleSheet(QString("font-size:11px;font-weight:600;color:%1;padding-left:8px;")
                                  .arg(p.accent));
         rowLay->addWidget(senderLbl);
     }
 
     auto* bubble = new QLabel(QString::fromStdString(msg.text).toHtmlEscaped().replace("\n", "<br>"));
+    bubble->setObjectName("bubbleLbl");
     bubble->setWordWrap(true);
     bubble->setTextInteractionFlags(Qt::TextSelectableByMouse);
     bubble->setMaximumWidth(480);
@@ -211,6 +252,7 @@ QWidget* GroupChatWidget::makeBubble(const GroupMessage& msg) {
             .arg(p.bgBubbleOut, p.textPrimary));
         // Время
         auto* timeLbl = new QLabel(ts);
+        timeLbl->setObjectName("timeLbl");
         timeLbl->setStyleSheet(QString("font-size:10px;color:%1;").arg(p.textSecondary));
         auto* hrow = new QHBoxLayout;
         hrow->setContentsMargins(0, 0, 0, 0);
@@ -233,6 +275,7 @@ QWidget* GroupChatWidget::makeBubble(const GroupMessage& msg) {
             "padding:8px 10px;font-size:13px;}")
             .arg(p.bgBubbleIn, p.textPrimary));
         auto* timeLbl = new QLabel(ts);
+        timeLbl->setObjectName("timeLbl");
         timeLbl->setStyleSheet(QString("font-size:10px;color:%1;").arg(p.textSecondary));
         auto* hrow = new QHBoxLayout;
         hrow->setContentsMargins(0, 0, 0, 0);

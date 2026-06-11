@@ -1,7 +1,7 @@
 #include "settingspage_demo.h"
 #include "settingshelpers.h"
 #include "../thememanager.h"
-#include "../../core/demomode.h"
+#include "../../core/diag/demomode.h"
 #include <QPushButton>
 #include <QHBoxLayout>
 

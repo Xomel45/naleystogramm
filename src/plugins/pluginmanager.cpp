@@ -1,6 +1,6 @@
 #include "pluginmanager.h"
 #include "pluginformat.h"
-#include "../core/logger.h"
+#include "../core/diag/logger.h"
 #include "../core/types.h"
 #include "../ui/thememanager.h"
 #include <QDir>

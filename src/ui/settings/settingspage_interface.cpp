@@ -3,7 +3,7 @@
 #include "../wheelfilter.h"
 #include "../thememanager.h"
 #include "../customthememanager.h"
-#include "../../core/sessionmanager.h"
+#include "../../core/storage/sessionmanager.h"
 #include <QComboBox>
 #include <QCheckBox>
 #include <QLabel>
