@@ -80,7 +80,7 @@ static inline void mwSendS(NetworkManager* net, const std::string& u, const QJso
     net->sendFrame(u, bridge::fromQJsonObj(o));
 }
 
-MainWindow::MainWindow(App& app, QWidget* parent)
+MainWindow::MainWindow(App& app, bool noNetwork, QWidget* parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
     , m_storage(&app.storage())
@@ -89,6 +89,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     , m_fileTransfer(&app.fileTransfer())
     , m_callManager(&app.callManager())
     , m_shellManager(&app.shellManager())
+    , m_noNetwork(noNetwork)
 {
     ui->setupUi(this);
     setWindowTitle("Naleystogramm");
@@ -473,7 +474,8 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     // При переключении demo-mode обновляем всё что показывает наши данные
     m_demoToken = DemoMode::instance().subscribe([this](bool) { refreshOwnDisplay(); });
 
-    m_network->init();
+    if (!m_noNetwork)
+        m_network->init();
     m_contacts->setContacts(m_storage->allContacts());
 
 #ifdef Q_OS_WIN

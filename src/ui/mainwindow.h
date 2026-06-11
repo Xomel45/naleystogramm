@@ -43,7 +43,7 @@ class SideDrawer;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    explicit MainWindow(App& app, QWidget* parent = nullptr);
+    explicit MainWindow(App& app, bool noNetwork = false, QWidget* parent = nullptr);
     ~MainWindow();
 
 private slots:
@@ -177,6 +177,7 @@ private:
 
     DemoMode::Token  m_demoToken{0};
     uint32_t         m_netListenerToken{0};
+    bool             m_noNetwork{false};
     uint32_t         m_callListenerToken{0};
     uint32_t         m_fileTransferListenerToken{0};
     uint32_t         m_shellListenerToken{0};

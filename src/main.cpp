@@ -15,11 +15,18 @@
 #include <QLocalSocket>
 #include "ui/mainwindow.h"
 #include "ui/splashscreen.h"
+#include "ui/clisession.h"
 #include "core/app.h"
+#include "core/net/network.h"
 #include "core/storage/sessionmanager.h"
 #include "core/diag/systeminfo.h"
 #include "core/diag/logger.h"
 #include "plugins/pluginmanager.h"
+
+#include <iostream>
+#include <initializer_list>
+#include <string>
+#include <vector>
 
 // Путь к переводам (передаётся из CMake)
 #ifndef TRANSLATIONS_DIR
@@ -66,6 +73,38 @@ static void splashDelay(int ms) {
 }
 
 int main(int argc, char* argv[]) {
+    // ── Лёгкие флаги, которые не должны зависеть от QApplication/дисплея ────
+    {
+        const std::vector<std::string> args(argv + 1, argv + argc);
+        auto hasArg = [&](std::initializer_list<const char*> names) {
+            for (const auto& a : args)
+                for (const char* n : names)
+                    if (a == n) return true;
+            return false;
+        };
+
+        if (hasArg({"--version", "-v"})) {
+            std::cout << "naleystogramm " << APP_VERSION << " \"" << APP_CODENAME << "\"\n";
+            return 0;
+        }
+        if (hasArg({"--help", "-h"})) {
+            std::cout <<
+                "Использование: naleystogramm [опции]\n\n"
+                "  --version, -v       версия и кодовое имя\n"
+                "  --help, -h          эта справка\n"
+                "  --debug, --verbose  расширенное логирование с самого старта\n"
+                "  --no-network        не запускать сетевой модуль (отладка UI)\n"
+                "  --cli               текстовый интерактивный режим без GUI\n"
+                "  --theme-reload      сбросить тему до Dark и выйти\n";
+            return 0;
+        }
+        // --cli работает без X11/Wayland — форсируем offscreen-платформу,
+        // если пользователь явно не задал свою через QT_QPA_PLATFORM.
+        if (hasArg({"--cli"}) && qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
+            qputenv("QT_QPA_PLATFORM", "offscreen");
+        }
+    }
+
     QApplication app(argc, argv);
 
     app.setApplicationName("naleystogramm");
@@ -85,6 +124,24 @@ int main(int argc, char* argv[]) {
         QTextStream(stdout) << "Тема сброшена до тёмной (Dark).\n"
                                "Запустите приложение без --theme-reload.\n";
         return 0;
+    }
+
+    // ── Текстовый интерактивный режим (--cli) ──────────────────────────────
+    // Без SplashScreen/MainWindow — только Identity/Storage/E2E/Network через
+    // App, ввод-вывод через stdin/stdout (см. CliSession).
+    if (app.arguments().contains("--cli")) {
+        SessionManager::instance().load();
+        SessionManager::ensureDirectories();
+        Logger::instance().init();
+        if (app.arguments().contains("--debug") || app.arguments().contains("--verbose"))
+            Logger::instance().setVerbose(true);
+        SystemInfo::instance().collect();
+
+        App core;
+        CliSession session(core);
+        if (!app.arguments().contains("--no-network"))
+            core.network().init();
+        return session.run();
     }
 
     // ── Одиночный экземпляр ───────────────────────────────────────────────
@@ -131,6 +188,8 @@ int main(int argc, char* argv[]) {
     splash->updateStatus(25, QObject::tr("Инициализация логгера..."));
     splashDelay(60);
     Logger::instance().init();
+    if (app.arguments().contains("--debug") || app.arguments().contains("--verbose"))
+        Logger::instance().setVerbose(true);
 
     // ── Шаг 3: Загрузка перевода Qt базовых виджетов ─────────────────────
     splash->updateStatus(40, QObject::tr("Загрузка языкового пакета..."));
@@ -181,7 +240,7 @@ int main(int argc, char* argv[]) {
     // ── Шаг 7: Создание главного окна ─────────────────────────────────────
     splash->updateStatus(95, QObject::tr("Загрузка интерфейса..."));
     splashDelay(60);
-    MainWindow w(core);
+    MainWindow w(core, app.arguments().contains("--no-network"));
 
     // Когда другой процесс стучится в сокет — разворачиваем окно
     QObject::connect(&singleInstServer, &QLocalServer::newConnection, &singleInstServer,

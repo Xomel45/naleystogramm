@@ -187,6 +187,8 @@ set(UI_SOURCES
     src/ui/mainwindow.h
     src/ui/mainwindow.cpp
     src/ui/mainwindow.ui
+    src/ui/clisession.h
+    src/ui/clisession.cpp
     src/ui/thememanager.h
     src/ui/thememanager.cpp
     src/ui/customthememanager.h
